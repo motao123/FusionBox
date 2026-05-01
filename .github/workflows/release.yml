@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: FusionBox ${{ steps.version.outputs.tag }}
+          body: |
+            ## FusionBox ${{ steps.version.outputs.tag }}
+
+            ### 安装方式
+            ```bash
+            bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
+            ```
+
+            ### 更新
+            ```bash
+            fusionbox update
+            ```
+          files: |
+            fusion.sh
+            install.sh
+            version.txt
+          draft: false
+          prerelease: false

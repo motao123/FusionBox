@@ -1,6 +1,6 @@
 # FusionBox
 
-> 一站式 Linux 服务器全能管理工具箱 — 对标 kejilion/SKY-BOX/233boy，功能 100% 覆盖
+> 一站式 Linux 服务器全能管理工具箱
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖日常运维的全部场景。
 
@@ -8,13 +8,13 @@ FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理
 
 | 模块 | 命令 | 功能 |
 |------|------|------|
-| 代理管理 | `fusionbox proxy` | 多后端代理 (Xray/v2ray/sing-box/Clash) |
+| 代理管理 | `fusionbox proxy` | 多后端代理 (Xray/v2ray/sing-box/Clash.Meta) |
 | 系统管理 | `fusionbox system` | BBR/基准测试/备份/SSH/防火墙/定时任务/磁盘/时区/回收站 |
-| 网络工具 | `fusionbox network` | IP查询/流媒体检测/测速/DNS/路由追踪 |
-| 网站部署 | `fusionbox web` | LNMP/SSL/17种应用部署/反向代理/L4转发 |
+| 网络工具 | `fusionbox network` | IP查询/流媒体检测/测速/DNS/路由追踪/端口检测 |
+| 网站部署 | `fusionbox web` | LNMP/SSL/17种应用部署/反向代理/L4转发/站点备份 |
 | 面板工具 | `fusionbox panels` | Docker完整管理/宝塔/Aapanel/FRP/Aria2 |
 | 应用市场 | `fusionbox market` | 80+应用一键安装 (10个分类) |
-| WARP管理 | `fusionbox warp` | Cloudflare WARP 安装/模式切换/解锁 |
+| WARP管理 | `fusionbox warp` | Cloudflare WARP 安装/Proxy模式/流媒体解锁 |
 | 后台工作区 | `fusionbox workspace` | Screen/Tmux 会话管理 |
 | 集群控制 | `fusionbox cluster` | 多服务器批量管理/游戏服务端/Oracle防回收/k命令 |
 
@@ -26,19 +26,22 @@ FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理
 
 多后端通用代理管理，支持一键安装和配置：
 
-- **支持后端**：Xray-core、v2ray-core、sing-box、Clash.Meta
-- **支持协议**：VLESS、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS
-- **传输方式**：TCP、WebSocket、HTTP/2、HTTPUpgrade、QUIC、gRPC
-- **TLS 方案**：Reality、自签证书、ACME(Let's Encrypt)
-- **附加功能**：BBR 加速、配置导入导出、分享链接/二维码生成
+- **支持后端**：Xray-core、v2ray-core、sing-box、Clash.Meta (mihomo)
+- **支持协议**：VLESS、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5
+- **传输方式**：TCP、WebSocket、gRPC、HTTPUpgrade
+- **配置管理**：自动合并多配置、分享链接生成
 
 ```bash
-fusionbox proxy install          # 安装代理核心
-fusionbox proxy add              # 添加代理配置
+fusionbox proxy install          # 安装代理核心（4选1）
+fusionbox proxy add              # 添加代理配置（15种协议）
 fusionbox proxy list             # 列出所有配置
 fusionbox proxy start            # 启动代理服务
+fusionbox proxy stop             # 停止代理服务
+fusionbox proxy restart          # 重启代理服务
 fusionbox proxy status           # 查看代理状态
 fusionbox proxy url <名称>       # 生成分享链接
+fusionbox proxy del <名称>       # 删除配置
+fusionbox proxy bbr              # 启用 BBR 加速
 ```
 
 ### 2. 系统管理 (`fusionbox system`)
@@ -47,12 +50,11 @@ fusionbox proxy url <名称>       # 生成分享链接
 
 **基础功能：**
 - **系统信息**：CPU、内存、磁盘、网络、内核、虚拟化等详细信息
-- **BBR 管理**：22 选项完整 BBR 管理 (BBR/BBR2/BBRplus/魔改版/暴力BBR/Lotserver/xanmod)
+- **BBR 管理**：完整 BBR/BBR2/BBRplus/魔改版/Lotserver/xanmod 管理
 - **性能测试**：CPU 基准测试、磁盘 I/O 测试、网络测速
 - **实时监控**：CPU/内存/磁盘/网络实时监控面板
 - **备份恢复**：系统配置一键备份与恢复
 - **系统清理**：包缓存、日志、临时文件、Docker 垃圾清理
-- **Swap 管理**：创建/删除 Swap 交换文件
 
 **系统工具 (`fusionbox system tools`)：**
 - **SSH 密钥管理**：添加/生成/删除密钥、禁用密码登录
@@ -64,7 +66,7 @@ fusionbox proxy url <名称>       # 生成分享链接
 
 ```bash
 fusionbox system info            # 查看系统信息
-fusionbox system bbr             # BBR 管理 (22选项)
+fusionbox system bbr             # BBR 管理
 fusionbox system benchmark       # 运行性能测试
 fusionbox system monitor         # 实时系统监控
 fusionbox system backup          # 备份系统配置
@@ -85,18 +87,20 @@ fusionbox system trash           # 回收站管理
 
 - **IP 查询**：IPv4/IPv6 地址、地理位置、ISP 信息
 - **流媒体检测**：Netflix、YouTube、ChatGPT、TikTok、Disney+、Bilibili 等
-- **网速测试**：基于 Cloudflare 的下载/上传速度测试
+- **网速测试**：下载/上传速度测试
 - **DNS 测试**：多 DNS 服务器解析速度对比
-- **路由追踪**：Traceroute / MTR 路径分析
+- **路由追踪**：Traceroute 路径分析
 - **端口检测**：远程端口开放状态检查
+- **Ping 测试**：网络连通性测试
 
 ```bash
 fusionbox network ip             # 查询 IP 地址
 fusionbox network streaming      # 流媒体解锁检测
 fusionbox network speedtest      # 网速测试
 fusionbox network dns            # DNS 解析测试
-fusionbox network trace          # 路由追踪
-fusionbox network mtr <host>     # MTR 报告
+fusionbox network trace <host>   # 路由追踪
+fusionbox network ping <host>    # Ping 测试
+fusionbox network port <ip> <端口> # 端口检测
 ```
 
 ### 4. 网站部署 (`fusionbox web`)
@@ -107,8 +111,6 @@ fusionbox network mtr <host>     # MTR 报告
 - **LNMP/LAMP**：Nginx/Apache + MySQL/MariaDB + PHP 一键安装
 - **网站管理**：快速创建网站、配置 Nginx 虚拟主机
 - **SSL 证书**：Certbot 自动申请 Let's Encrypt 证书
-- **性能优化**：Nginx Gzip、Worker 调优、PHP-FPM 参数优化
-- **安全防护**：安全响应头、速率限制、WAF 规则
 - **数据库管理**：MySQL/MariaDB 建库、建用户、权限管理
 
 **LDNMP 应用一键部署 (`fusionbox web deploy`)：**
@@ -127,14 +129,11 @@ fusionbox network mtr <host>     # MTR 报告
 - 负载均衡 (多后端)
 
 **Stream L4 代理 (`fusionbox web stream`)：**
-- TCP 端口转发
-- UDP 端口转发
-- TCP+UDP 端口转发
+- TCP/UDP 端口转发
 
 **站点数据管理 (`fusionbox web sitedata`)：**
-- 一键备份所有站点数据
+- 一键备份/恢复站点数据
 - 定时远程备份 (Rclone/SCP/rsync)
-- 一键恢复
 
 ```bash
 fusionbox web lnmp               # 安装 LNMP 环境
@@ -145,7 +144,6 @@ fusionbox web wordpress          # 快速部署 WordPress
 fusionbox web proxy              # 反向代理管理
 fusionbox web stream             # Stream L4 端口转发
 fusionbox web sitedata           # 站点数据管理
-fusionbox web optimize           # 优化 Web 性能
 ```
 
 ### 5. 面板与工具 (`fusionbox panels`)
@@ -155,25 +153,15 @@ fusionbox web optimize           # 优化 Web 性能
 **Docker 完整管理 (`fusionbox panels docker`)：**
 - 安装/卸载 Docker
 - 容器管理 (启动/停止/重启/删除/日志/终端/资源占用)
-- 镜像管理
-- Docker Compose 项目管理
-- 容器端口访问控制
-- Docker IPv6 网络配置
+- 镜像管理、Docker Compose 项目管理
+- 容器端口访问控制、IPv6 网络配置
 - daemon.json 编辑 (镜像加速/日志限制/DNS)
-- Docker 备份/迁移/恢复 (容器/镜像/Compose项目)
-- 网络管理/卷管理
-- 垃圾清理
+- 备份/迁移/恢复 (容器/镜像/Compose项目)
+- 网络管理/卷管理/垃圾清理
 
-**服务器面板：**
-- 宝塔面板一键安装
-- Aapanel 一键安装
-- X-UI 面板一键安装
+**服务器面板：** 宝塔、Aapanel、X-UI 一键安装
 
-**实用工具：**
-- Aria2 配置管理
-- Rclone 云存储配置
-- FRP 内网穿透 (服务端/客户端)
-- 哪吒监控 Agent
+**实用工具：** Aria2、Rclone、FRP 内网穿透、哪吒监控
 
 ```bash
 fusionbox panels docker          # Docker 完整管理
@@ -181,6 +169,7 @@ fusionbox panels bt              # 安装宝塔面板
 fusionbox panels frp             # 安装 FRP 内网穿透
 fusionbox panels aria2           # 安装 Aria2
 fusionbox panels rclone          # 配置 Rclone
+fusionbox panels nezha           # 安装哪吒监控
 ```
 
 ### 6. 应用市场 (`fusionbox market`)
@@ -204,24 +193,25 @@ fusionbox panels rclone          # 配置 Rclone
 fusionbox market list            # 列出所有应用
 fusionbox market search <关键词> # 搜索应用
 fusionbox market install <应用>  # 安装应用
+fusionbox market remove <应用>   # 移除应用
 fusionbox market category        # 按分类浏览
 ```
 
 ### 7. WARP 管理 (`fusionbox warp`)
 
-Cloudflare WARP 完整管理：
+Cloudflare WARP 管理，用于代理出站流量解锁流媒体：
 
+- **安全模式**：默认使用 Proxy 模式 (SOCKS5 代理)，不会断开 SSH
 - **安装/卸载**：一键安装 Cloudflare WARP 客户端
-- **模式切换**：WARP (全局代理)、Proxy (SOCKS5 代理)、DoH (DNS over HTTPS)
 - **IP 检测**：查看原始 IP 和 WARP IP
 - **流媒体解锁**：检测 WARP 解锁状态
 - **代理配置**：Xray/sing-box 出站配置示例
 
 ```bash
 fusionbox warp install           # 安装 WARP
-fusionbox warp on                # 开启 WARP
+fusionbox warp on                # 开启 WARP (Proxy模式)
 fusionbox warp off               # 关闭 WARP
-fusionbox warp mode              # 切换模式
+fusionbox warp status            # 查看 WARP 状态
 fusionbox warp ip                # 查看 IP / 流媒体解锁
 fusionbox warp proxy             # 代理配置说明
 ```
@@ -243,20 +233,13 @@ fusionbox workspace list         # 列出所有后台会话
 
 多服务器管理和实用工具：
 
-**集群管理：**
-- 添加/删除集群节点
-- 批量执行命令
-- 同步文件到集群
+**集群管理：** 添加/删除节点、批量执行命令、同步文件
 
 **游戏服务端 (`fusionbox cluster game`)：**
-- Minecraft Java 版 (Paper)
-- Minecraft Bedrock 版
-- Terraria
-- Palworld (幻兽帕鲁)
+- Minecraft Java 版 (Paper)、Minecraft Bedrock 版
+- Terraria、Palworld (幻兽帕鲁)
 
-**Oracle Cloud (`fusionbox cluster oracle`)：**
-- 防回收保活脚本
-- OCI CLI 安装
+**Oracle Cloud (`fusionbox cluster oracle`)：** 防回收保活脚本、OCI CLI 安装
 
 **k 命令快捷方式 (`fusionbox cluster kcmd`)：**
 ```bash
