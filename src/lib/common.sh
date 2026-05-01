@@ -26,6 +26,8 @@ FUSION_I18N_DIR="$FUSION_SRC/i18n"
 F_LANG="auto"
 F_COLOR=1
 
+declare -A _LANG_DATA
+
 # ---- Utility Functions ----
 
 msg() { echo -e "$*"; }
@@ -44,16 +46,12 @@ L() {
 }
 
 _load_lang() {
-  declare -A _LANG_DATA
   local lang="$1"
   _LANG_DATA=()
   if [[ -f "$FUSION_I18N_DIR/$lang.sh" ]]; then
     source "$FUSION_I18N_DIR/$lang.sh"
-    # Extract all MSG_* MOD_* *_* variables into associative array
-    local vars
-    vars=$(set | grep -o '^[A-Z_][A-Z_0-9]*=' | sed 's/=$//' | sort -u)
     local v
-    for v in $vars; do
+    for v in $(compgen -v | grep -E '^(MSG_|MOD_|SYS_|NET_|WEB_|PANEL_|MARKET_|BBR_|PROXY_)'); do
       _LANG_DATA[$v]="${!v}"
     done
   fi
@@ -75,12 +73,7 @@ _init_lang() {
 # Print text with color using i18n
 tr() {
   local key="$1"
-  local text
-  if declare -p _LANG_DATA &>/dev/null && [[ -n "${_LANG_DATA[$key]:-}" ]]; then
-    text="${_LANG_DATA[$key]}"
-  else
-    text="$2"
-  fi
+  local text="${_LANG_DATA[$key]:-$2}"
   echo -e "$text"
 }
 

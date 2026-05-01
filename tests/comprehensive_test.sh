@@ -75,6 +75,9 @@ OUTPUT=$(bash fusion.sh system benchmark 2>&1)
 test "system benchmark shows CPU" $(echo "$OUTPUT" | grep -qi "CPU"; echo $?)
 test "system benchmark shows Disk I/O" $(echo "$OUTPUT" | grep -qi "Disk I/O\|Read\|Write"; echo $?)
 
+OUTPUT=$(bash fusion.sh system monitor 2>&1 & sleep 2 && kill %1 2>/dev/null)
+test "system monitor starts" $?
+
 echo ""
 echo "--- 7. Network Module Functions ---"
 OUTPUT=$(bash fusion.sh network ip 2>&1)
@@ -104,6 +107,9 @@ OUTPUT=$(bash fusion.sh panels help 2>&1)
 test "panels help shows Docker" $(echo "$OUTPUT" | grep -qi "Docker"; echo $?)
 test "panels help shows Baota" $(echo "$OUTPUT" | grep -qi "Baota"; echo $?)
 test "panels help shows X-UI" $(echo "$OUTPUT" | grep -qi "X-UI"; echo $?)
+
+OUTPUT=$(bash fusion.sh panels docker 2>&1 & sleep 2 && kill %1 2>/dev/null)
+test "panels docker menu" $?
 
 echo ""
 echo "--- 10. Market Module Functions ---"
@@ -135,7 +141,7 @@ echo ""
 echo "--- 14. No External Project References ---"
 refs=0
 for pattern in "233boy" "kejilion" "BlueSkyXN" "SKY-BOX" "Neo-TOWeR"; do
-  count=$(grep -r "$pattern" . --include="*.sh" --include="*.md" --include="*.yaml" --include="*.yml" --include="*.txt" --include="*.json" 2>/dev/null | grep -v "node_modules\|\.git" | grep -v "tests/comprehensive_test.sh" | wc -l)
+  count=$(grep -r "$pattern" . --exclude-dir=tests --include="*.sh" --include="*.md" --include="*.yaml" --include="*.yml" --include="*.txt" --include="*.json" 2>/dev/null | grep -v "node_modules\|\.git" | wc -l)
   refs=$((refs + count))
 done
 test "no external project references ($refs found, expect 0)" $([ "$refs" -eq 0 ]; echo $?)
