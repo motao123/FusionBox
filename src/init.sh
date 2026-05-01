@@ -7,7 +7,7 @@ export FUSION_CODENAME="FusionBox"
 # Source common library
 FUSION_SRC="${FUSION_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 . "$FUSION_SRC/lib/common.sh" || {
-  echo "FATAL: Cannot load common library at $FUSION_SRC/lib/common.sh"
+  echo "致命错误：无法加载公共函数库 $FUSION_SRC/lib/common.sh"
   exit 1
 }
 
@@ -34,8 +34,8 @@ _print_banner() {
   msg "  ██║     ╚██████╔╝███████║██║╚██████╔╝██║ ╚████║██████╔╝╚██████╔╝██╔╝ ██╗"
   msg "  ╚═╝      ╚═════╝ ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝"
   msg "${F_RESET}"
-  msg "  ${F_GREEN}$(tr MSG_WELCOME "Welcome to FusionBox - Ultimate Linux Management Script")${F_RESET}"
-  msg "  ${F_CYAN}$(tr MSG_VERSION "Version"): $FUSION_VER ($FUSION_CODENAME)${F_RESET}"
+  msg "  ${F_GREEN}$(tr MSG_WELCOME "欢迎使用 FusionBox - Linux 全能管理工具箱")${F_RESET}"
+  msg "  ${F_CYAN}$(tr MSG_VERSION "版本"): $FUSION_VER ($FUSION_CODENAME)${F_RESET}"
   msg "  ${F_YELLOW}OS: $F_OS_NAME $F_OS_VER | Arch: $F_ARCH | Kernel: $F_KERNEL${F_RESET}"
   msg ""
   _log_write "FusionBox v$FUSION_VER started on $F_OS_NAME $F_OS_VER ($F_ARCH)"
@@ -56,7 +56,7 @@ _load_module() {
 # Check root (most operations require root)
 _require_root() {
   if [[ $F_IS_ROOT -ne 1 ]]; then
-    msg_err "$(tr MSG_ROOT_REQUIRED "Root privileges required, please run as root")"
+    msg_err "$(tr MSG_ROOT_REQUIRED "需要 root 权限，请以 root 身份运行")"
     exit 1
   fi
 }

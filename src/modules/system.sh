@@ -31,43 +31,43 @@ system_info() {
   # CPU
   local cpu_model; cpu_model=$(lscpu 2>/dev/null | grep "Model name" | cut -d: -f2 | xargs)
   local cpu_cores; cpu_cores=$(nproc --all)
-  msg "  ${F_BOLD}CPU:${F_RESET} ${cpu_model:-unknown} (${cpu_cores} cores)"
+  msg "  ${F_BOLD}CPU:${F_RESET} ${cpu_model:-未知} (${cpu_cores} 核)"
 
   # Load
   local load; load=$(uptime | awk -F'average:' '{print $2}' | xargs)
-  msg "  ${F_BOLD}Load:${F_RESET} $load"
+  msg "  ${F_BOLD}负载:${F_RESET} $load"
 
   # Memory
-  msg "  ${F_BOLD}Memory:${F_RESET}"
+  msg "  ${F_BOLD}内存:${F_RESET}"
   free -h | awk 'NR==1{print "            " $1 "\t" $2 "\t" $3 "\t" $4}'
   free -h | awk 'NR==2{print "            " $1 "\t" $2 "\t" $3 "\t" $4}'
 
   # Disk
-  msg "  ${F_BOLD}Disk:${F_RESET}"
+  msg "  ${F_BOLD}磁盘:${F_RESET}"
   df -h / /boot /home 2>/dev/null | awk 'NR>0{print "            " $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5}'
 
   # Network
-  msg "  ${F_BOLD}Network:${F_RESET}"
+  msg "  ${F_BOLD}网络:${F_RESET}"
   ip addr show | grep -E "inet " | grep -v "127.0.0.1" | awk '{print "            " $NF ": " $2}'
 
   # OS
-  msg "  ${F_BOLD}OS:${F_RESET} $F_OS_NAME $F_OS_VER ($F_ARCH)"
-  msg "  ${F_BOLD}Kernel:${F_RESET} $F_KERNEL"
-  msg "  ${F_BOLD}Uptime:${F_RESET} $(uptime -p 2>/dev/null | sed 's/up //')"
-  msg "  ${F_BOLD}Virtualization:${F_RESET} $F_VIRT"
+  msg "  ${F_BOLD}系统:${F_RESET} $F_OS_NAME $F_OS_VER ($F_ARCH)"
+  msg "  ${F_BOLD}内核:${F_RESET} $F_KERNEL"
+  msg "  ${F_BOLD}运行时间:${F_RESET} $(uptime -p 2>/dev/null | sed 's/up //')"
+  msg "  ${F_BOLD}虚拟化:${F_RESET} $F_VIRT"
 
   # BBR status
-  local cc; cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")
-  msg "  ${F_BOLD}TCP CC:${F_RESET} $cc"
-  local qdisc; qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null || echo "unknown")
-  msg "  ${F_BOLD}Qdisc:${F_RESET} $qdisc"
+  local cc; cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "未知")
+  msg "  ${F_BOLD}拥塞控制:${F_RESET} $cc"
+  local qdisc; qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null || echo "未知")
+  msg "  ${F_BOLD}队列算法:${F_RESET} $qdisc"
 
   # Security
   if command -v ufw &>/dev/null; then
     msg "  ${F_BOLD}UFW:${F_RESET} $(ufw status 2>/dev/null | head -1)"
   fi
   if command -v fail2ban-client &>/dev/null; then
-    msg "  ${F_BOLD}Fail2Ban:${F_RESET} $(fail2ban-client status 2>/dev/null | head -1 || echo "running")"
+    msg "  ${F_BOLD}Fail2Ban:${F_RESET} $(fail2ban-client status 2>/dev/null | head -1 || echo "运行中")"
   fi
 
   # Docker
@@ -76,10 +76,11 @@ system_info() {
   fi
 
   # Proxy status
-  if command -v sing-box &>/dev/null; then
-    local sb_status="stopped"
-    pgrep -x sing-box &>/dev/null && sb_status="running"
-    msg "  ${F_BOLD}Proxy:${F_RESET} sing-box ($sb_status)"
+  if [[ -f /etc/fusionbox/proxy/current_backend ]]; then
+    local proxy_be=$(cat /etc/fusionbox/proxy/current_backend)
+    local proxy_st="已停止"
+    systemctl is-active fusionbox-proxy &>/dev/null && proxy_st="运行中"
+    msg "  ${F_BOLD}代理:${F_RESET} $proxy_be ($proxy_st)"
   fi
 
   msg ""
@@ -93,12 +94,12 @@ system_bbr() {
   msg ""
 
   local cc; cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
-  msg "  ${F_BOLD}Current:${F_RESET} $cc"
+  msg "  ${F_BOLD}当前:${F_RESET} $cc"
 
   if [[ "$cc" == "bbr" ]]; then
     msg_ok "$(tr BBR_ALREADY "BBR is already enabled")"
     msg ""
-    msg "  1) Disable BBR (revert to cubic)"
+    msg "  1) 禁用 BBR (恢复为 cubic)"
     msg "  0) Back"
     read -p "$(tr MSG_SELECT "Select"): " bbr_choice
     if [[ "$bbr_choice" == "1" ]]; then
@@ -107,7 +108,7 @@ system_bbr() {
       echo "net.ipv4.tcp_congestion_control = cubic" >> /etc/sysctl.conf
       echo "net.core.default_qdisc = fq" >> /etc/sysctl.conf
       sysctl -p 2>/dev/null
-      msg_info "Reverted to cubic"
+      msg_info "已恢复为 cubic"
     fi
     return
   fi
@@ -118,8 +119,8 @@ system_bbr() {
 
   if [[ $kmaj -lt 4 ]] || [[ $kmaj -eq 4 && $kmin -lt 9 ]]; then
     msg_err "$(tr BBR_FAILED "BBR requires kernel 4.9+")"
-    msg_info "Current kernel: $(uname -r)"
-    if confirm "$(tr MSG_CONFIRM "Install a newer kernel?")"; then
+    msg_info "当前内核: $(uname -r)"
+    if confirm "是否安装更新的内核？"; then
       _system_install_kernel
     fi
     return
@@ -146,14 +147,13 @@ SEOF
 _system_install_kernel() {
   case "$F_PKG_MGR" in
     apt)
-      msg_info "Updating package list..."
+      msg_info "正在更新软件包列表..."
       apt-get update -y
-      msg_info "Installing kernel from ELrepo..."
-      # Try to install a newer kernel
+      msg_info "正在安装新内核..."
       apt-get install -y linux-image-generic-hwe-$(lsb_release -r -s 2>/dev/null) 2>/dev/null || \
       apt-get install -y --install-recommends linux-generic-hwe-$(lsb_release -r -s 2>/dev/null) 2>/dev/null
-      msg_info "Kernel installed. Reboot required."
-      if confirm "$(tr MSG_CONFIRM "Reboot now?")"; then
+      msg_info "内核安装完成，需要重启。"
+      if confirm "是否立即重启？"; then
         reboot
       fi
       ;;
@@ -163,8 +163,8 @@ _system_install_kernel() {
       yum install -y https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm 2>/dev/null || true
       yum --enablerepo=elrepo-kernel install -y kernel-lt 2>/dev/null || true
       if grub2-set-default 0 2>/dev/null; then
-        msg_info "Kernel installed. Reboot required."
-        confirm "$(tr MSG_CONFIRM "Reboot now?")" && reboot
+        msg_info "内核安装完成，需要重启。"
+        confirm "是否立即重启？" && reboot
       fi
       ;;
   esac
@@ -175,10 +175,10 @@ system_benchmark() {
   _require_root
   msg_title "$(tr SYS_BENCHMARK "System Benchmark")"
   msg ""
-  msg_info "Running basic benchmarks..."
+  msg_info "正在运行基准测试..."
 
   # CPU - simple sieve
-  msg "  ${F_BOLD}CPU Cores:${F_RESET} $(nproc --all)"
+  msg "  ${F_BOLD}CPU 核心:${F_RESET} $(nproc --all)"
   local cpu_start; cpu_start=$(date +%s)
   local prime_count=0
   for ((i=2; i<=50000; i++)); do
@@ -190,31 +190,31 @@ system_benchmark() {
   done
   local cpu_end; cpu_end=$(date +%s)
   local cpu_time=$((cpu_end - cpu_start))
-  msg "  ${F_BOLD}CPU Benchmark:${F_RESET} $prime_count primes in ${cpu_time}s (50k sieve)"
+  msg "  ${F_BOLD}CPU 测试:${F_RESET} ${cpu_time}秒内计算 $prime_count 个素数 (5万筛法)"
 
   # Memory speed test
-  msg "  ${F_BOLD}Memory:${F_RESET}"
+  msg "  ${F_BOLD}内存:${F_RESET}"
   free -h | awk '/Mem:/{printf "    Total: %s  Used: %s  Free: %s\n", $2, $3, $4}'
   free -h | awk '/Swap:/{printf "    Swap: %s  Used: %s  Free: %s\n", $2, $3, $4}'
 
   # Disk I/O test
-  msg "  ${F_BOLD}Disk I/O (dd test):${F_RESET}"
+  msg "  ${F_BOLD}磁盘 I/O (dd 测试):${F_RESET}"
   local io_write; io_write=$(dd if=/dev/zero of=/tmp/fusionbench bs=1M count=1024 conv=fdatasync 2>&1 | tail -1 | awk -F', ' '{print $NF}')
-  msg "    Write: ${io_write:-test failed}"
+  msg "    写入: ${io_write:-测试失败}"
   sync
   local io_read; io_read=$(dd if=/tmp/fusionbench of=/dev/null bs=1M count=1024 2>&1 | tail -1 | awk -F', ' '{print $NF}')
-  msg "    Read:  ${io_read:-test failed}"
+  msg "    读取: ${io_read:-测试失败}"
   rm -f /tmp/fusionbench
 
   # Network speed test
-  msg "  ${F_BOLD}Network:${F_RESET}"
+  msg "  ${F_BOLD}网络:${F_RESET}"
   _get_ip
-  msg "    IPv4: ${F_IP:-unknown}"
-  msg "    IPv6: ${F_IPV6:-unknown}"
+  msg "    IPv4: ${F_IP:-未知}"
+  msg "    IPv6: ${F_IPV6:-未知}"
 
   # Optional: download speedtest
-  if confirm "$(tr MSG_CONFIRM "Run internet speed test? (downloads test file)")"; then
-    msg_info "Testing download speed..."
+  if confirm "是否运行网络测速？（会下载测试文件）"; then
+    msg_info "正在测试下载速度..."
     local dl_start; dl_start=$(date +%s)
     _download "https://speed.cloudflare.com/__down?bytes=104857600" /tmp/speedtest 2>/dev/null &
     local dl_pid=$!
@@ -233,7 +233,7 @@ system_benchmark() {
     local elapsed=$(( $(date +%s) - dl_start ))
     [[ $elapsed -lt 1 ]] && elapsed=1
     local speed_mbps=$(( dl_size * 8 / elapsed / 1048576 ))
-    msg "    Download: ~${speed_mbps} Mbps"
+    msg "    下载速度: ~${speed_mbps} Mbps"
     rm -f /tmp/speedtest
   fi
 
@@ -245,55 +245,56 @@ system_benchmark() {
 # ---- System Monitor (top-like) ----
 system_monitor() {
   msg_title "$(tr SYS_MONITOR "System Monitor")"
-  msg "Press Ctrl+C to exit"
+  msg "按 Ctrl+C 退出"
   msg ""
 
   local interval="${1:-5}"
   while true; do
     clear
-    msg "${F_BOLD}${F_CYAN}FusionBox System Monitor (refreshing every ${interval}s)${F_RESET}"
-    msg "${F_BOLD}Date:${F_RESET} $(date '+%Y-%m-%d %H:%M:%S')"
+    msg "${F_BOLD}${F_CYAN}FusionBox 系统监控 (每 ${interval} 秒刷新)${F_RESET}"
+    msg "${F_BOLD}时间:${F_RESET} $(date '+%Y-%m-%d %H:%M:%S')"
     msg ""
 
     # CPU & Load
-    msg "${F_BOLD}[CPU & Load]${F_RESET}"
+    msg "${F_BOLD}[CPU 与负载]${F_RESET}"
     local load; load=$(cat /proc/loadavg 2>/dev/null)
-    msg "  Load Average: $load"
-    msg "  Processes: $(ps aux | wc -l)"
+    msg "  负载均衡: $load"
+    msg "  进程数: $(ps aux | wc -l)"
 
     # CPU usage
     local cpu_idle; cpu_idle=$(top -bn1 2>/dev/null | grep "%Cpu" | awk '{print $8}' | cut -d. -f1)
     if [[ -n "$cpu_idle" && "$cpu_idle" -le 100 ]]; then
-      msg "  CPU Usage: $((100 - cpu_idle))%"
+      msg "  CPU 使用率: $((100 - cpu_idle))%"
     fi
 
     # Top processes
     msg ""
-    msg "${F_BOLD}[Top CPU Processes]${F_RESET}"
+    msg "${F_BOLD}[CPU 占用 Top 进程]${F_RESET}"
     ps aux --sort=-%cpu 2>/dev/null | head -6 | awk 'NR>1{printf "  %-12s %-6s %-5s %s\n", $1, $2, $3"%", $11}'
 
     # Memory
     msg ""
-    msg "${F_BOLD}[Memory]${F_RESET}"
+    msg "${F_BOLD}[内存]${F_RESET}"
     free -h | awk 'NR==1{printf "  %-10s %-10s %-10s %s\n", $1, $2, $3, $4}'
     free -h | awk 'NR==2{printf "  %-10s %-10s %-10s %s\n", $1, $2, $3, $4}'
 
     # Disk
     msg ""
-    msg "${F_BOLD}[Disk]${F_RESET}"
+    msg "${F_BOLD}[磁盘]${F_RESET}"
     df -h / 2>/dev/null | awk 'NR==2{printf "  %-15s %-10s %-10s %s\n", $1, $2, $3, $5}'
 
     # Network connections
     msg ""
-    msg "${F_BOLD}[Network]${F_RESET}"
+    msg "${F_BOLD}[网络]${F_RESET}"
     if command -v ss &>/dev/null; then
-      msg "  Connections: $(ss -tlnp 2>/dev/null | wc -l) listening, $(ss -tan 2>/dev/null | wc -l) total"
+      msg "  连接数: $(ss -tlnp 2>/dev/null | wc -l) 监听中, $(ss -tan 2>/dev/null | wc -l) 总计"
     fi
     msg "  IP: ${F_IP:-$(curl -s ip.sb 2>/dev/null || echo "N/A")}"
 
     # Proxy
-    if pgrep -x "sing-box" &>/dev/null; then
-      msg "  Proxy: ${F_GREEN}sing-box running${F_RESET}"
+    if systemctl is-active fusionbox-proxy &>/dev/null; then
+      local pbe=$(cat /etc/fusionbox/proxy/current_backend 2>/dev/null || echo "proxy")
+      msg "  代理: ${F_GREEN}$pbe 运行中${F_RESET}"
     fi
 
     sleep "$interval"
@@ -313,12 +314,12 @@ system_backup() {
   msg ""
 
   local dirs_to_backup=(
-    "/etc/sing-box" "/etc/nginx" "/etc/caddy"
+    "/etc/fusionbox/proxy" "/etc/nginx" "/etc/caddy"
     "/etc/fusionbox" "/var/www"
     "/opt/docker"
   )
 
-  msg_info "Backing up to: $backup_file"
+  msg_info "正在备份到: $backup_file"
   local tar_cmd="tar czf"
   local exists=0
   for d in "${dirs_to_backup[@]}"; do
@@ -332,13 +333,13 @@ system_backup() {
     tar czf "$backup_file" "${dirs_to_backup[@]}" 2>/dev/null
     if [[ -f "$backup_file" ]]; then
       local size; size=$(du -h "$backup_file" | cut -f1)
-      msg_ok "Backup created: $backup_file ($size)"
+      msg_ok "备份已创建: $backup_file ($size)"
       _log_write "System backup created: $backup_file"
     else
-      msg_err "Backup failed"
+      msg_err "备份失败"
     fi
   else
-    msg_warn "No directories to backup"
+    msg_warn "没有可备份的目录"
   fi
   pause
 }
@@ -356,12 +357,12 @@ system_restore() {
   done
 
   if [[ ${#backups[@]} -eq 0 ]]; then
-    msg_warn "No backups found in $backup_dir"
+    msg_warn "在 $backup_dir 中未找到备份文件"
     pause
     return
   fi
 
-  msg_info "Available backups:"
+  msg_info "可用备份:"
   local i=1
   for f in "${backups[@]}"; do
     local size; size=$(du -h "$f" | cut -f1)
@@ -371,12 +372,12 @@ system_restore() {
   done
   msg ""
 
-  read -p "$(tr MSG_SELECT "Select backup to restore"): " choice
+  read -p "请选择要恢复的备份: " choice
   local idx=$((choice - 1))
   if [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]]; then
-    if confirm "$(tr MSG_CONFIRM "This will overwrite existing files. Continue")"; then
+    if confirm "这将覆盖现有文件，确认继续？"; then
       tar xzf "${backups[$idx]}" -C /
-      msg_ok "$(tr MSG_DONE "Restore completed")"
+      msg_ok "恢复完成"
       _log_write "System restored from ${backups[$idx]}"
     fi
   fi
@@ -408,12 +409,12 @@ system_update() {
       ;;
   esac
 
-  msg_ok "$(tr MSG_DONE "System updated")"
-  _log_write "System updated"
+  msg_ok "系统更新完成"
+  _log_write "系统已更新"
 
   if [[ -f /var/run/reboot-required ]]; then
-    msg_warn "Reboot required to apply updates"
-    if confirm "$(tr MSG_CONFIRM "Reboot now?")"; then
+    msg_warn "需要重启以应用更新"
+    if confirm "是否立即重启？"; then
       reboot
     fi
   fi
@@ -426,7 +427,7 @@ system_clean() {
   msg_title "$(tr SYS_CLEAN "System Cleanup")"
   msg ""
 
-  msg_info "Cleaning package cache..."
+  msg_info "正在清理软件包缓存..."
   case "$F_PKG_MGR" in
     apt)
       apt-get autoremove -y
@@ -441,59 +442,59 @@ system_clean() {
       ;;
   esac
 
-  msg_info "Cleaning journal logs..."
+  msg_info "正在清理系统日志..."
   journalctl --vacuum-time=7d 2>/dev/null || true
 
-  msg_info "Cleaning temporary files..."
+  msg_info "正在清理临时文件..."
   rm -rf /tmp/*.tmp 2>/dev/null || true
   rm -rf /tmp/fusion* 2>/dev/null || true
 
-  msg_info "Cleaning Docker (if installed)..."
+  msg_info "正在清理 Docker（如已安装）..."
   if command -v docker &>/dev/null; then
     docker system prune -f --volumes 2>/dev/null || true
   fi
 
-  msg_ok "$(tr MSG_DONE "System cleaned")"
-  _log_write "System cleanup completed"
+  msg_ok "系统清理完成"
+  _log_write "系统清理完成"
   pause
 }
 
 # ---- Swap Management ----
 system_swap() {
   _require_root
-  msg_title "Swap Management"
+  msg_title "Swap 管理"
   msg ""
 
-  msg "  Current swap:"
-  swapon --show 2>/dev/null || msg "    No swap active"
+  msg "  当前 Swap:"
+  swapon --show 2>/dev/null || msg "    暂无 Swap"
   free -h | awk '/Swap:/{printf "    %s %s %s\n", $2, $3, $4}'
 
   msg ""
-  msg "  1) Create swap file (2GB)"
-  msg "  2) Remove all swap"
-  msg "  0) Back"
-  read -p "$(tr MSG_SELECT "Select"): " sw_choice
+  msg "  1) 创建 Swap 文件 (2GB)"
+  msg "  2) 删除所有 Swap"
+  msg "  0) 返回"
+  read -p "请选择: " sw_choice
 
   case "$sw_choice" in
     1)
-      if confirm "$(tr MSG_CONFIRM "Create 2GB swap file")"; then
+      if confirm "确认创建 2GB Swap 文件？"; then
         dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
         chmod 600 /swapfile
         mkswap /swapfile
         swapon /swapfile
         grep -q "/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
-        msg_ok "Swap created (2GB)"
+        msg_ok "Swap 已创建 (2GB)"
         free -h | grep Swap
         _log_write "2GB swap created"
       fi
       ;;
     2)
-      if confirm "$(tr MSG_CONFIRM "WARNING: Remove all swap?")"; then
+      if confirm "警告：将删除所有 Swap，确认继续？"; then
         swapoff -a 2>/dev/null || true
         rm -f /swapfile 2>/dev/null || true
         sed -i '/swapfile/d' /etc/fstab
-        msg_ok "Swap removed"
-        _log_write "Swap removed"
+        msg_ok "Swap 已删除"
+        _log_write "Swap 已删除"
       fi
       ;;
   esac
@@ -503,12 +504,12 @@ system_swap() {
 # ---- User Management ----
 system_users() {
   _require_root
-  msg_title "User Management"
+  msg_title "用户管理"
   msg ""
-  msg "  ${F_BOLD}System Users:${F_RESET}"
+  msg "  ${F_BOLD}系统用户:${F_RESET}"
   awk -F: '$3>=1000 && $3<65534 {printf "  %s (uid=%s, shell=%s)\n", $1, $3, $7}' /etc/passwd
   msg ""
-  msg "  ${F_BOLD}Recently logged in:${F_RESET}"
+  msg "  ${F_BOLD}最近登录:${F_RESET}"
   last -n 10 2>/dev/null | head -10
   msg ""
   pause
@@ -517,68 +518,68 @@ system_users() {
 # ---- Security Audit ----
 system_security() {
   _require_root
-  msg_title "Security Audit"
+  msg_title "安全审计"
   msg ""
 
-  msg "${F_BOLD}[SSH Configuration]${F_RESET}"
+  msg "${F_BOLD}[SSH 配置]${F_RESET}"
   local ssh_port; ssh_port=$(grep "^Port" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
-  msg "  SSH Port: ${ssh_port:-22 (default)}"
+  msg "  SSH 端口: ${ssh_port:-22 (默认)}"
   if grep -q "^PermitRootLogin yes" /etc/ssh/sshd_config 2>/dev/null; then
-    msg "  ${F_YELLOW}Root login: enabled (consider disabling)${F_RESET}"
+    msg "  ${F_YELLOW}Root 登录: 已启用（建议禁用）${F_RESET}"
   else
-    msg "  ${F_GREEN}Root login: disabled or key-only${F_RESET}"
+    msg "  ${F_GREEN}Root 登录: 已禁用或仅密钥${F_RESET}"
   fi
   if grep -q "^PasswordAuthentication yes" /etc/ssh/sshd_config 2>/dev/null; then
-    msg "  ${F_YELLOW}Password auth: enabled (consider key-only)${F_RESET}"
+    msg "  ${F_YELLOW}密码认证: 已启用（建议仅密钥）${F_RESET}"
   fi
 
   msg ""
-  msg "${F_BOLD}[Firewall]${F_RESET}"
+  msg "${F_BOLD}[防火墙]${F_RESET}"
   if command -v ufw &>/dev/null; then
     ufw status 2>/dev/null | head -5
   elif command -v firewall-cmd &>/dev/null; then
     firewall-cmd --list-all 2>/dev/null | head -5
   else
-    msg "  No firewall detected (recommended: ufw)"
+    msg "  未检测到防火墙（推荐: ufw）"
   fi
 
   msg ""
   msg "${F_BOLD}[Fail2Ban]${F_RESET}"
   if command -v fail2ban-client &>/dev/null; then
-    fail2ban-client status 2>/dev/null || msg "  fail2ban not running"
+    fail2ban-client status 2>/dev/null || msg "  Fail2Ban 未运行"
   else
-    msg "  Not installed (recommended)"
+    msg "  未安装（推荐安装）"
   fi
 
   msg ""
-  msg "${F_BOLD}[Open Ports]${F_RESET}"
+  msg "${F_BOLD}[开放端口]${F_RESET}"
   ss -tlnp 2>/dev/null | awk 'NR>1{printf "  %s %s\n", $4, $NF}'
 
   msg ""
-  msg "  1) Install & enable UFW firewall"
-  msg "  2) Install Fail2Ban"
-  msg "  3) Change SSH port"
-  msg "  0) Back"
-  read -p "$(tr MSG_SELECT "Select"): " sec_choice
+  msg "  1) 安装并启用 UFW 防火墙"
+  msg "  2) 安装 Fail2Ban"
+  msg "  3) 修改 SSH 端口"
+  msg "  0) 返回"
+  read -p "请选择: " sec_choice
 
   case "$sec_choice" in
     1)
       _install_pkg ufw
       ufw allow ssh
       ufw --force enable
-      msg_ok "UFW enabled (SSH allowed)"
+      msg_ok "UFW 已启用（SSH 已放行）"
       ;;
     2)
       _install_pkg fail2ban
       systemctl enable --now fail2ban 2>/dev/null || true
-      msg_ok "Fail2Ban installed & started"
+      msg_ok "Fail2Ban 已安装并启动"
       ;;
     3)
-      read -p "$(tr MSG_INPUT "New SSH port"): " new_port
+      read -p "请输入新的 SSH 端口: " new_port
       if [[ -n "$new_port" && "$new_port" =~ ^[0-9]+$ ]]; then
         sed -i "s/^#\?Port .*/Port $new_port/" /etc/ssh/sshd_config
         systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
-        msg_ok "SSH port changed to $new_port"
+        msg_ok "SSH 端口已修改为 $new_port"
         if command -v ufw &>/dev/null; then
           ufw allow "$new_port"/tcp
         fi
@@ -591,18 +592,18 @@ system_security() {
 
 # ---- Help ----
 system_help() {
-  msg_title "$(tr MOD_SYSTEM "System Management") Help"
+  msg_title "系统管理 帮助"
   msg ""
-  msg "  fusionbox system info           $(tr SYS_INFO "System information overview")"
-  msg "  fusionbox system bbr            $(tr SYS_BBR "BBR management")"
-  msg "  fusionbox system benchmark      $(tr SYS_BENCHMARK "Run system benchmark")"
-  msg "  fusionbox system monitor        $(tr SYS_MONITOR "Real-time system monitor")"
-  msg "  fusionbox system backup         $(tr SYS_BACKUP "Backup system configs")"
-  msg "  fusionbox system restore        $(tr SYS_RESTORE "Restore from backup")"
-  msg "  fusionbox system update         $(tr SYS_UPDATE "Update system packages")"
-  msg "  fusionbox system clean          $(tr SYS_CLEAN "System cleanup")"
-  msg "  fusionbox system swap           Swap management"
-  msg "  fusionbox system security       Security audit & hardening"
+  msg "  fusionbox system info           查看系统信息"
+  msg "  fusionbox system bbr            BBR 管理"
+  msg "  fusionbox system benchmark      运行基准测试"
+  msg "  fusionbox system monitor        实时系统监控"
+  msg "  fusionbox system backup         备份系统配置"
+  msg "  fusionbox system restore        从备份恢复"
+  msg "  fusionbox system update         更新系统软件包"
+  msg "  fusionbox system clean          系统清理"
+  msg "  fusionbox system swap           Swap 管理"
+  msg "  fusionbox system security       安全审计与加固"
   msg ""
 }
 
@@ -621,10 +622,10 @@ system_menu() {
     msg "  ${F_GREEN}6${F_RESET}) $(tr SYS_RESTORE "Restore System")"
     msg "  ${F_GREEN}7${F_RESET}) $(tr SYS_UPDATE "Update System")"
     msg "  ${F_GREEN}8${F_RESET}) $(tr SYS_CLEAN "System Cleanup")"
-    msg "  ${F_GREEN}9${F_RESET}) Swap & Security"
+    msg "  ${F_GREEN}9${F_RESET}) Swap 与安全"
     msg "  ${F_GREEN}0${F_RESET}) $(tr MSG_EXIT "Back to Main Menu")"
     msg ""
-    read -p "$(tr MSG_SELECT "Select") [0-9]: " choice
+    read -p "请选择 [0-9]: " choice
     case "$choice" in
       1) system_info ;;
       2) system_bbr ;;

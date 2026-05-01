@@ -1,7 +1,7 @@
 # FusionBox 简体中文 i18n
 
 # System messages
-MSG_WELCOME="欢迎使用 FusionBox - 终极Linux全能管理脚本"
+MSG_WELCOME="欢迎使用 FusionBox - Linux 全能管理工具箱"
 MSG_VERSION="版本"
 MSG_EXIT="再见！"
 MSG_ERROR="错误"
@@ -25,13 +25,13 @@ MSG_ROOT_REQUIRED="需要 root 权限，请以 root 身份运行"
 MOD_PROXY="代理管理"
 MOD_SYSTEM="系统管理"
 MOD_NETWORK="网络工具"
-MOD_WEB="网站/LNMP部署"
+MOD_WEB="网站部署"
 MOD_PANELS="面板与工具"
 MOD_MARKET="应用市场"
 
 # Proxy module
-PROXY_INSTALLING="正在安装 sing-box 核心..."
-PROXY_UNINSTALLING="正在卸载 sing-box..."
+PROXY_INSTALLING="正在安装代理核心..."
+PROXY_UNINSTALLING="正在卸载代理核心..."
 PROXY_ADD="添加代理配置"
 PROXY_DEL="删除代理配置"
 PROXY_INFO="查看代理信息"
@@ -76,7 +76,6 @@ PANEL_AA="安装 Aapanel"
 PANEL_XUI="安装 X-UI"
 PANEL_ARIA2="安装 Aria2"
 PANEL_RCLONE="配置 Rclone"
-
 
 # App market
 MARKET_LIST="可用应用"

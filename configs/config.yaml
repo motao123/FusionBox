@@ -8,14 +8,14 @@ general:
   stats: false                # Anonymous usage statistics (opt-in)
   color: true                 # Colored output
 
-# Proxy module (sing-box)
+# Proxy module
 proxy:
   enabled: true
-  core_dir: /etc/sing-box
-  conf_dir: /etc/sing-box/conf
-  log_dir: /var/log/sing-box
+  core_dir: /etc/fusionbox/proxy/bin
+  conf_dir: /etc/fusionbox/proxy/conf
+  log_dir: /var/log/fusionbox-proxy
   auto_tls: true
-  bbr_on_proxy: true          # Auto-enable BBR when proxy is active
+  bbr_on_proxy: true          # 代理运行时自动启用 BBR
 
 # System module
 system:

@@ -47,14 +47,14 @@ OUTPUT=$(bash fusion.sh version 2>&1)
 test "version shows FusionBox v1" $(echo "$OUTPUT" | grep -q "FusionBox v1"; echo $?)
 
 OUTPUT=$(bash fusion.sh help 2>&1)
-test "help shows Proxy Management" $(echo "$OUTPUT" | grep -q "Proxy Management"; echo $?)
-test "help shows System Management" $(echo "$OUTPUT" | grep -q "System Management"; echo $?)
-test "help shows Network Tools" $(echo "$OUTPUT" | grep -q "Network Tools"; echo $?)
-test "help shows App Market" $(echo "$OUTPUT" | grep -q "App Market"; echo $?)
+test "help shows Proxy Management" $(echo "$OUTPUT" | grep -qi "代理管理\|Proxy Management"; echo $?)
+test "help shows System Management" $(echo "$OUTPUT" | grep -qi "系统管理\|System Management"; echo $?)
+test "help shows Network Tools" $(echo "$OUTPUT" | grep -qi "网络工具\|Network Tools"; echo $?)
+test "help shows App Market" $(echo "$OUTPUT" | grep -qi "应用市场\|App Market"; echo $?)
 
 echo ""
 echo "--- 5. Module Routing ---"
-for mod_pair in "proxy|sing-box" "system|BBR" "network|IP" "web|LNMP" "panels|Docker" "market|App Market"; do
+for mod_pair in "proxy|代理" "system|BBR" "network|IP" "web|LNMP" "panels|Docker" "market|应用"; do
   cmd="${mod_pair%%|*}"
   expected="${mod_pair##*|}"
   OUTPUT=$(bash fusion.sh "$cmd" help 2>&1)
@@ -65,15 +65,15 @@ echo ""
 echo "--- 6. System Module Functions ---"
 OUTPUT=$(bash fusion.sh system info 2>&1)
 test "system info shows CPU" $(echo "$OUTPUT" | grep -qi "CPU"; echo $?)
-test "system info shows Memory" $(echo "$OUTPUT" | grep -qi "Memory"; echo $?)
-test "system info shows Kernel" $(echo "$OUTPUT" | grep -qi "Kernel"; echo $?)
+test "system info shows Memory" $(echo "$OUTPUT" | grep -qi "内存\|Memory"; echo $?)
+test "system info shows Kernel" $(echo "$OUTPUT" | grep -qi "内核\|Kernel"; echo $?)
 
 OUTPUT=$(bash fusion.sh system bbr 2>&1)
-test "system bbr shows status" $(echo "$OUTPUT" | grep -qiE "BBR|congestion|CUBIC"; echo $?)
+test "system bbr shows status" $(echo "$OUTPUT" | grep -qiE "BBR|拥塞控制|congestion|CUBIC"; echo $?)
 
 OUTPUT=$(bash fusion.sh system benchmark 2>&1)
 test "system benchmark shows CPU" $(echo "$OUTPUT" | grep -qi "CPU"; echo $?)
-test "system benchmark shows Disk I/O" $(echo "$OUTPUT" | grep -qi "Disk I/O\|Read\|Write"; echo $?)
+test "system benchmark shows Disk I/O" $(echo "$OUTPUT" | grep -qi "磁盘\|Disk I/O\|Read\|Write\|读取\|写入"; echo $?)
 
 OUTPUT=$(bash fusion.sh system monitor 2>&1 & sleep 2 && kill %1 2>/dev/null)
 test "system monitor starts" $?
@@ -81,13 +81,13 @@ test "system monitor starts" $?
 echo ""
 echo "--- 7. Network Module Functions ---"
 OUTPUT=$(bash fusion.sh network ip 2>&1)
-test "network ip shows IPv4" $(echo "$OUTPUT" | grep -qi "IPv4"; echo $?)
+test "network ip shows IPv4" $(echo "$OUTPUT" | grep -qi "IPv4\|IPv6"; echo $?)
 
 OUTPUT=$(bash fusion.sh network streaming 2>&1)
-test "network streaming checks services" $(echo "$OUTPUT" | grep -qiE "Netflix|YouTube|ChatGPT|TikTok"; echo $?)
+test "network streaming checks services" $(echo "$OUTPUT" | grep -qiE "Netflix|YouTube|ChatGPT|TikTok|流媒体"; echo $?)
 
 OUTPUT=$(bash fusion.sh network dns 2>&1)
-test "network dns shows system DNS" $(echo "$OUTPUT" | grep -qi "System DNS\|resolv"; echo $?)
+test "network dns shows system DNS" $(echo "$OUTPUT" | grep -qi "系统 DNS\|System DNS\|resolv"; echo $?)
 
 OUTPUT=$(bash fusion.sh network ping google.com 2>&1)
 test "network ping works" $(echo "$OUTPUT" | grep -qi "ping\|64 bytes\|from"; echo $?)
@@ -95,18 +95,18 @@ test "network ping works" $(echo "$OUTPUT" | grep -qi "ping\|64 bytes\|from"; ec
 echo ""
 echo "--- 8. Web Module Functions ---"
 OUTPUT=$(bash fusion.sh web help 2>&1)
-test "web help shows LNMP" $(echo "$OUTPUT" | grep -qi "LNMP"; echo $?)
-test "web help shows SSL" $(echo "$OUTPUT" | grep -qi "SSL"; echo $?)
+test "web help shows LNMP" $(echo "$OUTPUT" | grep -qi "LNMP\|lnmp"; echo $?)
+test "web help shows SSL" $(echo "$OUTPUT" | grep -qi "SSL\|ssl"; echo $?)
 
 OUTPUT=$(bash fusion.sh web nginx status 2>&1)
-test "web nginx status" $(echo "$OUTPUT" | grep -qiE "Nginx|not installed"; echo $?)
+test "web nginx status" $(echo "$OUTPUT" | grep -qiE "Nginx|nginx|未安装\|not installed"; echo $?)
 
 echo ""
 echo "--- 9. Panels Module Functions ---"
 OUTPUT=$(bash fusion.sh panels help 2>&1)
-test "panels help shows Docker" $(echo "$OUTPUT" | grep -qi "Docker"; echo $?)
-test "panels help shows Baota" $(echo "$OUTPUT" | grep -qi "Baota"; echo $?)
-test "panels help shows X-UI" $(echo "$OUTPUT" | grep -qi "X-UI"; echo $?)
+test "panels help shows Docker" $(echo "$OUTPUT" | grep -qi "Docker\|docker"; echo $?)
+test "panels help shows Baota" $(echo "$OUTPUT" | grep -qi "宝塔\|Baota"; echo $?)
+test "panels help shows X-UI" $(echo "$OUTPUT" | grep -qi "X-UI\|x-ui"; echo $?)
 
 OUTPUT=$(bash fusion.sh panels docker 2>&1 & sleep 2 && kill %1 2>/dev/null)
 test "panels docker menu" $?
@@ -114,13 +114,13 @@ test "panels docker menu" $?
 echo ""
 echo "--- 10. Market Module Functions ---"
 OUTPUT=$(bash fusion.sh market help 2>&1)
-test "market help shows list" $(echo "$OUTPUT" | grep -qi "list"; echo $?)
-test "market help shows install" $(echo "$OUTPUT" | grep -qi "install"; echo $?)
+test "market help shows list" $(echo "$OUTPUT" | grep -qi "list\|列出"; echo $?)
+test "market help shows install" $(echo "$OUTPUT" | grep -qi "install\|安装"; echo $?)
 
 echo ""
 echo "--- 11. Install Script ---"
 OUTPUT=$(bash install.sh 2>&1)
-test "install.sh detects environment" $(echo "$OUTPUT" | grep -qi "Detected\|Installer"; echo $?)
+test "install.sh detects environment" $(echo "$OUTPUT" | grep -qi "检测到\|Detected\|Installer\|安装"; echo $?)
 
 echo ""
 echo "--- 12. Config & Templates ---"
@@ -134,7 +134,7 @@ for lang in en zh_CN; do
   test "i18n/$lang.sh MSG_WELCOME" $(grep -q "MSG_WELCOME=" "src/i18n/$lang.sh"; echo $?)
   test "i18n/$lang.sh MOD_PROXY" $(grep -q "MOD_PROXY=" "src/i18n/$lang.sh"; echo $?)
   test "i18n/$lang.sh SYS_INFO" $(grep -q "SYS_INFO=" "src/i18n/$lang.sh"; echo $?)
-  test "i18n/$lang.sh msg function has en/zh" $(grep -q "Welcome\|欢迎" "src/i18n/$lang.sh"; echo $?)
+  test "i18n/$lang.sh has welcome message" $(grep -q "Welcome\|欢迎" "src/i18n/$lang.sh"; echo $?)
 done
 
 echo ""

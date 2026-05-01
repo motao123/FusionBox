@@ -1,5 +1,5 @@
-# FusionBox Common Library
-# Color codes, logging, user interaction, config loading
+# FusionBox 公共函数库
+# 颜色定义、日志、用户交互、配置加载
 
 # Colors
 F_RED='\e[31m'; F_GREEN='\e[32m'; F_YELLOW='\e[33m'
@@ -81,12 +81,12 @@ tr() {
 
 pause() {
   msg ""
-  msg "$(tr MSG_PRESS_ENTER "Press Enter to continue...")"
+  msg "$(tr MSG_PRESS_ENTER "按 Enter 键继续...")"
   read -r
 }
 
 confirm() {
-  local msg_str="${1:-$(tr MSG_CONFIRM "Are you sure?")} [$F_GREEN$(tr MSG_YES "Y")$F_RESET/$(tr MSG_NO "n")]: "
+  local msg_str="${1:-$(tr MSG_CONFIRM "确认执行？")} [$F_GREEN$(tr MSG_YES "Y")$F_RESET/$(tr MSG_NO "n")]: "
   msg "$msg_str"
   read -r ans
   [[ "$ans" =~ ^[Yy]?$ ]] && return 0 || return 1
@@ -233,7 +233,7 @@ _install_pkg() {
     yum)  yum install -y "${pkgs[@]}" ;;
     apk)  apk add "${pkgs[@]}" ;;
     zypper) zypper install -y "${pkgs[@]}" ;;
-    *)    msg_err "$(tr MSG_ERROR "Unknown package manager")"; return 1 ;;
+    *)    msg_err "$(tr MSG_ERROR "未知的包管理器")"; return 1 ;;
   esac
 }
 
@@ -241,9 +241,9 @@ _check_pkg() {
   local cmd="$1"; shift
   local pkgs=("$@")
   if ! command -v "$cmd" &>/dev/null; then
-    msg_info "Installing ${pkgs[*]}..."
+    msg_info "正在安装 ${pkgs[*]}..."
     _install_pkg "${pkgs[@]}" || {
-      msg_err "Failed to install ${pkgs[*]}"
+      msg_err "安装 ${pkgs[*]} 失败"
       return 1
     }
   fi
@@ -266,7 +266,7 @@ _download() {
 
 _init_log() {
   mkdir -p "$FUSION_LOG_DIR"
-  _log_write "=== FusionBox session started ==="
+  _log_write "=== FusionBox 会话已启动 ==="
 }
 
 _log_write() {

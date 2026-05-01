@@ -37,11 +37,11 @@ panels_docker() {
 panels_docker_install() {
   _require_root
   if command -v docker &>/dev/null; then
-    msg_info "Docker already installed: $(docker --version)"
+    msg_info "Docker 已安装: $(docker --version)"
     return
   fi
 
-  msg_info "Installing Docker..."
+  msg_info "正在安装 Docker..."
   case "$F_PKG_MGR" in
     apt)
       curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
@@ -69,18 +69,18 @@ panels_docker_install() {
   fi
 
   if command -v docker &>/dev/null; then
-    msg_ok "Docker installed: $(docker --version 2>/dev/null)"
+    msg_ok "Docker 安装完成: $(docker --version 2>/dev/null)"
     docker compose version 2>/dev/null | xargs -I{} msg_ok "Docker Compose: {}"
-    _log_write "Docker installed"
+    _log_write "Docker 已安装"
   fi
 }
 
 panels_docker_ps() {
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker not installed"
+    msg_err "Docker 未安装"
     return
   fi
-  msg_title "Docker Containers"
+  msg_title "Docker 容器"
   msg ""
   docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | while read -r line; do
     msg "  $line"
@@ -90,10 +90,10 @@ panels_docker_ps() {
 
 panels_docker_images() {
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker not installed"
+    msg_err "Docker 未安装"
     return
   fi
-  msg_title "Docker Images"
+  msg_title "Docker 镜像"
   msg ""
   docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" 2>/dev/null | while read -r line; do
     msg "  $line"
@@ -103,12 +103,12 @@ panels_docker_images() {
 
 panels_docker_prune() {
   _require_root
-  if ! confirm "Clean up unused Docker resources?"; then
+  if ! confirm "是否清理未使用的 Docker 资源？"; then
     return
   fi
   docker system prune -a -f --volumes 2>/dev/null
-  msg_ok "Docker cleaned"
-  _log_write "Docker pruned"
+  msg_ok "Docker 清理完成"
+  _log_write "Docker 已清理"
   pause
 }
 
@@ -119,16 +119,16 @@ panels_docker_compose() {
   mkdir -p "$compose_dir"
 
   if [[ -z "$project" ]]; then
-    msg_title "Docker Compose Projects"
+    msg_title "Docker Compose 项目"
     msg ""
     find "$compose_dir" -name "docker-compose.yml" -o -name "compose.yaml" 2>/dev/null | while read -r f; do
       msg "  $(dirname "$f" | xargs basename)"
     done
 
     msg ""
-    msg "  1) Create new project"
-    msg "  2) Deploy existing"
-    read -p "Select: " comp_choice
+    msg "  1) 创建新项目"
+    msg "  2) 部署现有项目"
+    read -p "请选择: " comp_choice
 
     case "$comp_choice" in
       1)
@@ -150,11 +150,11 @@ services:
 YEOF
           mkdir -p "$proj_dir/html"
           echo "Deployed by FusionBox" > "$proj_dir/html/index.html"
-          msg_ok "Project '$project' created at $proj_dir"
+          msg_ok "项目 '$project' 已创建于 $proj_dir"
         fi
         ;;
       2)
-        msg_info "Auto-deploy all projects..."
+        msg_info "正在自动部署所有项目..."
         for f in "$compose_dir"/*/docker-compose.yml; do
           [[ -f "$f" ]] && docker compose -f "$f" up -d 2>/dev/null && msg_info "  Deployed: $(basename "$(dirname "$f")")"
         done
@@ -163,9 +163,9 @@ YEOF
   else
     local proj_file="$compose_dir/$project/docker-compose.yml"
     if [[ -f "$proj_file" ]]; then
-      docker compose -f "$proj_file" up -d 2>/dev/null && msg_ok "$project deployed" || msg_err "Deploy failed"
+      docker compose -f "$proj_file" up -d 2>/dev/null && msg_ok "$project 已部署" || msg_err "部署失败"
     else
-      msg_err "Project not found: $project"
+      msg_err "未找到项目: $project"
     fi
   fi
   pause
@@ -180,19 +180,19 @@ panels_docker_menu() {
       msg "  Docker: $(docker --version 2>/dev/null)"
       local running=$(docker ps -q 2>/dev/null | wc -l)
       local total=$(docker ps -aq 2>/dev/null | wc -l)
-      msg "  Containers: $running running, $total total"
+      msg "  容器: $running 运行中, $total 总计"
     else
-      msg "  Docker not installed"
+      msg "  Docker 未安装"
     fi
     msg ""
-    msg "  1) Install Docker"
-    msg "  2) List Containers"
-    msg "  3) List Images"
-    msg "  4) Docker Compose / Projects"
-    msg "  5) Clean Up (prune)"
-    msg "  0) Back"
+    msg "  1) 安装 Docker"
+    msg "  2) 列出容器"
+    msg "  3) 列出镜像"
+    msg "  4) Docker Compose / 项目"
+    msg "  5) 清理 (prune)"
+    msg "  0) 返回"
     msg ""
-    read -p "Select [0-5]: " dk_choice
+    read -p "请选择 [0-5]: " dk_choice
     case "$dk_choice" in
       1) panels_docker_install; pause ;;
       2) panels_docker_ps ;;
@@ -207,18 +207,18 @@ panels_docker_menu() {
 # ---- Baota Panel ----
 panels_bt() {
   _require_root
-  msg_title "Install Baota Panel"
+  msg_title "安装宝塔面板"
   msg ""
-  msg_warn "Baota Panel is a third-party server management panel."
-  if confirm "Continue with installation?"; then
+  msg_warn "宝塔面板是第三方服务器管理面板。"
+  if confirm "确认继续安装？"; then
     case "$F_PKG_MGR" in
       apt|yum)
         curl -sSO http://download.bt.cn/install/install_panel.sh 2>/dev/null && \
           bash install_panel.sh 2>/dev/null || \
-          msg_err "Failed to download Baota installer"
+          msg_err "宝塔安装脚本下载失败"
         ;;
       *)
-        msg_err "Baota panel only supports apt/yum systems"
+        msg_err "宝塔面板仅支持 apt/yum 系统"
         ;;
     esac
   fi
@@ -228,11 +228,11 @@ panels_bt() {
 # ---- Aapanel ----
 panels_aa() {
   _require_root
-  msg_title "Install Aapanel"
-  if confirm "Continue with installation?"; then
+  msg_title "安装 Aapanel"
+  if confirm "确认继续安装？"; then
     curl -sSO http://www.aapanel.com/script/install_7.0_en.sh 2>/dev/null && \
       bash install_7.0_en.sh 2>/dev/null || \
-      msg_err "Failed to download Aapanel installer"
+      msg_err "Aapanel 安装脚本下载失败"
   fi
   pause
 }
@@ -240,12 +240,12 @@ panels_aa() {
 # ---- X-UI ----
 panels_xui() {
   _require_root
-  msg_title "Install X-UI Panel"
+  msg_title "安装 X-UI 面板"
   msg ""
-  if confirm "This will install X-UI (xray panel). Continue?"; then
+  if confirm "将安装 X-UI (xray 面板)，确认继续？"; then
     bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh) 2>/dev/null || \
     bash <(curl -Ls https://raw.githubusercontent.com/FranzKafkaYu/x-ui/master/install_en.sh) 2>/dev/null || \
-      msg_err "Failed to install X-UI"
+      msg_err "X-UI 安装失败"
     _log_write "X-UI installed"
   fi
   pause
@@ -254,7 +254,7 @@ panels_xui() {
 # ---- Aria2 ----
 panels_aria2() {
   _require_root
-  msg_title "Install Aria2"
+  msg_title "安装 Aria2"
   msg ""
   case "$F_PKG_MGR" in
     apt|yum|apk)
@@ -271,12 +271,12 @@ rpc-allow-origin-all=true
 rpc-secret=fusionbox
 AEOF
       mkdir -p /var/ftp
-      msg_ok "Aria2 installed. RPC secret: fusionbox"
-      msg_info "Config: /etc/aria2/aria2.conf"
-      _log_write "Aria2 installed"
+      msg_ok "Aria2 安装完成。RPC 密钥: fusionbox"
+      msg_info "配置文件: /etc/aria2/aria2.conf"
+      _log_write "Aria2 已安装"
       ;;
     *)
-      msg_err "Package manager not supported"
+      msg_err "不支持的包管理器"
       ;;
   esac
   pause
@@ -285,25 +285,25 @@ AEOF
 # ---- Rclone ----
 panels_rclone() {
   _require_root
-  msg_title "Configure Rclone"
+  msg_title "配置 Rclone"
   msg ""
   if ! command -v rclone &>/dev/null; then
-    msg_info "Installing rclone..."
+    msg_info "正在安装 rclone..."
     curl -fsSL https://rclone.org/install.sh 2>/dev/null | bash || \
       _install_pkg rclone
   fi
 
   if command -v rclone &>/dev/null; then
-    msg_ok "rclone installed: $(rclone version --client 2>/dev/null | head -1)"
+    msg_ok "rclone 已安装: $(rclone version --client 2>/dev/null | head -1)"
     msg ""
-    msg "  1) Configure new remote (interactive)"
-    msg "  2) List configured remotes"
-    read -p "Select: " rc_choice
+    msg "  1) 配置新远程存储（交互式）"
+    msg "  2) 列出已配置的远程存储"
+    read -p "请选择: " rc_choice
     case "$rc_choice" in
       1) rclone config ;;
       2) rclone listremotes 2>/dev/null | while read -r r; do msg "    $r"; done ;;
     esac
-    _log_write "Rclone configured"
+    _log_write "Rclone 已配置"
   fi
   pause
 }
@@ -311,11 +311,11 @@ panels_rclone() {
 # ---- FRP ----
 panels_frp() {
   _require_root
-  msg_title "Install FRP (Fast Reverse Proxy)"
+  msg_title "安装 FRP (内网穿透)"
   msg ""
-  msg "  1) Install FRP Server"
-  msg "  2) Install FRP Client"
-  read -p "Select: " frp_choice
+  msg "  1) 安装 FRP 服务端"
+  msg "  2) 安装 FRP 客户端"
+  read -p "请选择: " frp_choice
 
   local frp_ver="0.58.0"
   local arch="amd64"
@@ -324,9 +324,9 @@ panels_frp() {
   local tmpdir=$(mktemp -d)
   local dl_url="https://github.com/fatedier/frp/releases/download/v${frp_ver}/frp_${frp_ver}_linux_${arch}.tar.gz"
 
-  msg_info "Downloading FRP v${frp_ver}..."
+  msg_info "正在下载 FRP v${frp_ver}..."
   _download "$dl_url" "$tmpdir/frp.tar.gz" || {
-    msg_err "Download failed"
+    msg_err "下载失败"
     rm -rf "$tmpdir"
     pause; return
   }
@@ -352,7 +352,7 @@ WantedBy=multi-user.target
 FE1
       systemctl daemon-reload 2>/dev/null
       systemctl enable --now frps 2>/dev/null
-      msg_ok "FRP server installed"
+      msg_ok "FRP 服务端已安装"
       ;;
     2)
       cp "$frp_dir/frpc" /usr/local/bin/
@@ -371,33 +371,33 @@ WantedBy=multi-user.target
 FE2
       systemctl daemon-reload 2>/dev/null
       systemctl enable --now frpc 2>/dev/null
-      msg_ok "FRP client installed"
+      msg_ok "FRP 客户端已安装"
       ;;
   esac
   rm -rf "$tmpdir"
-  _log_write "FRP installed (type: $frp_choice)"
+  _log_write "FRP 已安装 (类型: $frp_choice)"
   pause
 }
 
 # ---- Nezha Monitoring ----
 panels_nezha() {
   _require_root
-  msg_title "Install Nezha Monitoring Agent"
+  msg_title "安装哪吒监控 Agent"
   msg ""
   if ! command -v curl &>/dev/null; then
     _install_pkg curl
   fi
 
-  msg_info "Nezha monitoring agent install..."
-  msg_info "You need a Nezha server running first."
+  msg_info "正在安装哪吒监控 Agent..."
+  msg_info "需要先运行哪吒监控服务端。"
   msg ""
-  read -p "Server address (e.g., example.com:8008): " nezha_server
-  read -p "Client secret: " nezha_secret
+  read -p "服务端地址（如 example.com:8008）: " nezha_server
+  read -p "客户端密钥: " nezha_secret
 
   if [[ -n "$nezha_server" && -n "$nezha_secret" ]]; then
     curl -sL https://raw.githubusercontent.com/nezhahq/scripts/main/install.sh 2>/dev/null | \
       bash -s -- -s "$nezha_server" -p "$nezha_secret" 2>/dev/null || \
-      msg_err "Installation failed"
+      msg_err "安装失败"
     _log_write "Nezha agent configured"
   fi
   pause
@@ -405,16 +405,16 @@ panels_nezha() {
 
 # ---- Help ----
 panels_help() {
-  msg_title "Panel & Tools Help"
+  msg_title "面板与工具 帮助"
   msg ""
-  msg "  fusionbox panels docker           Docker management"
-  msg "  fusionbox panels bt               Install Baota Panel"
-  msg "  fusionbox panels aa               Install Aapanel"
-  msg "  fusionbox panels xui              Install X-UI"
-  msg "  fusionbox panels aria2            Install Aria2"
-  msg "  fusionbox panels rclone           Configure Rclone"
-  msg "  fusionbox panels frp              Install FRP"
-  msg "  fusionbox panels nezha            Install Nezha agent"
+  msg "  fusionbox panels docker           Docker 管理"
+  msg "  fusionbox panels bt               安装宝塔面板"
+  msg "  fusionbox panels aa               安装 Aapanel"
+  msg "  fusionbox panels xui              安装 X-UI"
+  msg "  fusionbox panels aria2            安装 Aria2"
+  msg "  fusionbox panels rclone           配置 Rclone"
+  msg "  fusionbox panels frp              安装 FRP"
+  msg "  fusionbox panels nezha            安装哪吒监控 Agent"
   msg ""
 }
 
@@ -423,19 +423,19 @@ panels_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "Panel & Tools"
+    msg_title "面板与工具"
     msg ""
-    msg "  1) Docker Management"
-    msg "  2) Install Baota Panel"
-    msg "  3) Install Aapanel"
-    msg "  4) Install X-UI"
-    msg "  5) Install Aria2"
-    msg "  6) Configure Rclone"
-    msg "  7) Install FRP"
-    msg "  8) Install Nezha Agent"
-    msg "  0) Back to Main Menu"
+    msg "  1) Docker 管理"
+    msg "  2) 安装宝塔面板"
+    msg "  3) 安装 Aapanel"
+    msg "  4) 安装 X-UI"
+    msg "  5) 安装 Aria2"
+    msg "  6) 配置 Rclone"
+    msg "  7) 安装 FRP"
+    msg "  8) 安装哪吒监控 Agent"
+    msg "  0) 返回主菜单"
     msg ""
-    read -p "Select [0-8]: " choice
+    read -p "请选择 [0-8]: " choice
     case "$choice" in
       1) panels_docker;;
       2) panels_bt ;;

@@ -2,7 +2,7 @@
 # FusionBox - Ultimate Linux Management Script
 # Repository: https://github.com/fusionbox/fusionbox
 
-[[ $EUID -ne 0 ]] && echo "Root required" && exit 1
+[[ $EUID -ne 0 ]] && echo "需要 root 权限" && exit 1
 
 export FUSION_BASE="$(cd "$(dirname "$0")" && pwd)"
 export FUSION_SRC="$FUSION_BASE/src"
@@ -16,8 +16,8 @@ route() {
   local cmd="$1"; shift || true
 
   case "$cmd" in
-    # Proxy module (sing-box management)
-    proxy|p|sb|sing-box)
+    # Proxy module
+    proxy|p)
       _load_module "proxy"
       proxy_main "$@"
       ;;
@@ -52,7 +52,7 @@ route() {
       ;;
     version|v)
       msg "$FUSION_CODENAME v$FUSION_VER"
-      msg "$(tr MSG_VERSION "Version"): $FUSION_VER"
+      msg "版本: $FUSION_VER"
       ;;
     update|up)
       self_update
@@ -68,8 +68,8 @@ route() {
       main_menu
       ;;
     *)
-      msg_err "$(tr MSG_ERROR "Unknown command"): $cmd"
-      msg_info "$(tr MSG_INFO "Use"): fusionbox help"
+      msg_err "未知命令: $cmd"
+      msg_info "用法: fusionbox help"
       return 1
       ;;
   esac
@@ -87,25 +87,23 @@ show_status() {
   msg ""
 
   # Check proxy status
-  local proxy_status="$PROXY_STOPPED"
-  if command -v sing-box &>/dev/null; then
-    if pgrep -x "sing-box" &>/dev/null; then
-      proxy_status="$PROXY_RUNNING"
+  local proxy_status="未安装"
+  if [[ -f /etc/fusionbox/proxy/current_backend ]]; then
+    if systemctl is-active fusionbox-proxy &>/dev/null; then
+      proxy_status="运行中"
     else
-      proxy_status="$PROXY_STOPPED"
+      proxy_status="已停止"
     fi
-  else
-    proxy_status="$PROXY_NOT_INSTALLED"
   fi
-  _module_status "$(tr MOD_PROXY "Proxy")" "$proxy_status"
+  _module_status "代理管理" "$proxy_status"
 
   # Check BBR
   local bbr_status=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")
-  _module_status "$(tr SYS_BBR "BBR")" "$bbr_status"
+  _module_status "BBR" "$bbr_status"
 
   # Check Docker
   if command -v docker &>/dev/null; then
-    _module_status "$(tr PANEL_DOCKER "Docker")" "$(docker info --format '{{.ServerVersion}}' 2>/dev/null || echo "not running")"
+    _module_status "Docker" "$(docker info --format '{{.ServerVersion}}' 2>/dev/null || echo "未运行")"
   fi
 
   # Check Nginx
@@ -119,63 +117,63 @@ show_status() {
 
 # ---- Self Update ----
 self_update() {
-  msg_info "$(tr MSG_INFO "Checking for updates...")"
+  msg_info "正在检查更新..."
   _download "https://raw.githubusercontent.com/fusionbox/fusionbox/main/version.txt" /tmp/fusionbox_ver
   if [[ -f /tmp/fusionbox_ver ]]; then
     local remote_ver=$(cat /tmp/fusionbox_ver | tr -d ' \n')
     if [[ "$remote_ver" != "$FUSION_VER" && -n "$remote_ver" ]]; then
-      msg_info "New version $remote_ver available. Updating..."
+      msg_info "发现新版本 $remote_ver，正在更新..."
       local tmpdir=$(mktemp -d)
       _download "https://github.com/fusionbox/fusionbox/archive/main.tar.gz" "$tmpdir/fusionbox.tar.gz"
       if [[ -f "$tmpdir/fusionbox.tar.gz" ]]; then
         tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir"
         cp -rf "$tmpdir/fusionbox-main/"* "$FUSION_BASE/"
-        msg_ok "$(tr MSG_DONE "Update completed")"
+        msg_ok "更新完成"
       else
-        msg_err "$(tr MSG_ERROR "Download failed")"
+        msg_err "下载失败"
       fi
       rm -rf "$tmpdir"
     else
-      msg_ok "$(tr MSG_OK "Already up to date")"
+      msg_ok "已是最新版本"
     fi
   else
-    msg_warn "$(tr MSG_WARN "Cannot check for updates (offline)")"
+    msg_warn "无法检查更新（离线）"
   fi
 }
 
 # ---- Help ----
 show_help() {
   _print_banner
-  msg_title "FusionBox Help"
+  msg_title "FusionBox 帮助"
   msg ""
-  msg "  ${F_BOLD}Usage:${F_RESET} fusionbox <command> [options]"
+  msg "  ${F_BOLD}用法:${F_RESET} fusionbox <命令> [选项]"
   msg ""
-  msg "  ${F_BOLD}Modules:${F_RESET}"
-  msg "  ${F_GREEN}proxy, p${F_RESET}        $(tr MOD_PROXY "Proxy Management") - sing-box proxy manager"
-  msg "  ${F_GREEN}system, sys${F_RESET}      $(tr MOD_SYSTEM "System Management") - BBR, benchmark, backup"
-  msg "  ${F_GREEN}network, net${F_RESET}     $(tr MOD_NETWORK "Network Tools") - IP, streaming, speedtest"
-  msg "  ${F_GREEN}web${F_RESET}              $(tr MOD_WEB "Web/LNMP Deployment") - LNMP, websites, SSL"
-  msg "  ${F_GREEN}panels, tools${F_RESET}    $(tr MOD_PANELS "Panel & Tools") - Docker, panels, utilities"
-  msg "  ${F_GREEN}market${F_RESET}           $(tr MOD_MARKET "App Market") - one-click app installation"
+  msg "  ${F_BOLD}模块:${F_RESET}"
+  msg "  ${F_GREEN}proxy, p${F_RESET}        代理管理 - 多后端代理管理"
+  msg "  ${F_GREEN}system, sys${F_RESET}      系统管理 - BBR、基准测试、备份"
+  msg "  ${F_GREEN}network, net${F_RESET}     网络工具 - IP、流媒体、测速"
+  msg "  ${F_GREEN}web${F_RESET}              网站部署 - LNMP、网站、SSL"
+  msg "  ${F_GREEN}panels, tools${F_RESET}    面板与工具 - Docker、面板、实用工具"
+  msg "  ${F_GREEN}market${F_RESET}           应用市场 - 一键安装应用"
   msg ""
-  msg "  ${F_BOLD}Commands:${F_RESET}"
-  msg "  ${F_GREEN}status${F_RESET}            System status overview"
-  msg "  ${F_GREEN}update${F_RESET}            Update FusionBox itself"
-  msg "  ${F_GREEN}version${F_RESET}           Show version"
-  msg "  ${F_GREEN}help${F_RESET}              Show this help"
+  msg "  ${F_BOLD}命令:${F_RESET}"
+  msg "  ${F_GREEN}status${F_RESET}            系统状态概览"
+  msg "  ${F_GREEN}update${F_RESET}            更新 FusionBox"
+  msg "  ${F_GREEN}version${F_RESET}           显示版本"
+  msg "  ${F_GREEN}help${F_RESET}              显示帮助"
   msg ""
-  msg "  ${F_BOLD}Examples:${F_RESET}"
-  msg "  fusionbox proxy add reality    # Add VLESS-REALITY proxy"
-  msg "  fusionbox system bbr           # Enable BBR"
-  msg "  fusionbox network speedtest    # Run speedtest"
-  msg "  fusionbox web lnmp             # Install LNMP"
-  msg "  fusionbox panels docker        # Docker management"
+  msg "  ${F_BOLD}示例:${F_RESET}"
+  msg "  fusionbox proxy add              # 添加代理配置"
+  msg "  fusionbox system bbr             # 启用 BBR"
+  msg "  fusionbox network speedtest      # 网速测试"
+  msg "  fusionbox web lnmp               # 安装 LNMP"
+  msg "  fusionbox panels docker          # Docker 管理"
   msg ""
 
   # Quick reference per module
   local mod="${1:-all}"
   if [[ "$mod" == "all" ]]; then
-    msg "  ${F_BOLD}Tip:${F_RESET} fusionbox help <module> for detailed module help"
+    msg "  ${F_BOLD}提示:${F_RESET} fusionbox help <模块> 查看模块详细帮助"
   fi
   pause
 }
@@ -192,12 +190,12 @@ main_menu() {
   msg "  ${F_GREEN}4${F_RESET}) $(tr MOD_WEB "Web/LNMP Deployment")"
   msg "  ${F_GREEN}5${F_RESET}) $(tr MOD_PANELS "Panel & Tools")"
   msg "  ${F_GREEN}6${F_RESET}) $(tr MOD_MARKET "App Market")"
-  msg "  ${F_GREEN}7${F_RESET}) $(tr SYS_INFO "System Status")"
-  msg "  ${F_GREEN}8${F_RESET}) $(tr MSG_INFO "Help")"
-  msg "  ${F_GREEN}0${F_RESET}) $(tr MSG_EXIT "Exit")"
+  msg "  ${F_GREEN}7${F_RESET}) 系统状态"
+  msg "  ${F_GREEN}8${F_RESET}) 帮助"
+  msg "  ${F_GREEN}0${F_RESET}) 退出"
   msg ""
 
-  read -p "$(tr MSG_SELECT "Please select") [0-8]: " main_choice
+  read -p "请选择 [0-8]: " main_choice
 
   case "$main_choice" in
     1) route proxy ;;
@@ -208,7 +206,7 @@ main_menu() {
     6) route market ;;
     7) show_status ;;
     8) show_help ;;
-    0) msg "$(tr MSG_EXIT "Goodbye")"; _log_write "FusionBox session ended"; exit 0 ;;
+    0) msg "再见！"; _log_write "FusionBox 会话已结束"; exit 0 ;;
     *) main_menu ;;
   esac
 }

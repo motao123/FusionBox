@@ -26,17 +26,17 @@ web_install_lnmp() {
   msg_title "$(tr WEB_LNMP "Install LNMP (Linux + Nginx + MySQL + PHP)")"
   msg ""
 
-  if ! confirm "$(tr MSG_CONFIRM "This will install Nginx, MySQL, and PHP. Continue?")"; then
+  if ! confirm "将安装 Nginx、MySQL 和 PHP，确认继续？"; then
     return
   fi
 
   # Check existing
   if command -v nginx &>/dev/null; then
-    msg_warn "Nginx already installed: $(nginx -v 2>&1)"
+    msg_warn "Nginx 已安装: $(nginx -v 2>&1)"
   fi
 
   # Install Nginx
-  msg_info "Installing Nginx..."
+  msg_info "正在安装 Nginx..."
   case "$F_PKG_MGR" in
     apt)
       apt-get update -y
@@ -57,11 +57,11 @@ web_install_lnmp() {
   esac
 
   if command -v nginx &>/dev/null; then
-    msg_ok "Nginx installed: $(nginx -v 2>&1)"
+    msg_ok "Nginx 安装完成: $(nginx -v 2>&1)"
   fi
 
   # Install MySQL/MariaDB
-  msg_info "Installing MariaDB..."
+  msg_info "正在安装 MariaDB..."
   case "$F_PKG_MGR" in
     apt)
       _install_pkg mariadb-server mariadb-client
@@ -81,12 +81,12 @@ web_install_lnmp() {
   esac
 
   if command -v mariadb &>/dev/null || command -v mysql &>/dev/null; then
-    msg_ok "MariaDB installed"
-    msg_info "Run 'mysql_secure_installation' to secure your DB"
+    msg_ok "MariaDB 安装完成"
+    msg_info "请运行 'mysql_secure_installation' 来加固数据库"
   fi
 
   # Install PHP
-  msg_info "Installing PHP 8.2..."
+  msg_info "正在安装 PHP 8.2..."
   local php_pkgs=()
   case "$F_PKG_MGR" in
     apt)
@@ -108,7 +108,7 @@ web_install_lnmp() {
   esac
 
   if [[ ${#php_pkgs[@]} -gt 0 ]]; then
-    _install_pkg "${php_pkgs[@]}" 2>/dev/null || msg_warn "Some PHP packages may not have installed"
+    _install_pkg "${php_pkgs[@]}" 2>/dev/null || msg_warn "部分 PHP 包可能未安装成功"
 
     # Configure PHP-FPM
     case "$F_PKG_MGR" in
@@ -127,42 +127,42 @@ web_install_lnmp() {
     esac
 
     local php_ver; php_ver=$(php -v 2>/dev/null | head -1)
-    msg_ok "PHP installed: ${php_ver:-PHP 8.2}"
+    msg_ok "PHP 安装完成: ${php_ver:-PHP 8.2}"
   fi
 
   # Install Redis
-  if confirm "$(tr MSG_CONFIRM "Install Redis for caching?")"; then
+  if confirm "是否安装 Redis 缓存？"; then
     _install_pkg redis
     case "$F_PKG_MGR" in
       apt|yum) systemctl enable --now redis 2>/dev/null ;;
       apk) rc-update add redis default 2>/dev/null; rc-service redis start 2>/dev/null ;;
     esac
-    msg_ok "Redis installed"
+    msg_ok "Redis 安装完成"
   fi
 
   msg ""
-  msg_ok "$(tr WEB_LNMP "LNMP stack installed successfully!")"
+  msg_ok "LNMP 环境安装完成！"
   msg ""
-  msg "  ${F_BOLD}Web root:${F_RESET} /var/www/html"
+  msg "  ${F_BOLD}网站根目录:${F_RESET} /var/www/html"
   msg "  ${F_BOLD}Nginx:${F_RESET} $(nginx -v 2>&1)"
   php -v 2>/dev/null | head -1 | xargs -I{} msg "  ${F_BOLD}PHP:${F_RESET} {}"
   msg "  ${F_BOLD}MariaDB:${F_RESET} $(mariadbd --version 2>/dev/null | head -1 || mysql --version 2>/dev/null)"
-  msg "  ${F_BOLD}PHP-FPM:${F_RESET} $(pgrep php-fpm | wc -l) processes"
+  msg "  ${F_BOLD}PHP-FPM:${F_RESET} $(pgrep php-fpm | wc -l) 个进程"
 
-  _log_write "LNMP stack installed"
+  _log_write "LNMP 环境已安装"
   pause
 }
 
 # ---- Install LAMP ----
 web_install_lamp() {
   _require_root
-  msg_info "$(tr WEB_LAMP "LAMP install uses Apache instead of Nginx")"
+  msg_info "LAMP 使用 Apache 替代 Nginx"
 
-  if ! confirm "$(tr MSG_CONFIRM "Continue with LAMP installation?")"; then
+  if ! confirm "确认继续安装 LAMP？"; then
     return
   fi
 
-  _install_pkg apache2 2>/dev/null || _install_pkg httpd 2>/dev/null || msg_err "Apache install failed"
+  _install_pkg apache2 2>/dev/null || _install_pkg httpd 2>/dev/null || msg_err "Apache 安装失败"
 
   case "$F_PKG_MGR" in
     apt)
@@ -178,7 +178,7 @@ web_install_lamp() {
   esac
 
   web_install_lnmp
-  msg_info "Apache is running alongside Nginx on alt port or as replacement"
+  msg_info "Apache 已与 Nginx 并行运行（备用端口或替代方案）"
   pause
 }
 
@@ -188,7 +188,7 @@ web_create_site() {
   msg_title "$(tr WEB_SITE "Create Website")"
   msg ""
 
-  local domain; domain=$(read_input "$(tr MSG_INPUT "Domain name (e.g., example.com)")")
+  local domain; domain=$(read_input "请输入域名（如 example.com）")
   [[ -z "$domain" ]] && domain="localhost"
 
   local web_root="/var/www/$domain"
@@ -205,9 +205,9 @@ h1{color:#333}.info{color:#666;margin-top:20px}
 </style>
 </head>
 <body>
-<h1>Welcome to $domain</h1>
-<p class="info">This site is powered by FusionBox</p>
-<p class="info">Created on $(date)</p>
+<h1>欢迎访问 $domain</h1>
+<p class="info">本站由 FusionBox 搭建</p>
+<p class="info">创建于 $(date)</p>
 </body>
 </html>
 HEOF
@@ -252,11 +252,11 @@ NEOF
   # Test Nginx
   nginx -t 2>/dev/null && {
     systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
-    msg_ok "Website created: http://$domain"
-    msg_info "Root: $web_root"
-    _log_write "Website created: $domain"
+    msg_ok "网站已创建: http://$domain"
+    msg_info "根目录: $web_root"
+    _log_write "网站已创建: $domain"
   } || {
-    msg_err "Nginx config test failed, check $nginx_conf"
+    msg_err "Nginx 配置测试失败，请检查 $nginx_conf"
   }
 
   pause
@@ -271,7 +271,7 @@ web_ssl() {
   msg ""
 
   if ! command -v certbot &>/dev/null; then
-    msg_info "Installing Certbot..."
+    msg_info "正在安装 Certbot..."
     case "$F_PKG_MGR" in
       apt)
         _install_pkg certbot python3-certbot-nginx
@@ -287,22 +287,22 @@ web_ssl() {
 
   if command -v certbot &>/dev/null; then
     if [[ -z "$domain" ]]; then
-      read -p "$(tr MSG_INPUT "Domain for SSL"): " domain
+      read -p "请输入 SSL 域名: " domain
     fi
     if [[ -n "$domain" ]]; then
-      msg_info "Obtaining SSL certificate for $domain..."
+      msg_info "正在申请 $domain 的 SSL 证书..."
       certbot --nginx -d "$domain" --non-interactive --agree-tos --email admin@"$domain" 2>/dev/null || \
         certbot --nginx -d "$domain" 2>/dev/null || \
-        msg_err "SSL certificate failed. Check domain DNS."
+        msg_err "SSL 证书申请失败，请检查域名 DNS。"
       _log_write "SSL obtained for $domain"
     else
-      msg_info "No domain specified. Certbot installed for manual use."
+      msg_info "未指定域名，Certbot 已安装可供手动使用。"
     fi
   fi
 
   msg ""
-  msg "  ${F_BOLD}Existing certificates:${F_RESET}"
-  certbot certificates 2>/dev/null || msg "    None"
+  msg "  ${F_BOLD}已有证书:${F_RESET}"
+  certbot certificates 2>/dev/null || msg "    无"
   pause
 }
 
@@ -316,17 +316,17 @@ web_nginx() {
       if command -v nginx &>/dev/null; then
         nginx -t 2>&1 | head -2
         nginx -V 2>&1 | head -1
-        pgrep -x nginx &>/dev/null && msg_ok "Nginx: running" || msg_info "Nginx: stopped"
+        pgrep -x nginx &>/dev/null && msg_ok "Nginx: 运行中" || msg_info "Nginx: 已停止"
       else
-        msg_err "Nginx not installed"
+        msg_err "Nginx 未安装"
       fi
       ;;
     reload)
-      nginx -s reload 2>/dev/null && msg_ok "Nginx reloaded" || msg_err "Reload failed"
+      nginx -s reload 2>/dev/null && msg_ok "Nginx 已重载" || msg_err "重载失败"
       ;;
     config)
       local config_dir="/etc/nginx"
-      msg_info "Available configs in $config_dir:"
+      msg_info "$config_dir 中的可用配置:"
       find "$config_dir" -name "*.conf" -type f 2>/dev/null | while read -r f; do
         msg "  $f"
       done
@@ -341,14 +341,14 @@ web_php() {
   if command -v php &>/dev/null; then
     msg_info "PHP: $(php -v 2>/dev/null | head -1)"
     msg ""
-    msg_info "Installed PHP modules:"
+    msg_info "已安装的 PHP 模块:"
     php -m 2>/dev/null | sort | while read -r mod; do
       msg "  $mod"
     done
 
     msg ""
-    msg "  1) Update PHP config (memory/upload limits)"
-    read -p "Select: " php_choice
+    msg "  1) 更新 PHP 配置（内存/上传限制）"
+    read -p "请选择: " php_choice
     if [[ "$php_choice" == "1" ]]; then
       local php_ini; php_ini=$(php --ini 2>/dev/null | grep "Loaded Configuration" | awk '{print $NF}')
       if [[ -f "$php_ini" ]]; then
@@ -357,11 +357,11 @@ web_php() {
         sed -i 's/post_max_size = .*/post_max_size = 64M/' "$php_ini"
         sed -i 's/max_execution_time = .*/max_execution_time = 300/' "$php_ini"
         systemctl reload php*-fpm 2>/dev/null || nginx -s reload 2>/dev/null || true
-        msg_ok "PHP limits updated"
+        msg_ok "PHP 限制已更新"
       fi
     fi
   else
-    msg_err "PHP not installed. Use 'fusionbox web lnmp' to install."
+    msg_err "PHP 未安装，请使用 'fusionbox web lnmp' 安装。"
   fi
   pause
 }
@@ -370,27 +370,27 @@ web_php() {
 web_mysql() {
   _require_root
   if command -v mysql &>/dev/null; then
-    msg_title "MySQL Management"
+    msg_title "MySQL 管理"
     msg ""
-    msg "  1) Create database"
-    msg "  2) Create database user"
-    msg "  3) Show databases"
-    msg "  4) Run mysql_secure_installation"
-    msg "  0) Back"
-    read -p "Select: " db_choice
+    msg "  1) 创建数据库"
+    msg "  2) 创建数据库用户"
+    msg "  3) 显示数据库"
+    msg "  4) 运行 mysql_secure_installation"
+    msg "  0) 返回"
+    read -p "请选择: " db_choice
 
     case "$db_choice" in
       1)
-        read -p "Database name: " db_name
+        read -p "数据库名: " db_name
         mysql -e "CREATE DATABASE IF NOT EXISTS \`$db_name\` CHARACTER SET utf8mb4;" 2>/dev/null && \
-          msg_ok "Database '$db_name' created" || msg_err "Create failed"
+          msg_ok "数据库 '$db_name' 已创建" || msg_err "创建失败"
         ;;
       2)
-        read -p "Username: " db_user
-        read -p "Password: " db_pass
-        read -p "Database: " db_name
+        read -p "用户名: " db_user
+        read -p "密码: " db_pass
+        read -p "数据库: " db_name
         mysql -e "CREATE USER '$db_user'@'localhost' IDENTIFIED BY '$db_pass'; GRANT ALL ON \`$db_name\`.* TO '$db_user'@'localhost'; FLUSH PRIVILEGES;" 2>/dev/null && \
-          msg_ok "User '$db_user' granted access to '$db_name'" || msg_err "Create failed"
+          msg_ok "用户 '$db_user' 已授权访问 '$db_name'" || msg_err "创建失败"
         ;;
       3)
         mysql -e "SHOW DATABASES;" 2>/dev/null
@@ -400,7 +400,7 @@ web_mysql() {
         ;;
     esac
   else
-    msg_err "MySQL/MariaDB not installed"
+    msg_err "MySQL/MariaDB 未安装"
   fi
   pause
 }
@@ -410,26 +410,26 @@ web_firewall() {
   _require_root
   _install_pkg libnginx-mod-http-headers-more-filter 2>/dev/null || true
 
-  msg_info "Enabling web security headers..."
+  msg_info "正在启用 Web 安全头..."
   local nginx_conf="/etc/nginx/nginx.conf"
   if [[ -f "$nginx_conf" ]]; then
     # Add security headers in http block if not present
     grep -q "X-Content-Type-Options" "$nginx_conf" 2>/dev/null || \
       sed -i '/http {/a\    add_header X-Content-Type-Options nosniff;\n    add_header X-Frame-Options SAMEORIGIN;\n    add_header X-XSS-Protection "1; mode=block";' "$nginx_conf" 2>/dev/null && \
-      msg_ok "Security headers added" || msg_warn "Could not add headers"
+      msg_ok "安全头已添加" || msg_warn "无法添加安全头"
     nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
   fi
 
   # Rate limiting
-  read -p "Enable rate limiting? (limit 10 req/s per IP) [Y/n]: " rate_ans
+  read -p "是否启用速率限制？（每 IP 限制 10 请求/秒）[Y/n]: " rate_ans
   if [[ ! "$rate_ans" =~ ^[Nn] ]]; then
     grep -q "limit_req_zone" "$nginx_conf" 2>/dev/null || \
       sed -i '/http {/a\    limit_req_zone $binary_remote_addr zone=fusionbox:10m rate=10r/s;' "$nginx_conf" 2>/dev/null
-    msg_ok "Rate limiting configured (10 req/s)"
+    msg_ok "速率限制已配置 (10 请求/秒)"
   fi
 
   nginx -t 2>/dev/null && nginx -s reload 2>/dev/null || true
-  _log_write "Web firewall configured"
+  _log_write "Web 防火墙已配置"
   pause
 }
 
@@ -439,7 +439,7 @@ web_optimize() {
   msg_title "$(tr WEB_OPTIMIZE "Website Optimization")"
 
   if command -v nginx &>/dev/null; then
-    msg_info "Optimizing Nginx..."
+    msg_info "正在优化 Nginx..."
     local nginx_conf="/etc/nginx/nginx.conf"
 
     # Optimize worker processes
@@ -458,13 +458,13 @@ web_optimize() {
     sed -i 's/# tcp_nodelay/tcp_nodelay/' "$nginx_conf" 2>/dev/null
 
     nginx -t 2>/dev/null && nginx -s reload 2>/dev/null
-    msg_ok "Nginx optimized: $cpu_count workers, gzip enabled"
-    _log_write "Nginx optimized"
+    msg_ok "Nginx 已优化: $cpu_count 个 worker，gzip 已启用"
+    _log_write "Nginx 优化完成"
   fi
 
   # PHP-FPM optimization
   if command -v php-fpm8.2 &>/dev/null || command -v php-fpm &>/dev/null; then
-    msg_info "Optimizing PHP-FPM..."
+    msg_info "正在优化 PHP-FPM..."
     local php_conf
     for conf in /etc/php/*/fpm/pool.d/www.conf; do
       if [[ -f "$conf" ]]; then
@@ -475,7 +475,7 @@ web_optimize() {
       fi
     done
     systemctl reload php*-fpm 2>/dev/null || true
-    msg_ok "PHP-FPM optimized"
+    msg_ok "PHP-FPM 优化完成"
   fi
 
   pause
@@ -483,17 +483,17 @@ web_optimize() {
 
 # ---- Help ----
 web_help() {
-  msg_title "$(tr MOD_WEB "Web/LNMP Deployment") Help"
+  msg_title "网站部署 帮助"
   msg ""
-  msg "  fusionbox web lnmp              $(tr WEB_LNMP "Install LNMP stack")"
-  msg "  fusionbox web lamp              $(tr WEB_LAMP "Install LAMP stack")"
-  msg "  fusionbox web site              $(tr WEB_SITE "Create a website")"
-  msg "  fusionbox web ssl [domain]      $(tr WEB_SSL "Get SSL certificate")"
-  msg "  fusionbox web nginx             $(tr MSG_INFO "Nginx management")"
-  msg "  fusionbox web php               $(tr MSG_INFO "PHP management")"
-  msg "  fusionbox web mysql             $(tr MSG_INFO "MySQL management")"
-  msg "  fusionbox web firewall          $(tr WEB_FIREWALL "Configure web firewall")"
-  msg "  fusionbox web optimize          $(tr WEB_OPTIMIZE "Optimize web performance")"
+  msg "  fusionbox web lnmp              安装 LNMP 环境"
+  msg "  fusionbox web lamp              安装 LAMP 环境"
+  msg "  fusionbox web site              创建网站"
+  msg "  fusionbox web ssl [domain]      申请 SSL 证书"
+  msg "  fusionbox web nginx             Nginx 管理"
+  msg "  fusionbox web php               PHP 管理"
+  msg "  fusionbox web mysql             MySQL 管理"
+  msg "  fusionbox web firewall          配置 Web 防火墙"
+  msg "  fusionbox web optimize          优化 Web 性能"
   msg ""
 }
 
@@ -508,14 +508,14 @@ web_menu() {
     msg "  ${F_GREEN}2${F_RESET}) $(tr WEB_LAMP "Install LAMP")"
     msg "  ${F_GREEN}3${F_RESET}) $(tr WEB_SITE "Create Website")"
     msg "  ${F_GREEN}4${F_RESET}) $(tr WEB_SSL "SSL Certificate")"
-    msg "  ${F_GREEN}5${F_RESET}) Nginx Management"
-    msg "  ${F_GREEN}6${F_RESET}) PHP Management"
-    msg "  ${F_GREEN}7${F_RESET}) MySQL Management"
-    msg "  ${F_GREEN}8${F_RESET}) Web Firewall / Security"
+    msg "  ${F_GREEN}5${F_RESET}) Nginx 管理"
+    msg "  ${F_GREEN}6${F_RESET}) PHP 管理"
+    msg "  ${F_GREEN}7${F_RESET}) MySQL 管理"
+    msg "  ${F_GREEN}8${F_RESET}) Web 防火墙 / 安全"
     msg "  ${F_GREEN}9${F_RESET}) $(tr WEB_OPTIMIZE "Optimize")"
     msg "  ${F_GREEN}0${F_RESET}) $(tr MSG_EXIT "Back to Main Menu")"
     msg ""
-    read -p "$(tr MSG_SELECT "Select") [0-9]: " choice
+    read -p "请选择 [0-9]: " choice
     case "$choice" in
       1) web_install_lnmp ;;
       2) web_install_lamp ;;

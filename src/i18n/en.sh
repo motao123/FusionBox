@@ -1,7 +1,7 @@
 # FusionBox English i18n
 
 # System messages
-MSG_WELCOME="Welcome to FusionBox - Ultimate Linux Management Script"
+MSG_WELCOME="Welcome to FusionBox - Linux Management Toolbox"
 MSG_VERSION="Version"
 MSG_EXIT="Goodbye!"
 MSG_ERROR="Error"
@@ -25,13 +25,13 @@ MSG_ROOT_REQUIRED="Root privileges required, please run as root"
 MOD_PROXY="Proxy Management"
 MOD_SYSTEM="System Management"
 MOD_NETWORK="Network Tools"
-MOD_WEB="Web/LNMP Deployment"
+MOD_WEB="Web Deployment"
 MOD_PANELS="Panel & Tools"
 MOD_MARKET="App Market"
 
 # Proxy module
-PROXY_INSTALLING="Installing sing-box core..."
-PROXY_UNINSTALLING="Uninstalling sing-box..."
+PROXY_INSTALLING="Installing proxy core..."
+PROXY_UNINSTALLING="Uninstalling proxy core..."
 PROXY_ADD="Add Proxy Configuration"
 PROXY_DEL="Delete Proxy Configuration"
 PROXY_INFO="View Proxy Info"
@@ -76,7 +76,6 @@ PANEL_AA="Install Aapanel"
 PANEL_XUI="Install X-UI"
 PANEL_ARIA2="Install Aria2"
 PANEL_RCLONE="Configure Rclone"
-
 
 # App market
 MARKET_LIST="Available Apps"

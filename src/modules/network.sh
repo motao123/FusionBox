@@ -32,7 +32,7 @@ network_ip() {
   fi
 
   msg ""
-  msg "  ${F_BOLD}[Detailed IP Info]${F_RESET}"
+  msg "  ${F_BOLD}[详细 IP 信息]${F_RESET}"
   local ip_info; ip_info=$(curl -s --connect-timeout 5 http://ip-api.com/json/ 2>/dev/null)
   if [[ -n "$ip_info" ]]; then
     local country;  country=$(echo "$ip_info" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
@@ -42,18 +42,18 @@ network_ip() {
     local org;      org=$(echo "$ip_info" | grep -o '"org":"[^"]*"' | cut -d'"' -f4)
     local as;       as=$(echo "$ip_info" | grep -o '"as":"[^"]*"' | cut -d'"' -f4)
 
-    msg "    Country: ${country:-N/A}"
-    msg "    Region:  ${region:-N/A}"
-    msg "    City:    ${city:-N/A}"
-    msg "    ISP:     ${isp:-N/A}"
-    msg "    ORG:     ${org:-N/A}"
-    msg "    AS:      ${as:-N/A}"
+    msg "    国家: ${country:-N/A}"
+    msg "    地区: ${region:-N/A}"
+    msg "    城市: ${city:-N/A}"
+    msg "    ISP:  ${isp:-N/A}"
+    msg "    组织: ${org:-N/A}"
+    msg "    AS:   ${as:-N/A}"
   fi
 
   msg ""
   # Additional IP info
   if command -v curl &>/dev/null; then
-    msg "  ${F_BOLD}[CDN / Network Info]${F_RESET}"
+    msg "  ${F_BOLD}[CDN / 网络信息]${F_RESET}"
     curl -s --connect-timeout 5 https://speed.cloudflare.com/meta 2>/dev/null | \
       grep -o '"colo":"[^"]*"' | cut -d'"' -f4 | xargs -I{} msg "    Cloudflare Colo: {}"
   fi
@@ -65,7 +65,7 @@ network_ip() {
 network_streaming() {
   msg_title "$(tr NET_STREAMING "Streaming Test")"
   msg ""
-  msg_info "Testing streaming service accessibility..."
+  msg_info "正在测试流媒体服务可访问性..."
   msg ""
 
   # Netflix
@@ -74,9 +74,9 @@ network_streaming() {
     -H "User-Agent: Mozilla/5.0" \
     "https://www.netflix.com/title/80018499" 2>/dev/null)
   case "$netflix" in
-    200|301|302) msg "    ${F_GREEN}Available${F_RESET}" ;;
-    403)         msg "    ${F_YELLOW}Proxy Detected${F_RESET}" ;;
-    *)           msg "    ${F_RED}Unavailable${F_RESET} (HTTP $netflix)" ;;
+    200|301|302) msg "    ${F_GREEN}可用${F_RESET}" ;;
+    403)         msg "    ${F_YELLOW}检测到代理${F_RESET}" ;;
+    *)           msg "    ${F_RED}不可用${F_RESET} (HTTP $netflix)" ;;
   esac
 
   # YouTube
@@ -84,45 +84,45 @@ network_streaming() {
   local yt; yt=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.youtube.com" 2>/dev/null)
-  [[ "$yt" =~ 200|301|302 ]] && msg "    ${F_GREEN}Available${F_RESET}" || msg "    ${F_YELLOW}Restricted${F_RESET}"
+  [[ "$yt" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_YELLOW}受限${F_RESET}"
 
   # ChatGPT
   msg "  ${F_BOLD}ChatGPT:${F_RESET}"
   local cgpt; cgpt=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://chat.openai.com" 2>/dev/null)
-  [[ "$cgpt" =~ 200|301|302 ]] && msg "    ${F_GREEN}Available${F_RESET}" || msg "    ${F_RED}Unavailable${F_RESET}"
+  [[ "$cgpt" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_RED}不可用${F_RESET}"
 
   # TikTok
   msg "  ${F_BOLD}TikTok:${F_RESET}"
   local tiktok; tiktok=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.tiktok.com" 2>/dev/null)
-  [[ "$tiktok" =~ 200|301|302 ]] && msg "    ${F_GREEN}Available${F_RESET}" || msg "    ${F_YELLOW}Maybe Restricted${F_RESET}"
+  [[ "$tiktok" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_YELLOW}可能受限${F_RESET}"
 
   # Disney+
   msg "  ${F_BOLD}Disney+:${F_RESET}"
   local disney; disney=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.disneyplus.com" 2>/dev/null)
-  [[ "$disney" =~ 200|301|302 ]] && msg "    ${F_GREEN}Available${F_RESET}" || msg "    ${F_RED}Unavailable${F_RESET}"
+  [[ "$disney" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_RED}不可用${F_RESET}"
 
   # Bilibili
   msg "  ${F_BOLD}Bilibili (HK/TW):${F_RESET}"
   local bili; bili=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.bilibili.com" 2>/dev/null)
-  [[ "$bili" =~ 200|301|302 ]] && msg "    ${F_GREEN}Available${F_RESET}" || msg "    ${F_RED}Unavailable${F_RESET}"
+  [[ "$bili" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_RED}不可用${F_RESET}"
 
   # iQIYI
   msg "  ${F_BOLD}iQIYI:${F_RESET}"
   local iqiyi; iqiyi=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.iqiyi.com" 2>/dev/null)
-  [[ "$iqiyi" =~ 200|301|302 ]] && msg "    ${F_GREEN}Available${F_RESET}" || msg "    ${F_RED}Unavailable${F_RESET}"
+  [[ "$iqiyi" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_RED}不可用${F_RESET}"
 
   msg ""
-  _log_write "Streaming test completed"
+  _log_write "流媒体测试完成"
   pause
 }
 
@@ -130,7 +130,7 @@ network_streaming() {
 network_speedtest() {
   msg_title "$(tr NET_SPEED "Speedtest")"
   msg ""
-  msg_info "Testing network speed..."
+  msg_info "正在测试网络速度..."
   msg ""
 
   # Try speedtest-cli first
@@ -142,15 +142,15 @@ network_speedtest() {
     speedtest --progress no --format human 2>/dev/null || speedtest --simple 2>/dev/null
   else
     # Fallback: download test from Cloudflare
-    msg_info "Installing speedtest-cli..."
+    msg_info "正在安装 speedtest-cli..."
     _install_pkg speedtest-cli 2>/dev/null || \
       pip3 install speedtest-cli 2>/dev/null || true
 
     if command -v speedtest-cli &>/dev/null; then
       speedtest-cli --simple 2>/dev/null
     else
-      msg_info "Running fallback speed test (Cloudflare)..."
-      msg "  Download test..."
+      msg_info "正在运行备用测速 (Cloudflare)..."
+      msg "  下载测试..."
 
       local dl_start; dl_start=$(date +%s)
       _download "https://speed.cloudflare.com/__down?bytes=104857600" /tmp/fusion_speedtest &
@@ -179,22 +179,22 @@ network_speedtest() {
       local final_size; final_size=$(stat -c%s /tmp/fusion_speedtest 2>/dev/null || echo 0)
       local avg_speed=$(( final_size * 8 / total_elapsed / 1048576 ))
 
-      msg "    Download: ~${avg_speed} Mbps (${final_size} bytes in ${total_elapsed}s)"
+      msg "    下载速度: ~${avg_speed} Mbps (${final_size} 字节, ${total_elapsed}秒)"
 
       # Latency
-      msg "  Latency test..."
+      msg "  延迟测试..."
       local ping_start; ping_start=$(date +%s%N)
       _download "https://speed.cloudflare.com/__down?bytes=100" /dev/null 2>/dev/null || true
       local ping_end; ping_end=$(date +%s%N)
       local ping_ms=$(( (ping_end - ping_start) / 1000000 ))
-      msg "    Latency: ~${ping_ms}ms"
+      msg "    延迟: ~${ping_ms}ms"
 
       rm -f /tmp/fusion_speedtest
     fi
   fi
 
   msg ""
-  _log_write "Speed test completed"
+  _log_write "网速测试完成"
   pause
 }
 
@@ -204,7 +204,7 @@ network_dns() {
   msg_title "$(tr NET_DNS "DNS Test")"
   msg ""
 
-  msg "  Testing DNS resolution for: $domain"
+  msg "  正在测试 DNS 解析: $domain"
   msg ""
 
   local dns_servers=(
@@ -230,7 +230,7 @@ network_dns() {
 
   # Current system DNS
   msg ""
-  msg "  ${F_BOLD}System DNS:${F_RESET}"
+  msg "  ${F_BOLD}系统 DNS:${F_RESET}"
   cat /etc/resolv.conf 2>/dev/null | grep -v '^#' | grep -v '^$' | while read -r line; do
     msg "    $line"
   done
@@ -242,15 +242,15 @@ network_dns() {
 network_trace() {
   local target="${1:-google.com}"
   if [[ -z "$1" ]]; then
-    read -p "$(tr MSG_INPUT "Target host or IP"): " target
+    read -p "请输入目标主机或 IP: " target
     [[ -z "$target" ]] && target="google.com"
   fi
 
-  msg_title "$(tr NET_TRACE "Trace Route")"
+  msg_title "路由追踪"
   msg ""
 
   if command -v mtr &>/dev/null; then
-    msg_info "Running MTR (5 pings)..."
+    msg_info "正在运行 MTR (5 次 ping)..."
     mtr -r -c 5 "$target" 2>/dev/null | while read -r line; do
       msg "  $line"
     done
@@ -263,7 +263,7 @@ network_trace() {
       msg "  $line"
     done
   else
-    msg_err "Install traceroute or mtr: fusionbox market install traceroute"
+    msg_err "请安装 traceroute 或 mtr: fusionbox market install traceroute"
   fi
 
   pause
@@ -273,11 +273,11 @@ network_trace() {
 network_ping() {
   local target="${1:-google.com}"
   if [[ -z "$1" ]]; then
-    read -p "$(tr MSG_INPUT "Target host or IP"): " target
+    read -p "请输入目标主机或 IP: " target
     [[ -z "$target" ]] && target="google.com"
   fi
 
-  msg_title "Ping Test"
+  msg_title "Ping 测试"
   msg ""
 
   if command -v ping &>/dev/null; then
@@ -285,7 +285,7 @@ network_ping() {
       msg "  $line"
     done
   else
-    msg_err "ping not found"
+    msg_err "ping 未找到"
   fi
   pause
 }
@@ -294,12 +294,12 @@ network_ping() {
 network_mtr() {
   local target="${1:-}"
   if [[ -z "$target" ]]; then
-    read -p "$(tr MSG_INPUT "Target host or IP for MTR"): " target
+    read -p "请输入 MTR 目标主机或 IP: " target
     [[ -z "$target" ]] && target="google.com"
   fi
 
   _check_pkg mtr mtr
-  msg_title "MTR Report: $target"
+  msg_title "MTR 报告: $target"
   mtr -r -c 10 "$target" 2>/dev/null | while read -r line; do
     msg "  $line"
   done
@@ -311,32 +311,32 @@ network_port_check() {
   local host="${1:-localhost}"
   local port="${2:-80}"
   if [[ -z "$1" || -z "$2" ]]; then
-    read -p "$(tr MSG_INPUT "Host"): " host
-    read -p "$(tr MSG_INPUT "Port"): " port
+    read -p "请输入主机: " host
+    read -p "请输入端口: " port
     [[ -z "$host" ]] && host="localhost"
     [[ -z "$port" ]] && port="80"
   fi
 
-  msg_title "Port Check: $host:$port"
+  msg_title "端口检测: $host:$port"
   msg ""
   timeout 5 bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null && \
-    msg_ok "Port $port is ${F_GREEN}OPEN${F_RESET} on $host" || \
-    msg_err "Port $port is ${F_RED}CLOSED${F_RESET} or filtered on $host"
+    msg_ok "端口 $port 在 $host 上${F_GREEN}开放${F_RESET}" || \
+    msg_err "端口 $port 在 $host 上${F_RED}关闭${F_RESET}或被过滤"
   pause
 }
 
 # ---- Help ----
 network_help() {
-  msg_title "$(tr MOD_NETWORK "Network Tools") Help"
+  msg_title "网络工具 帮助"
   msg ""
-  msg "  fusionbox network ip           $(tr NET_IP "IP address query")"
-  msg "  fusionbox network streaming    $(tr NET_STREAMING "Streaming test")"
-  msg "  fusionbox network speedtest    $(tr NET_SPEED "Speed test")"
-  msg "  fusionbox network dns          $(tr NET_DNS "DNS resolution test")"
-  msg "  fusionbox network trace        $(tr NET_TRACE "Trace route to host")"
-  msg "  fusionbox network ping <host>  Ping a host"
-  msg "  fusionbox network mtr <host>   MTR report to host"
-  msg "  fusionbox network port <host> <port>  Check if port is open"
+  msg "  fusionbox network ip           IP 地址查询"
+  msg "  fusionbox network streaming    流媒体测试"
+  msg "  fusionbox network speedtest    网速测试"
+  msg "  fusionbox network dns          DNS 解析测试"
+  msg "  fusionbox network trace        路由追踪"
+  msg "  fusionbox network ping <host>  Ping 测试"
+  msg "  fusionbox network mtr <host>   MTR 报告"
+  msg "  fusionbox network port <host> <port>  端口检测"
   msg ""
 }
 
@@ -352,12 +352,12 @@ network_menu() {
     msg "  ${F_GREEN}3${F_RESET}) $(tr NET_SPEED "Speedtest")"
     msg "  ${F_GREEN}4${F_RESET}) $(tr NET_DNS "DNS Test")"
     msg "  ${F_GREEN}5${F_RESET}) $(tr NET_TRACE "Trace Route")"
-    msg "  ${F_GREEN}6${F_RESET}) Ping"
-    msg "  ${F_GREEN}7${F_RESET}) MTR Report"
-    msg "  ${F_GREEN}8${F_RESET}) Port Check"
+    msg "  ${F_GREEN}6${F_RESET}) Ping 测试"
+    msg "  ${F_GREEN}7${F_RESET}) MTR 报告"
+    msg "  ${F_GREEN}8${F_RESET}) 端口检测"
     msg "  ${F_GREEN}0${F_RESET}) $(tr MSG_EXIT "Back to Main Menu")"
     msg ""
-    read -p "$(tr MSG_SELECT "Select") [0-8]: " choice
+    read -p "请选择 [0-8]: " choice
     case "$choice" in
       1) network_ip ;;
       2) network_streaming ;;
