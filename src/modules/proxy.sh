@@ -465,8 +465,8 @@ proxy_list() {
   local i=1
   for f in "${configs[@]}"; do
     local name=$(basename "$f" .json)
-    local port=$(grep -o '"listen_port": [0-9]*' "$f" 2>/dev/null | awk '{print $2}')
-    local proto=$(grep -o '"protocol": "[a-z]*' "$f" 2>/dev/null | cut -d'"' -f4)
+    local port=$(grep -o '"listen_port": [0-9]*' "$f" 2>/dev/null | head -1 | awk '{print $2}')
+    local proto=$(grep -o '"protocol": "[a-z]*' "$f" 2>/dev/null | head -1 | cut -d'"' -f4)
     msg "  ${F_GREEN}$i${F_RESET}) $name ${F_CYAN}($proto:$port)${F_RESET}"
     i=$((i+1))
   done
@@ -633,8 +633,8 @@ proxy_url() {
     return 1
   fi
 
-  local port=$(grep -o '"listen_port": [0-9]*' "$conf_file" | awk '{print $2}')
-  local proto=$(grep -o '"protocol": "[a-z]*' "$conf_file" | cut -d'"' -f4)
+  local port=$(grep -o '"listen_port": [0-9]*' "$conf_file" | head -1 | awk '{print $2}')
+  local proto=$(grep -o '"protocol": "[a-z]*' "$conf_file" | head -1 | cut -d'"' -f4)
   local uuid=$(grep -o '"id": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local pass=$(grep -o '"password": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local ip="${F_IP:-$(curl -s4 --connect-timeout 5 ip.sb 2>/dev/null || echo "YOUR_IP")}"
