@@ -24,12 +24,12 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
 .navbar nav a:hover{color:var(--text)}
 
 /* hero */
-.hero{padding:136px 0 60px}
-.hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.hero{padding:136px 0 60px;overflow:hidden}
+.hero-grid{display:grid;grid-template-columns:3fr 2fr;gap:48px;align-items:center}
 .hero-tag{font-size:.78em;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px}
-.hero h1{font-size:3em;font-weight:800;line-height:1.1;margin-bottom:16px;letter-spacing:-1px;color:#000}
+.hero h1{font-size:3.2em;font-weight:800;line-height:1.15;margin-bottom:20px;letter-spacing:-1.5px;color:#000;max-width:540px}
 .hero h1 em{font-style:normal;color:var(--accent)}
-.hero .sub{font-size:1.02em;color:var(--dim);line-height:1.6;margin-bottom:28px}
+.hero .sub{font-size:1em;color:var(--dim);line-height:1.7;margin-bottom:28px;max-width:480px}
 .hero-btns{display:flex;gap:10px;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border-radius:8px;font-size:.88em;font-weight:500;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;transition:all .15s;cursor:pointer;font-family:inherit}
 .btn:hover{text-decoration:none}
@@ -95,8 +95,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
 
 /* responsive */
 @media(max-width:860px){
-  .hero-grid{grid-template-columns:1fr;gap:36px}
-  .hero h1{font-size:2.4em}
+  .hero-grid{grid-template-columns:1fr;gap:32px}
+  .hero h1{font-size:2.6em;max-width:none}
+  .hero .sub{max-width:none}
   .stats-inner{grid-template-columns:repeat(2,1fr)}
   .sc:nth-child(2){border-right:none}
   .sc:nth-child(3){border-top:1px solid var(--border2)}
@@ -107,7 +108,8 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
 @media(max-width:640px){
   .fg{grid-template-columns:1fr}
   .hero{padding:120px 0 40px}
-  .hero h1{font-size:1.9em}
+  .hero h1{font-size:2em}
+  .hero .sub{font-size:.95em}
   .stats-inner{grid-template-columns:1fr 1fr}
 }
 @media(max-width:420px){
@@ -138,8 +140,8 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
       <div class="hero-grid">
         <div>
           <div class="hero-tag">v1.1.0 &middot; Pure Bash</div>
-          <h1>Linux 服务器<br>全能管理<em>工具箱</em></h1>
-          <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖日常运维全部场景。一行命令安装。</p>
+          <h1>Linux 服务器全能管理<em>工具箱</em></h1>
+          <p class="sub">代理管理、系统运维、网络诊断、网站部署 &mdash; 九大模块覆盖 Linux 服务器日常运维全部场景，一行命令安装。</p>
           <div class="hero-btns">
             <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
             <a href="https://github.com/motao123/FusionBox/archive/refs/heads/main.zip" class="btn btn-outline">下载 ZIP</a>
