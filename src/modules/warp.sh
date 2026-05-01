@@ -64,6 +64,14 @@ warp_install() {
     # Set default mode to proxy
     warp-cli --accept-tos mode proxy 2>/dev/null
 
+    # 禁止自动连接（防止远程服务器SSH断开）
+    if [[ -f /var/lib/cloudflare-warp/settings.json ]]; then
+      python3 -c "import json; d=json.load(open('/var/lib/cloudflare-warp/settings.json')); d['always_on']=False; json.dump(d,open('/var/lib/cloudflare-warp/settings.json','w'),indent=2)" 2>/dev/null
+    fi
+
+    # 禁止开机自启
+    systemctl disable warp-svc 2>/dev/null
+
     msg_ok "WARP 已注册，默认模式: Proxy (SOCKS5)"
     msg ""
     msg "  ${F_BOLD}SOCKS5 代理:${F_RESET} 127.0.0.1:40000"
@@ -120,26 +128,27 @@ warp_on() {
     pause; return
   fi
 
-  # 检查当前模式，如果是 WARP 全局模式，先切换到 Proxy 模式防止 SSH 断开
-  local current_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
-  if [[ "$current_mode" == "warp" ]]; then
-    msg_warn "检测到 WARP 全局模式，远程服务器使用此模式会导致 SSH 断开！"
-    msg "  ${F_BOLD}自动切换到 Proxy 模式 (SOCKS5 代理)${F_RESET}"
-    warp-cli --accept-tos mode proxy 2>/dev/null
-    sleep 1
+  # 确保 always_on 为 false（防止自动连接导致SSH断开）
+  if [[ -f /var/lib/cloudflare-warp/settings.json ]]; then
+    python3 -c "import json; d=json.load(open('/var/lib/cloudflare-warp/settings.json')); d['always_on']=False; json.dump(d,open('/var/lib/cloudflare-warp/settings.json','w'),indent=2)" 2>/dev/null
   fi
 
+  # 启动 WARP 服务（如果未运行）
+  if ! systemctl is-active warp-svc &>/dev/null; then
+    systemctl start warp-svc 2>/dev/null
+    sleep 2
+  fi
+
+  # 强制使用 Proxy 模式（防止全局模式断开SSH）
+  warp-cli --accept-tos mode proxy 2>/dev/null
+  sleep 1
+
   warp-cli --accept-tos connect 2>/dev/null
-  sleep 2
+  sleep 3
   local status=$(warp-cli --accept-tos status 2>/dev/null | head -1)
   if echo "$status" | grep -qi "connected"; then
-    msg_ok "WARP 已开启"
-
-    # Show proxy info if in proxy mode
-    local warp_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
-    if [[ "$warp_mode" == "warp_proxy" ]]; then
-      msg "  ${F_BOLD}SOCKS5 代理:${F_RESET} 127.0.0.1:40000"
-    fi
+    msg_ok "WARP 已开启 (Proxy 模式)"
+    msg "  ${F_BOLD}SOCKS5 代理:${F_RESET} 127.0.0.1:40000"
 
     # Test IP
     warp_ip
