@@ -1,0 +1,7 @@
+.bashrc
+.profile
+.ssh
+.config
+*.log
+backups/
+fusionbox_backup_*.tar.gz

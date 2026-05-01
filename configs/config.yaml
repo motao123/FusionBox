@@ -1,0 +1,46 @@
+# FusionBox Configuration File
+# Path: ~/.config/fusionbox/config.yaml
+
+# General settings
+general:
+  lang: auto                  # auto, zh_CN, en
+  auto_update: true           # Auto-check for updates
+  stats: false                # Anonymous usage statistics (opt-in)
+  color: true                 # Colored output
+
+# Proxy module (sing-box)
+proxy:
+  enabled: true
+  core_dir: /etc/sing-box
+  conf_dir: /etc/sing-box/conf
+  log_dir: /var/log/sing-box
+  auto_tls: true
+  bbr_on_proxy: true          # Auto-enable BBR when proxy is active
+
+# System module
+system:
+  bbr_enabled: false
+  monitor_interval: 5          # Seconds for system monitoring
+  backup_dir: /root/backups
+
+# Network tools
+network:
+  speedtest_server: auto
+  streaming_test: true
+
+# Web/LNMP
+web:
+  nginx_dir: /etc/nginx
+  web_root: /var/www
+  php_version: 8.2
+
+# Docker
+docker:
+  compose_dir: /opt/docker
+  auto_clean: false
+
+# Panel tools
+panels:
+  btmpanel_port: 8888
+  aaapanel_port: 7800
+  xui_port: 54321
