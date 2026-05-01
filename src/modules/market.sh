@@ -81,7 +81,7 @@ market_main() {
 # ---- List all apps ----
 market_list() {
   local filter="${1:-}"
-  msg_title "$(tr MARKET_LIST "Available Apps")"
+  msg_title "可用应用"
   msg ""
 
   local current_cat=""
@@ -425,7 +425,7 @@ market_remove() {
 market_category() {
   local cat="${1:-}"
   if [[ -z "$cat" ]]; then
-    msg_title "$(tr MARKET_LIST "App Categories")"
+    msg_title "应用分类"
     msg ""
     msg "  ${F_GREEN}dev${F_RESET})     开发工具"
     msg "  ${F_GREEN}net${F_RESET})     网络工具"
@@ -458,14 +458,14 @@ market_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(tr MOD_MARKET "App Market")"
+    msg_title "应用市场"
     msg ""
-    msg "  ${F_GREEN}1${F_RESET}) $(tr MARKET_LIST "List All Apps")"
+    msg "  ${F_GREEN}1${F_RESET}) 列出所有应用"
     msg "  ${F_GREEN}2${F_RESET}) 按分类浏览"
     msg "  ${F_GREEN}3${F_RESET}) 搜索"
-    msg "  ${F_GREEN}4${F_RESET}) $(tr MARKET_INSTALL "Install App")"
-    msg "  ${F_GREEN}5${F_RESET}) $(tr MARKET_REMOVE "Remove App")"
-    msg "  ${F_GREEN}0${F_RESET}) $(tr MSG_EXIT "Back to Main Menu")"
+    msg "  ${F_GREEN}4${F_RESET}) 安装应用"
+    msg "  ${F_GREEN}5${F_RESET}) 移除应用"
+    msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
     read -p "请选择 [0-5]: " choice
     case "$choice" in

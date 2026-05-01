@@ -25,7 +25,7 @@ system_main() {
 # ---- System Info ----
 system_info() {
   _require_root
-  msg_title "$(tr SYS_INFO "System Information")"
+  msg_title "系统信息"
   msg ""
 
   # CPU
@@ -90,18 +90,18 @@ system_info() {
 # ---- BBR Management ----
 system_bbr() {
   _require_root
-  msg_title "$(tr SYS_BBR "BBR Management")"
+  msg_title "BBR 管理"
   msg ""
 
   local cc; cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
   msg "  ${F_BOLD}当前:${F_RESET} $cc"
 
   if [[ "$cc" == "bbr" ]]; then
-    msg_ok "$(tr BBR_ALREADY "BBR is already enabled")"
+    msg_ok "BBR 已启用"
     msg ""
     msg "  1) 禁用 BBR (恢复为 cubic)"
     msg "  0) Back"
-    read -p "$(tr MSG_SELECT "Select"): " bbr_choice
+    read -p "请选择: " bbr_choice
     if [[ "$bbr_choice" == "1" ]]; then
       sed -i '/tcp_congestion_control/d' /etc/sysctl.conf
       sed -i '/default_qdisc/d' /etc/sysctl.conf
@@ -118,7 +118,7 @@ system_bbr() {
   local kmin; kmin=$(uname -r | cut -d. -f2)
 
   if [[ $kmaj -lt 4 ]] || [[ $kmaj -eq 4 && $kmin -lt 9 ]]; then
-    msg_err "$(tr BBR_FAILED "BBR requires kernel 4.9+")"
+    msg_err "BBR 需要内核 4.9+"
     msg_info "当前内核: $(uname -r)"
     if confirm "是否安装更新的内核？"; then
       _system_install_kernel
@@ -134,7 +134,7 @@ net.ipv4.tcp_congestion_control = bbr
 net.core.default_qdisc = fq
 SEOF
   sysctl -p 2>/dev/null
-  msg_ok "$(tr BBR_ENABLED "BBR enabled successfully")"
+  msg_ok "BBR 启用成功"
 
   # Show verification
   msg_info "Verification:"
@@ -173,7 +173,7 @@ _system_install_kernel() {
 # ---- Benchmark (SuperBench style) ----
 system_benchmark() {
   _require_root
-  msg_title "$(tr SYS_BENCHMARK "System Benchmark")"
+  msg_title "系统基准测试"
   msg ""
   msg_info "正在运行基准测试..."
 
@@ -244,7 +244,7 @@ system_benchmark() {
 
 # ---- System Monitor (top-like) ----
 system_monitor() {
-  msg_title "$(tr SYS_MONITOR "System Monitor")"
+  msg_title "系统监控"
   msg "按 Ctrl+C 退出"
   msg ""
 
@@ -310,7 +310,7 @@ system_backup() {
   local date_str; date_str=$(date '+%Y%m%d_%H%M%S')
   local backup_file="$backup_dir/fusionbox_backup_$date_str.tar.gz"
 
-  msg_title "$(tr SYS_BACKUP "System Backup")"
+  msg_title "系统备份"
   msg ""
 
   local dirs_to_backup=(
@@ -348,7 +348,7 @@ system_restore() {
   _require_root
   local backup_dir="${1:-/root/backups}"
 
-  msg_title "$(tr SYS_RESTORE "System Restore")"
+  msg_title "系统恢复"
   msg ""
 
   local backups=()
@@ -387,7 +387,7 @@ system_restore() {
 # ---- System Update ----
 system_update() {
   _require_root
-  msg_title "$(tr SYS_UPDATE "System Update")"
+  msg_title "系统更新"
   msg ""
 
   case "$F_PKG_MGR" in
@@ -424,7 +424,7 @@ system_update() {
 # ---- System Cleanup ----
 system_clean() {
   _require_root
-  msg_title "$(tr SYS_CLEAN "System Cleanup")"
+  msg_title "系统清理"
   msg ""
 
   msg_info "正在清理软件包缓存..."
@@ -612,18 +612,18 @@ system_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(tr MOD_SYSTEM "System Management")"
+    msg_title "系统管理"
     msg ""
-    msg "  ${F_GREEN}1${F_RESET}) $(tr SYS_INFO "System Information")"
-    msg "  ${F_GREEN}2${F_RESET}) $(tr SYS_BBR "BBR Management")"
-    msg "  ${F_GREEN}3${F_RESET}) $(tr SYS_BENCHMARK "Run Benchmark")"
-    msg "  ${F_GREEN}4${F_RESET}) $(tr SYS_MONITOR "System Monitor")"
-    msg "  ${F_GREEN}5${F_RESET}) $(tr SYS_BACKUP "Backup System")"
-    msg "  ${F_GREEN}6${F_RESET}) $(tr SYS_RESTORE "Restore System")"
-    msg "  ${F_GREEN}7${F_RESET}) $(tr SYS_UPDATE "Update System")"
-    msg "  ${F_GREEN}8${F_RESET}) $(tr SYS_CLEAN "System Cleanup")"
+    msg "  ${F_GREEN}1${F_RESET}) 系统信息"
+    msg "  ${F_GREEN}2${F_RESET}) BBR 管理"
+    msg "  ${F_GREEN}3${F_RESET}) 运行基准测试"
+    msg "  ${F_GREEN}4${F_RESET}) 系统监控"
+    msg "  ${F_GREEN}5${F_RESET}) 备份系统"
+    msg "  ${F_GREEN}6${F_RESET}) 恢复系统"
+    msg "  ${F_GREEN}7${F_RESET}) 更新系统"
+    msg "  ${F_GREEN}8${F_RESET}) 系统清理"
     msg "  ${F_GREEN}9${F_RESET}) Swap 与安全"
-    msg "  ${F_GREEN}0${F_RESET}) $(tr MSG_EXIT "Back to Main Menu")"
+    msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
     read -p "请选择 [0-9]: " choice
     case "$choice" in

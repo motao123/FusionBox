@@ -78,7 +78,7 @@ route() {
 # ---- Status Overview ----
 show_status() {
   _print_banner
-  msg_title "$(tr SYS_INFO "System Status Overview")"
+  msg_title "系统状态概览"
   msg ""
   msg "  ${F_BOLD}CPU:${F_RESET} $(nproc --all) cores | $(free -h | awk '/Mem/{print $2}') RAM"
   msg "  ${F_BOLD}Disk:${F_RESET} $(df -h / | awk 'NR==2{print $3 "/" $2 " (" $5 ")"}')"
@@ -182,14 +182,14 @@ show_help() {
 main_menu() {
   _print_banner
 
-  msg_title "$(tr MSG_SELECT "Main Menu")"
+  msg_title "主菜单"
   msg ""
-  msg "  ${F_GREEN}1${F_RESET}) $(tr MOD_PROXY "Proxy Management")"
-  msg "  ${F_GREEN}2${F_RESET}) $(tr MOD_SYSTEM "System Management")"
-  msg "  ${F_GREEN}3${F_RESET}) $(tr MOD_NETWORK "Network Tools")"
-  msg "  ${F_GREEN}4${F_RESET}) $(tr MOD_WEB "Web/LNMP Deployment")"
-  msg "  ${F_GREEN}5${F_RESET}) $(tr MOD_PANELS "Panel & Tools")"
-  msg "  ${F_GREEN}6${F_RESET}) $(tr MOD_MARKET "App Market")"
+  msg "  ${F_GREEN}1${F_RESET}) 代理管理"
+  msg "  ${F_GREEN}2${F_RESET}) 系统管理"
+  msg "  ${F_GREEN}3${F_RESET}) 网络工具"
+  msg "  ${F_GREEN}4${F_RESET}) 网站部署"
+  msg "  ${F_GREEN}5${F_RESET}) 面板与工具"
+  msg "  ${F_GREEN}6${F_RESET}) 应用市场"
   msg "  ${F_GREEN}7${F_RESET}) 系统状态"
   msg "  ${F_GREEN}8${F_RESET}) 帮助"
   msg "  ${F_GREEN}0${F_RESET}) 退出"

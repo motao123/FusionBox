@@ -21,7 +21,7 @@ network_main() {
 
 # ---- IP Query ----
 network_ip() {
-  msg_title "$(tr NET_IP "IP Address Query")"
+  msg_title "IP 地址查询"
   msg ""
 
   msg "  ${F_BOLD}IPv4:${F_RESET} ${F_CYAN}${F_IP:-$(curl -s4 --connect-timeout 5 ip.sb 2>/dev/null || echo "N/A")}${F_RESET}"
@@ -63,7 +63,7 @@ network_ip() {
 
 # ---- Streaming Test ----
 network_streaming() {
-  msg_title "$(tr NET_STREAMING "Streaming Test")"
+  msg_title "流媒体测试"
   msg ""
   msg_info "正在测试流媒体服务可访问性..."
   msg ""
@@ -128,7 +128,7 @@ network_streaming() {
 
 # ---- Speedtest ----
 network_speedtest() {
-  msg_title "$(tr NET_SPEED "Speedtest")"
+  msg_title "网速测试"
   msg ""
   msg_info "正在测试网络速度..."
   msg ""
@@ -201,7 +201,7 @@ network_speedtest() {
 # ---- DNS Test ----
 network_dns() {
   local domain="${1:-google.com}"
-  msg_title "$(tr NET_DNS "DNS Test")"
+  msg_title "DNS 测试"
   msg ""
 
   msg "  正在测试 DNS 解析: $domain"
@@ -345,17 +345,17 @@ network_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(tr MOD_NETWORK "Network Tools")"
+    msg_title "网络工具"
     msg ""
-    msg "  ${F_GREEN}1${F_RESET}) $(tr NET_IP "IP Address Query")"
-    msg "  ${F_GREEN}2${F_RESET}) $(tr NET_STREAMING "Streaming Test")"
-    msg "  ${F_GREEN}3${F_RESET}) $(tr NET_SPEED "Speedtest")"
-    msg "  ${F_GREEN}4${F_RESET}) $(tr NET_DNS "DNS Test")"
-    msg "  ${F_GREEN}5${F_RESET}) $(tr NET_TRACE "Trace Route")"
+    msg "  ${F_GREEN}1${F_RESET}) IP 地址查询"
+    msg "  ${F_GREEN}2${F_RESET}) 流媒体测试"
+    msg "  ${F_GREEN}3${F_RESET}) 网速测试"
+    msg "  ${F_GREEN}4${F_RESET}) DNS 测试"
+    msg "  ${F_GREEN}5${F_RESET}) 路由追踪"
     msg "  ${F_GREEN}6${F_RESET}) Ping 测试"
     msg "  ${F_GREEN}7${F_RESET}) MTR 报告"
     msg "  ${F_GREEN}8${F_RESET}) 端口检测"
-    msg "  ${F_GREEN}0${F_RESET}) $(tr MSG_EXIT "Back to Main Menu")"
+    msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
     read -p "请选择 [0-8]: " choice
     case "$choice" in

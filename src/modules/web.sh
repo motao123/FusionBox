@@ -23,7 +23,7 @@ web_main() {
 # ---- Install LNMP ----
 web_install_lnmp() {
   _require_root
-  msg_title "$(tr WEB_LNMP "Install LNMP (Linux + Nginx + MySQL + PHP)")"
+  msg_title "安装 LNMP (Linux + Nginx + MySQL + PHP)"
   msg ""
 
   if ! confirm "将安装 Nginx、MySQL 和 PHP，确认继续？"; then
@@ -185,7 +185,7 @@ web_install_lamp() {
 # ---- Create Website ----
 web_create_site() {
   _require_root
-  msg_title "$(tr WEB_SITE "Create Website")"
+  msg_title "创建网站"
   msg ""
 
   local domain; domain=$(read_input "请输入域名（如 example.com）")
@@ -267,7 +267,7 @@ web_ssl() {
   _require_root
   local domain="${1:-}"
 
-  msg_title "$(tr WEB_SSL "SSL Certificate")"
+  msg_title "SSL 证书"
   msg ""
 
   if ! command -v certbot &>/dev/null; then
@@ -436,7 +436,7 @@ web_firewall() {
 # ---- Optimize ----
 web_optimize() {
   _require_root
-  msg_title "$(tr WEB_OPTIMIZE "Website Optimization")"
+  msg_title "网站优化"
 
   if command -v nginx &>/dev/null; then
     msg_info "正在优化 Nginx..."
@@ -502,18 +502,18 @@ web_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(tr MOD_WEB "Web/LNMP Deployment")"
+    msg_title "网站部署"
     msg ""
-    msg "  ${F_GREEN}1${F_RESET}) $(tr WEB_LNMP "Install LNMP")"
-    msg "  ${F_GREEN}2${F_RESET}) $(tr WEB_LAMP "Install LAMP")"
-    msg "  ${F_GREEN}3${F_RESET}) $(tr WEB_SITE "Create Website")"
-    msg "  ${F_GREEN}4${F_RESET}) $(tr WEB_SSL "SSL Certificate")"
+    msg "  ${F_GREEN}1${F_RESET}) 安装 LNMP"
+    msg "  ${F_GREEN}2${F_RESET}) 安装 LAMP"
+    msg "  ${F_GREEN}3${F_RESET}) 创建网站"
+    msg "  ${F_GREEN}4${F_RESET}) SSL 证书"
     msg "  ${F_GREEN}5${F_RESET}) Nginx 管理"
     msg "  ${F_GREEN}6${F_RESET}) PHP 管理"
     msg "  ${F_GREEN}7${F_RESET}) MySQL 管理"
     msg "  ${F_GREEN}8${F_RESET}) Web 防火墙 / 安全"
-    msg "  ${F_GREEN}9${F_RESET}) $(tr WEB_OPTIMIZE "Optimize")"
-    msg "  ${F_GREEN}0${F_RESET}) $(tr MSG_EXIT "Back to Main Menu")"
+    msg "  ${F_GREEN}9${F_RESET}) 网站优化"
+    msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
     read -p "请选择 [0-9]: " choice
     case "$choice" in

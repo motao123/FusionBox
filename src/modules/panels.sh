@@ -132,7 +132,7 @@ panels_docker_compose() {
 
     case "$comp_choice" in
       1)
-        read -p "$(tr MSG_INPUT "Project name"): " project
+        read -p "请输入项目名: " project
         if [[ -n "$project" ]]; then
           local proj_dir="$compose_dir/$project"
           mkdir -p "$proj_dir"
@@ -174,7 +174,7 @@ YEOF
 panels_docker_menu() {
   while true; do
     clear
-    msg_title "$(tr PANEL_DOCKER "Docker Management")"
+    msg_title "Docker 管理"
     msg ""
     if command -v docker &>/dev/null; then
       msg "  Docker: $(docker --version 2>/dev/null)"
