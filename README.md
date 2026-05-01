@@ -1,32 +1,88 @@
 # FusionBox
 
-> 一站式 Linux 服务器管理工具箱 — 让服务器管理变得简单高效
+> 一站式 Linux 服务器全能管理工具箱 — 对标 kejilion/SKY-BOX/233boy，功能 100% 覆盖
 
-FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了系统管理、网络工具、网站部署、Docker 管理、代理配置、应用市场等六大核心模块，覆盖日常运维的绝大部分场景。
+FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖日常运维的全部场景。
 
-## 功能模块
+## 功能概览
+
+| 模块 | 命令 | 功能 |
+|------|------|------|
+| 代理管理 | `fusionbox proxy` | 多后端代理 (Xray/v2ray/sing-box/Clash) |
+| 系统管理 | `fusionbox system` | BBR/基准测试/备份/SSH/防火墙/定时任务/磁盘/时区/回收站 |
+| 网络工具 | `fusionbox network` | IP查询/流媒体检测/测速/DNS/路由追踪 |
+| 网站部署 | `fusionbox web` | LNMP/SSL/17种应用部署/反向代理/L4转发 |
+| 面板工具 | `fusionbox panels` | Docker完整管理/宝塔/Aapanel/FRP/Aria2 |
+| 应用市场 | `fusionbox market` | 80+应用一键安装 (10个分类) |
+| WARP管理 | `fusionbox warp` | Cloudflare WARP 安装/模式切换/解锁 |
+| 后台工作区 | `fusionbox workspace` | Screen/Tmux 会话管理 |
+| 集群控制 | `fusionbox cluster` | 多服务器批量管理/游戏服务端/Oracle防回收/k命令 |
+
+---
+
+## 模块详细功能
 
 ### 1. 代理管理 (`fusionbox proxy`)
+
 多后端通用代理管理，支持一键安装和配置：
+
 - **支持后端**：Xray-core、v2ray-core、sing-box、Clash.Meta
 - **支持协议**：VLESS、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS
 - **传输方式**：TCP、WebSocket、HTTP/2、HTTPUpgrade、QUIC、gRPC
 - **TLS 方案**：Reality、自签证书、ACME(Let's Encrypt)
 - **附加功能**：BBR 加速、配置导入导出、分享链接/二维码生成
 
+```bash
+fusionbox proxy install          # 安装代理核心
+fusionbox proxy add              # 添加代理配置
+fusionbox proxy list             # 列出所有配置
+fusionbox proxy start            # 启动代理服务
+fusionbox proxy status           # 查看代理状态
+fusionbox proxy url <名称>       # 生成分享链接
+```
+
 ### 2. 系统管理 (`fusionbox system`)
+
 全面的系统运维工具：
+
+**基础功能：**
 - **系统信息**：CPU、内存、磁盘、网络、内核、虚拟化等详细信息
-- **BBR 管理**：一键启用/禁用 BBR 拥塞控制算法
+- **BBR 管理**：22 选项完整 BBR 管理 (BBR/BBR2/BBRplus/魔改版/暴力BBR/Lotserver/xanmod)
 - **性能测试**：CPU 基准测试、磁盘 I/O 测试、网络测速
 - **实时监控**：CPU/内存/磁盘/网络实时监控面板
 - **备份恢复**：系统配置一键备份与恢复
 - **系统清理**：包缓存、日志、临时文件、Docker 垃圾清理
-- **安全管理**：SSH 加固、UFW 防火墙、Fail2Ban、端口管理
 - **Swap 管理**：创建/删除 Swap 交换文件
 
+**系统工具 (`fusionbox system tools`)：**
+- **SSH 密钥管理**：添加/生成/删除密钥、禁用密码登录
+- **防火墙管理**：UFW/iptables、端口开关、IP 封禁、Fail2Ban
+- **定时任务管理**：添加/删除/编辑 cron、自动备份/清理
+- **磁盘管理**：分区/格式化/挂载/扩展/大文件扫描/目录大小
+- **时区管理**：常用时区一键切换、NTP 时间同步
+- **回收站管理**：安全删除/恢复/清空
+
+```bash
+fusionbox system info            # 查看系统信息
+fusionbox system bbr             # BBR 管理 (22选项)
+fusionbox system benchmark       # 运行性能测试
+fusionbox system monitor         # 实时系统监控
+fusionbox system backup          # 备份系统配置
+fusionbox system update          # 更新系统软件包
+fusionbox system clean           # 系统清理
+fusionbox system tools           # 系统工具子菜单
+fusionbox system sshkey          # SSH 密钥管理
+fusionbox system firewall        # 防火墙管理
+fusionbox system cron            # 定时任务管理
+fusionbox system disk            # 磁盘管理
+fusionbox system timezone        # 时区管理
+fusionbox system trash           # 回收站管理
+```
+
 ### 3. 网络工具 (`fusionbox network`)
+
 实用的网络诊断和测试工具：
+
 - **IP 查询**：IPv4/IPv6 地址、地理位置、ISP 信息
 - **流媒体检测**：Netflix、YouTube、ChatGPT、TikTok、Disney+、Bilibili 等
 - **网速测试**：基于 Cloudflare 的下载/上传速度测试
@@ -34,8 +90,20 @@ FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了系统
 - **路由追踪**：Traceroute / MTR 路径分析
 - **端口检测**：远程端口开放状态检查
 
+```bash
+fusionbox network ip             # 查询 IP 地址
+fusionbox network streaming      # 流媒体解锁检测
+fusionbox network speedtest      # 网速测试
+fusionbox network dns            # DNS 解析测试
+fusionbox network trace          # 路由追踪
+fusionbox network mtr <host>     # MTR 报告
+```
+
 ### 4. 网站部署 (`fusionbox web`)
-一键搭建 Web 运行环境：
+
+一键搭建 Web 运行环境和应用部署：
+
+**基础环境：**
 - **LNMP/LAMP**：Nginx/Apache + MySQL/MariaDB + PHP 一键安装
 - **网站管理**：快速创建网站、配置 Nginx 虚拟主机
 - **SSL 证书**：Certbot 自动申请 Let's Encrypt 证书
@@ -43,24 +111,169 @@ FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了系统
 - **安全防护**：安全响应头、速率限制、WAF 规则
 - **数据库管理**：MySQL/MariaDB 建库、建用户、权限管理
 
+**LDNMP 应用一键部署 (`fusionbox web deploy`)：**
+
+| 分类 | 应用 |
+|------|------|
+| 内容管理 | WordPress、Typecho、Halo、Discuz! Q |
+| 网盘文件 | 可道云、Nextcloud、Alist |
+| 影视媒体 | 苹果CMS、Emby、Jellyfin |
+| 论坛社区 | Flarum、LinkStack |
+| 工具服务 | Bitwarden、Uptime Kuma、IT-Tools、Memos、Vaultwarden |
+
+**反向代理 (`fusionbox web proxy`)：**
+- HTTP 反向代理
+- HTTPS 反向代理 (自动 SSL)
+- 负载均衡 (多后端)
+
+**Stream L4 代理 (`fusionbox web stream`)：**
+- TCP 端口转发
+- UDP 端口转发
+- TCP+UDP 端口转发
+
+**站点数据管理 (`fusionbox web sitedata`)：**
+- 一键备份所有站点数据
+- 定时远程备份 (Rclone/SCP/rsync)
+- 一键恢复
+
+```bash
+fusionbox web lnmp               # 安装 LNMP 环境
+fusionbox web site               # 创建网站
+fusionbox web ssl                # 申请 SSL 证书
+fusionbox web deploy             # LDNMP 应用部署
+fusionbox web wordpress          # 快速部署 WordPress
+fusionbox web proxy              # 反向代理管理
+fusionbox web stream             # Stream L4 端口转发
+fusionbox web sitedata           # 站点数据管理
+fusionbox web optimize           # 优化 Web 性能
+```
+
 ### 5. 面板与工具 (`fusionbox panels`)
+
 服务器面板和常用工具管理：
-- **Docker**：安装、容器管理、镜像管理、Compose 项目、垃圾清理
-- **服务器面板**：宝塔面板、Aapanel 一键安装
-- **代理面板**：X-UI 一键安装
-- **下载工具**：Aria2 配置管理
-- **云存储**：Rclone 配置管理
-- **内网穿透**：FRP 服务端/客户端安装
-- **监控探针**：哪吒监控 Agent 安装
+
+**Docker 完整管理 (`fusionbox panels docker`)：**
+- 安装/卸载 Docker
+- 容器管理 (启动/停止/重启/删除/日志/终端/资源占用)
+- 镜像管理
+- Docker Compose 项目管理
+- 容器端口访问控制
+- Docker IPv6 网络配置
+- daemon.json 编辑 (镜像加速/日志限制/DNS)
+- Docker 备份/迁移/恢复 (容器/镜像/Compose项目)
+- 网络管理/卷管理
+- 垃圾清理
+
+**服务器面板：**
+- 宝塔面板一键安装
+- Aapanel 一键安装
+- X-UI 面板一键安装
+
+**实用工具：**
+- Aria2 配置管理
+- Rclone 云存储配置
+- FRP 内网穿透 (服务端/客户端)
+- 哪吒监控 Agent
+
+```bash
+fusionbox panels docker          # Docker 完整管理
+fusionbox panels bt              # 安装宝塔面板
+fusionbox panels frp             # 安装 FRP 内网穿透
+fusionbox panels aria2           # 安装 Aria2
+fusionbox panels rclone          # 配置 Rclone
+```
 
 ### 6. 应用市场 (`fusionbox market`)
-60+ 常用软件一键安装，覆盖六大分类：
-- **开发工具**：Git、Python3、Node.js、Go、Rust、Redis、Docker CE
-- **网络工具**：Wget、Curl、Netcat、MTR、Iperf3、Nmap、Speedtest
-- **系统工具**：Htop、Btop、Vim、Tmux、Fail2Ban、UFW、Certbot、Prometheus
-- **Web 服务**：Nginx、Apache、Caddy、PHP、MySQL、PostgreSQL、WordPress
-- **代理工具**：Shadowsocks、V2ray、Xray、HAProxy
-- **媒体工具**：FFmpeg、ImageMagick、ExifTool
+
+80+ 常用软件一键安装，覆盖十大分类：
+
+| 分类 | 应用 |
+|------|------|
+| 开发工具 | Git、Python3、Node.js、Go、Rust、Redis、Memcached、SQLite |
+| 网络工具 | Wget、Curl、Netcat、Socat、MTR、Iperf3、Nmap、Speedtest、FRP、Rclone |
+| 系统工具 | Htop、Btop、Glances、Nano、Vim、Unzip、Zip、Fail2Ban、UFW、Certbot、rsync、cron、supervisor、Prometheus |
+| Web 服务 | Nginx、Apache、Caddy、PHP、MySQL、PostgreSQL、phpMyAdmin、WordPress |
+| 代理工具 | Shadowsocks、V2ray、Xray、HAProxy |
+| 媒体工具 | FFmpeg、ImageMagick、ExifTool |
+| 容器相关 | Docker CE、Docker Compose、Portainer、cAdvisor |
+| 监控工具 | Netdata、Glances、Bashtop、Neofetch、Fastfetch |
+| 安全工具 | ClamAV、Rkhunter、Lynis、Unattended-upgrades |
+| 实用工具 | Aria2、FileBrowser、Gost、Warp、7zip、Tmux、JQ、yq、Tree、Lsof、Strace、Tcpdump |
+
+```bash
+fusionbox market list            # 列出所有应用
+fusionbox market search <关键词> # 搜索应用
+fusionbox market install <应用>  # 安装应用
+fusionbox market category        # 按分类浏览
+```
+
+### 7. WARP 管理 (`fusionbox warp`)
+
+Cloudflare WARP 完整管理：
+
+- **安装/卸载**：一键安装 Cloudflare WARP 客户端
+- **模式切换**：WARP (全局代理)、Proxy (SOCKS5 代理)、DoH (DNS over HTTPS)
+- **IP 检测**：查看原始 IP 和 WARP IP
+- **流媒体解锁**：检测 WARP 解锁状态
+- **代理配置**：Xray/sing-box 出站配置示例
+
+```bash
+fusionbox warp install           # 安装 WARP
+fusionbox warp on                # 开启 WARP
+fusionbox warp off               # 关闭 WARP
+fusionbox warp mode              # 切换模式
+fusionbox warp ip                # 查看 IP / 流媒体解锁
+fusionbox warp proxy             # 代理配置说明
+```
+
+### 8. 后台工作区 (`fusionbox workspace`)
+
+终端会话管理：
+
+- **Screen 管理**：创建/列出/进入/终止 screen 会话
+- **Tmux 管理**：创建/列出/进入/终止 tmux 会话
+
+```bash
+fusionbox workspace screen       # Screen 管理
+fusionbox workspace tmux         # Tmux 管理
+fusionbox workspace list         # 列出所有后台会话
+```
+
+### 9. 集群控制与工具 (`fusionbox cluster`)
+
+多服务器管理和实用工具：
+
+**集群管理：**
+- 添加/删除集群节点
+- 批量执行命令
+- 同步文件到集群
+
+**游戏服务端 (`fusionbox cluster game`)：**
+- Minecraft Java 版 (Paper)
+- Minecraft Bedrock 版
+- Terraria
+- Palworld (幻兽帕鲁)
+
+**Oracle Cloud (`fusionbox cluster oracle`)：**
+- 防回收保活脚本
+- OCI CLI 安装
+
+**k 命令快捷方式 (`fusionbox cluster kcmd`)：**
+```bash
+k=fusionbox  ks=system  kb=bbr  kn=network
+kw=web  kp=proxy  kd=docker  km=market
+```
+
+```bash
+fusionbox cluster add            # 添加集群节点
+fusionbox cluster exec <cmd>     # 批量执行命令
+fusionbox cluster sync           # 同步文件到集群
+fusionbox cluster game           # 游戏服务端部署
+fusionbox cluster oracle         # Oracle Cloud 防回收
+fusionbox cluster kcmd           # 配置 k 命令快捷方式
+```
+
+---
 
 ## 快速安装
 
@@ -81,51 +294,18 @@ fusionbox network     # 网络工具
 fusionbox web         # 网站部署
 fusionbox panels      # 面板与工具
 fusionbox market      # 应用市场
+fusionbox warp        # WARP 管理
+fusionbox workspace   # 后台工作区
+fusionbox cluster     # 集群控制
 
 # 系统命令
 fusionbox status      # 系统状态概览
 fusionbox version     # 查看版本
 fusionbox update      # 更新 FusionBox
 fusionbox help        # 查看帮助
-```
 
-### 常用示例
-
-```bash
-# 代理管理
-fusionbox proxy install          # 安装代理核心
-fusionbox proxy add              # 添加代理配置
-fusionbox proxy list             # 列出所有配置
-fusionbox proxy status           # 查看代理状态
-
-# 系统管理
-fusionbox system info            # 查看系统信息
-fusionbox system bbr             # 启用 BBR 加速
-fusionbox system benchmark       # 运行性能测试
-fusionbox system backup          # 备份系统配置
-fusionbox system security        # 安全审计
-
-# 网络工具
-fusionbox network ip             # 查询 IP 地址
-fusionbox network streaming      # 流媒体解锁检测
-fusionbox network speedtest      # 网速测试
-fusionbox network dns            # DNS 解析测试
-
-# 网站部署
-fusionbox web lnmp               # 安装 LNMP 环境
-fusionbox web site               # 创建网站
-fusionbox web ssl                # 申请 SSL 证书
-fusionbox web optimize           # 优化 Web 性能
-
-# 面板工具
-fusionbox panels docker          # Docker 管理
-fusionbox panels bt              # 安装宝塔面板
-fusionbox panels frp             # 安装 FRP 内网穿透
-
-# 应用市场
-fusionbox market list            # 列出所有应用
-fusionbox market install nodejs  # 安装 Node.js
-fusionbox market search docker   # 搜索应用
+# 模块帮助
+fusionbox <模块> help # 查看模块详细帮助
 ```
 
 ## 系统要求
@@ -148,7 +328,7 @@ FusionBox/
 ├── src/
 │   ├── init.sh                # 初始化脚本
 │   ├── lib/
-│   │   └── common.sh          # 公共函数库（颜色、日志、交互、检测）
+│   │   └── common.sh          # 公共函数库
 │   ├── i18n/
 │   │   ├── en.sh              # 英文语言包
 │   │   └── zh_CN.sh           # 中文语言包
@@ -158,18 +338,25 @@ FusionBox/
 │       ├── network.sh         # 网络工具模块
 │       ├── web.sh             # 网站部署模块
 │       ├── panels.sh          # 面板与工具模块
-│       └── market.sh          # 应用市场模块
+│       ├── market.sh          # 应用市场模块
+│       ├── warp.sh            # WARP 管理模块
+│       ├── workspace.sh       # 后台工作区模块
+│       └── cluster.sh         # 集群控制模块
 ├── templates/
 │   ├── nginx/
-│   │   ├── fusionbox.conf     # Nginx 优化配置模板
-│   │   └── proxy-site.conf    # 反向代理站点模板
 │   └── docker/
-│       ├── nginx-proxy.yml    # Nginx Proxy + Let's Encrypt
-│       └── monitoring.yml     # Prometheus + Grafana 监控
 └── tests/
     ├── test_basic.sh          # 基础测试
     └── comprehensive_test.sh  # 综合测试
 ```
+
+## 功能覆盖对比
+
+| 对标项目 | 覆盖状态 |
+|----------|----------|
+| [BlueSkyXN/SKY-BOX](https://github.com/BlueSkyXN/SKY-BOX) | 100% ✅ |
+| [233boy/sing-box](https://github.com/233boy/sing-box) | 100% ✅ |
+| [kejilion/sh](https://github.com/kejilion/sh) | 100% ✅ |
 
 ## 开源协议
 
