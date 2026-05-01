@@ -380,8 +380,8 @@ _proxy_generate_config() {
 {
   "inbounds": [{
     "tag": "${p_name,,}-in",
-    "listen": "::",
-    "listen_port": $port,
+    "listen": "0.0.0.0",
+    "port": $port,
     "protocol": "vless",
     "settings": {"clients": [{"id": "$uuid"}]},
     "streamSettings": {"network": "$p_transport"}
@@ -395,8 +395,8 @@ JEOF
 {
   "inbounds": [{
     "tag": "${p_name,,}-in",
-    "listen": "::",
-    "listen_port": $port,
+    "listen": "0.0.0.0",
+    "port": $port,
     "protocol": "vmess",
     "settings": {"clients": [{"id": "$uuid", "alterId": 0}]},
     "streamSettings": {"network": "$p_transport"}
@@ -410,8 +410,8 @@ JEOF
 {
   "inbounds": [{
     "tag": "${p_name,,}-in",
-    "listen": "::",
-    "listen_port": $port,
+    "listen": "0.0.0.0",
+    "port": $port,
     "protocol": "trojan",
     "settings": {"clients": [{"password": "$pass"}]}
   }],
@@ -424,8 +424,8 @@ JEOF
 {
   "inbounds": [{
     "tag": "hysteria2-in",
-    "listen": "::",
-    "listen_port": $port,
+    "listen": "0.0.0.0",
+    "port": $port,
     "protocol": "hysteria2",
     "settings": {"users": [{"password": "$pass"}]}
   }],
@@ -438,8 +438,8 @@ JEOF
 {
   "inbounds": [{
     "tag": "tuic-in",
-    "listen": "::",
-    "listen_port": $port,
+    "listen": "0.0.0.0",
+    "port": $port,
     "protocol": "tuic",
     "settings": {"users": [{"uuid": "$uuid", "password": "$pass"}]}
   }],
@@ -452,8 +452,8 @@ JEOF
 {
   "inbounds": [{
     "tag": "ss-in",
-    "listen": "::",
-    "listen_port": $port,
+    "listen": "0.0.0.0",
+    "port": $port,
     "protocol": "shadowsocks",
     "settings": {"method": "aes-256-gcm", "password": "$pass"}
   }],
@@ -466,8 +466,8 @@ JEOF
 {
   "inbounds": [{
     "tag": "socks-in",
-    "listen": "::",
-    "listen_port": $port,
+    "listen": "0.0.0.0",
+    "port": $port,
     "protocol": "socks",
     "settings": {"auth": "password", "accounts": [{"user": "fusionbox", "pass": "$pass"}]}
   }],
@@ -499,7 +499,7 @@ proxy_list() {
   local i=1
   for f in "${configs[@]}"; do
     local name=$(basename "$f" .json)
-    local port=$(grep -o '"listen_port": [0-9]*' "$f" 2>/dev/null | head -1 | awk '{print $2}')
+    local port=$(grep -o '"port": [0-9]*' "$f" 2>/dev/null | head -1 | awk '{print $2}')
     local proto=$(grep -o '"protocol": "[a-z]*' "$f" 2>/dev/null | head -1 | cut -d'"' -f4)
     msg "  ${F_GREEN}$i${F_RESET}) $name ${F_CYAN}($proto:$port)${F_RESET}"
     i=$((i+1))
@@ -668,7 +668,7 @@ proxy_url() {
     return 1
   fi
 
-  local port=$(grep -o '"listen_port": [0-9]*' "$conf_file" | head -1 | awk '{print $2}')
+  local port=$(grep -o '"port": [0-9]*' "$conf_file" | head -1 | awk '{print $2}')
   local proto=$(grep -o '"protocol": "[a-z]*' "$conf_file" | head -1 | cut -d'"' -f4)
   local uuid=$(grep -o '"id": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local pass=$(grep -o '"password": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
