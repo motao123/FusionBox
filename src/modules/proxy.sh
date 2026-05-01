@@ -221,14 +221,16 @@ _proxy_rebuild_config() {
     [[ ! -f "$f" ]] && continue
     [[ "$(basename "$f")" == "config.json" ]] && continue
 
-    # Extract inbounds array content (between first [ and ])
-    local inbounds=$(sed -n '/"inbounds"/,/^\s*\]/p' "$f" | sed '1d;$d')
-    if [[ -n "$inbounds" ]]; then
+    # Extract the inbound object: from first { after "inbounds" to the matching }
+    local inbound=$(awk '/"inbounds"/{found=1} found && /{/{depth=0; found=0; for(i=1;i<=length($0);i++){c=substr($0,i,1); if(c=="{")depth++; if(c=="}")depth--}; print}' "$f" 2>/dev/null)
+    # Simpler approach: extract lines between "inbounds": [{ and }]
+    inbound=$(sed -n '/"inbounds"/,/}],/p' "$f" | sed '1s/.*\[{//; $s/}],.*//' | sed '/^$/d')
+    if [[ -n "$inbound" ]]; then
       if [[ $first -eq 1 ]]; then
-        all_inbounds="$inbounds"
+        all_inbounds="{$inbound}"
         first=0
       else
-        all_inbounds="$inbounds,$all_inbounds"
+        all_inbounds="{$inbound},$all_inbounds"
       fi
     fi
   done
