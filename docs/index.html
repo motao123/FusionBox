@@ -19,9 +19,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
 .navbar .container{display:flex;align-items:center;justify-content:space-between;height:56px}
 .logo{display:flex;align-items:center;gap:5px;color:var(--text);font-weight:700;font-size:1.05em;text-decoration:none}
 .logo em{font-style:normal;color:var(--accent)}
-.navbar nav{display:flex;align-items:center;gap:24px}
-.navbar nav a{color:var(--dim);font-size:.88em;text-decoration:none;transition:color .15s}
-.navbar nav a:hover{color:var(--text)}
+.nav-links{display:flex;align-items:center;gap:24px}
+.nav-links a{color:var(--dim);font-size:.88em;text-decoration:none;transition:color .15s}
+.nav-links a:hover{color:var(--text)}
 
 /* hero */
 .hero{padding:140px 0 80px;text-align:center}
@@ -99,7 +99,6 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   .sc:nth-child(3){border-top:1px solid var(--border2)}
   .sc:nth-child(4){border-right:none;border-top:1px solid var(--border2)}
   .mg{grid-template-columns:1fr 1fr}
-  .mc{margin-top:0;margin-left:0}
 }
 @media(max-width:640px){
   .fg{grid-template-columns:1fr}
@@ -124,11 +123,11 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
 <nav class="navbar">
   <div class="container">
     <a href="#" class="logo">Fusion<em>Box</em></a>
-    <nav>
+    <div class="nav-links">
       <a href="#modules">模块</a>
       <a href="#features">特性</a>
       <a href="https://github.com/motao123/FusionBox">GitHub</a>
-    </nav>
+    </div>
   </div>
 </nav>
 
@@ -256,7 +255,7 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
     <div class="lk">
       <a href="https://github.com/motao123/FusionBox">GitHub</a>
       <a href="https://github.com/motao123/FusionBox/issues">Issues</a>
-      <a href="https://github.com/motao123/FusionBox/blob/main/README.md">文档</a>
+      <a href="https://github.com/motao123/FusionBox/blob/main/README.md">Guide</a>
       <a href="https://github.com/motao123/FusionBox/blob/main/LICENSE">License</a>
     </div>
     <p>FusionBox &copy; 2026 &middot; MIT License</p>
