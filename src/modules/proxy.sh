@@ -144,7 +144,10 @@ _proxy_download_xray() {
   local info=$(curl -s "$api_url" 2>/dev/null)
   local tag=$(echo "$info" | grep '"tag_name"' | cut -d'"' -f4)
   [[ -z "$tag" ]] && return 1
-  local filename="Xray-linux-${arch}.zip"
+  # Xray uses "64" for amd64, "arm64-v8a" for arm64
+  local xray_arch="64"
+  [[ "$arch" == "arm64" ]] && xray_arch="arm64-v8a"
+  local filename="Xray-linux-${xray_arch}.zip"
   local dl_url="https://github.com/XTLS/Xray-core/releases/download/$tag/$filename"
   _download "$dl_url" "$tmpdir/xray.zip" || return 1
   unzip -o "$tmpdir/xray.zip" xray -d "$tmpdir/" 2>/dev/null
@@ -156,7 +159,10 @@ _proxy_download_v2ray() {
   local info=$(curl -s "$api_url" 2>/dev/null)
   local tag=$(echo "$info" | grep '"tag_name"' | cut -d'"' -f4)
   [[ -z "$tag" ]] && return 1
-  local filename="v2ray-linux-${arch}.zip"
+  # v2ray uses "64" for amd64
+  local v2ray_arch="64"
+  [[ "$arch" == "arm64" ]] && v2ray_arch="arm64-v8a"
+  local filename="v2ray-linux-${v2ray_arch}.zip"
   local dl_url="https://github.com/v2fly/v2ray-core/releases/download/$tag/$filename"
   _download "$dl_url" "$tmpdir/v2ray.zip" || return 1
   unzip -o "$tmpdir/v2ray.zip" v2ray -d "$tmpdir/" 2>/dev/null
@@ -168,11 +174,22 @@ _proxy_download_singbox() {
   local info=$(curl -s "$api_url" 2>/dev/null)
   local tag=$(echo "$info" | grep '"tag_name"' | cut -d'"' -f4)
   [[ -z "$tag" ]] && return 1
-  local filename="sing-box-${tag#v}-linux-${arch}.tar.gz"
+  # Try glibc first, then plain
+  local ver="${tag#v}"
+  local filename="sing-box-${ver}-linux-${arch}.tar.gz"
   local dl_url="https://github.com/SagerNet/sing-box/releases/download/$tag/$filename"
-  _download "$dl_url" "$tmpdir/sing-box.tar.gz" || return 1
+  if ! _download "$dl_url" "$tmpdir/sing-box.tar.gz" 2>/dev/null; then
+    filename="sing-box-${ver}-linux-${arch}-glibc.tar.gz"
+    dl_url="https://github.com/SagerNet/sing-box/releases/download/$tag/$filename"
+    _download "$dl_url" "$tmpdir/sing-box.tar.gz" || return 1
+  fi
   tar xzf "$tmpdir/sing-box.tar.gz" -C "$tmpdir" 2>/dev/null
-  find "$tmpdir" -name "sing-box" -type f -exec cp {} "$tmpdir/" \; 2>/dev/null
+  find "$tmpdir" -name "sing-box" -type f -not -path "*/sing-box.tar.gz" -exec cp {} "$tmpdir/" \; 2>/dev/null
+  # Also check if binary is in extracted subdirectory
+  if [[ ! -f "$tmpdir/sing-box" ]]; then
+    local extracted_dir=$(find "$tmpdir" -maxdepth 1 -type d -name "sing-box-*" | head -1)
+    [[ -f "$extracted_dir/sing-box" ]] && cp "$extracted_dir/sing-box" "$tmpdir/"
+  fi
 }
 
 _proxy_download_clash() {
@@ -181,9 +198,14 @@ _proxy_download_clash() {
   local info=$(curl -s "$api_url" 2>/dev/null)
   local tag=$(echo "$info" | grep '"tag_name"' | cut -d'"' -f4)
   [[ -z "$tag" ]] && return 1
-  local filename="mihomo-linux-${arch}-${tag}.gz"
+  # Try compatible version first
+  local filename="mihomo-linux-${arch}-compatible-${tag}.gz"
   local dl_url="https://github.com/MetaCubeX/mihomo/releases/download/$tag/$filename"
-  _download "$dl_url" "$tmpdir/clash.gz" || return 1
+  if ! _download "$dl_url" "$tmpdir/clash.gz" 2>/dev/null; then
+    filename="mihomo-linux-${arch}-${tag}.gz"
+    dl_url="https://github.com/MetaCubeX/mihomo/releases/download/$tag/$filename"
+    _download "$dl_url" "$tmpdir/clash.gz" || return 1
+  fi
   gunzip -f "$tmpdir/clash.gz" 2>/dev/null
   mv "$tmpdir/clash" "$tmpdir/clash-meta" 2>/dev/null || \
   mv "$tmpdir/mihomo" "$tmpdir/clash-meta" 2>/dev/null
