@@ -350,14 +350,6 @@ FusionBox/
     └── comprehensive_test.sh  # 综合测试
 ```
 
-## 功能覆盖对比
-
-| 对标项目 | 覆盖状态 |
-|----------|----------|
-| [BlueSkyXN/SKY-BOX](https://github.com/BlueSkyXN/SKY-BOX) | 100% ✅ |
-| [233boy/sing-box](https://github.com/233boy/sing-box) | 100% ✅ |
-| [kejilion/sh](https://github.com/kejilion/sh) | 100% ✅ |
-
 ## 开源协议
 
 MIT License
