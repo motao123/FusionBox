@@ -497,7 +497,7 @@ proxy_list() {
 
   local configs=()
   for f in "$P_CONF_DIR"/*.json; do
-    [[ -f "$f" ]] && configs+=("$f")
+    [[ -f "$f" ]] && [[ "$(basename "$f")" != "config.json" ]] && configs+=("$f")
   done
 
   if [[ ${#configs[@]} -eq 0 ]]; then
