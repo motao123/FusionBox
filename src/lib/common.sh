@@ -44,6 +44,7 @@ L() {
 }
 
 _load_lang() {
+  declare -A _LANG_DATA
   local lang="$1"
   _LANG_DATA=()
   if [[ -f "$FUSION_I18N_DIR/$lang.sh" ]]; then
