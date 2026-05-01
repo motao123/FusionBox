@@ -5,242 +5,101 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FusionBox - Linux 服务器全能管理工具箱</title>
 <meta name="description" content="FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成代理管理、系统管理、网络工具、网站部署等九大核心模块。">
-<meta name="theme-color" content="#1a1b1e">
+<meta name="theme-color" content="#0f1117">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <style>
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-:root {
-  --bg: #1a1b1e;
-  --surface: #25262b;
-  --surface-hover: #2c2e33;
-  --border: #373a40;
-  --text: #c1c2c5;
-  --text-title: #ffffff;
-  --text-dim: #909296;
-  --accent: #4c9aff;
-  --accent-hover: #6aabff;
-  --green: #51cf66;
-  --radius: 6px;
-}
-html { scroll-behavior: smooth; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  line-height: 1.7;
-}
-.container { max-width: 960px; margin: 0 auto; padding: 0 20px; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { color: var(--accent-hover); text-decoration: underline; }
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--surface:#171923;--surface2:#1e2030;--border:#2a2c3a;--text:#d1d5db;--title:#f1f3f5;--muted:#7c7f93;--accent:#d97706;--accent2:#f59e0b;--green:#34d399;--radius:8px}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:15px}
+.container{max-width:1000px;margin:0 auto;padding:0 24px}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
 
-/* Navbar */
-.navbar {
-  position: fixed; top: 0; left: 0; right: 0;
-  z-index: 100;
-  padding: 14px 0;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-}
-.navbar .container {
-  display: flex; align-items: center; justify-content: space-between;
-}
-.navbar .logo {
-  display: flex; align-items: center; gap: 8px;
-  color: var(--text-title); font-weight: 700; font-size: 1.1em;
-  text-decoration: none;
-}
-.navbar .logo-icon {
-  width: 28px; height: 28px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px;
-}
-.navbar .nav-links { display: flex; align-items: center; gap: 20px; }
-.navbar .nav-links a {
-  color: var(--text-dim); font-size: 0.88em; text-decoration: none;
-}
-.navbar .nav-links a:hover { color: var(--text); }
+/* navbar */
+.navbar{position:fixed;top:0;left:0;right:0;z-index:100;padding:14px 0;background:var(--bg);border-bottom:1px solid var(--border)}
+.navbar .container{display:flex;align-items:center;justify-content:space-between}
+.navbar .logo{display:flex;align-items:center;gap:8px;color:var(--title);font-weight:700;font-size:1.05em;text-decoration:none}
+.navbar .logo-icon{width:28px;height:28px;background:var(--surface2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.navbar nav{display:flex;align-items:center;gap:20px}
+.navbar nav a{color:var(--muted);font-size:0.88em}
+.navbar nav a:hover{color:var(--text)}
 
-/* Hero */
-.hero {
-  padding: 140px 0 60px;
-  border-bottom: 1px solid var(--border);
-}
-.hero h1 {
-  font-size: 2.6em; font-weight: 800;
-  color: var(--text-title);
-  margin-bottom: 12px;
-  letter-spacing: -0.5px;
-}
-.hero .subtitle {
-  font-size: 1.05em; color: var(--text-dim);
-  margin-bottom: 32px;
-  max-width: 560px;
-}
-.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 28px; }
-.btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 9px 20px; border-radius: var(--radius);
-  font-size: 0.9em; font-weight: 500;
-  text-decoration: none; border: 1px solid var(--border);
-  background: var(--surface); color: var(--text);
-  transition: background 0.15s, border-color 0.15s;
-}
-.btn:hover { background: var(--surface-hover); border-color: var(--accent); text-decoration: none; color: var(--text); }
-.btn-primary {
-  background: var(--accent); color: #fff; border-color: var(--accent);
-}
-.btn-primary:hover { background: var(--accent-hover); color: #fff; }
+/* hero */
+.hero{padding:140px 0 64px}
+.hero .tag{display:inline-block;font-size:0.78em;font-weight:600;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px}
+.hero h1{font-size:3.2em;font-weight:800;color:var(--title);line-height:1.05;margin-bottom:16px;letter-spacing:-1px}
+.hero .sub{font-size:1.05em;color:var(--muted);max-width:540px;margin-bottom:32px;line-height:1.6}
+.hero-btns{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:36px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border-radius:var(--radius);font-size:0.9em;font-weight:500;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;transition:all .15s}
+.btn:hover{background:var(--surface2);border-color:var(--accent);text-decoration:none;color:var(--text)}
+.btn-gh{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-gh:hover{background:var(--accent2);color:#fff}
+.btn-zip{background:var(--surface);color:var(--text);border-color:var(--border)}
+.btn-zip:hover{border-color:var(--accent2)}
 
-/* Install block */
-.install-block {
-  background: #000;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.install-block .header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 14px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  font-size: 0.78em; color: var(--text-dim);
-}
-.install-block .header .dots { display: flex; gap: 6px; }
-.install-block .header .dot {
-  width: 10px; height: 10px; border-radius: 50%;
-}
-.install-block .header .dot.r { background: #fa5252; }
-.install-block .header .dot.y { background: #fab005; }
-.install-block .header .dot.g { background: #51cf66; }
-.install-block .body {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px;
-  font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
-  font-size: 0.82em; color: var(--green);
-  gap: 12px;
-}
-.install-block .body .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.install-block .body .copy {
-  flex-shrink: 0;
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.9em;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  font-family: inherit;
-}
-.install-block .body .copy:hover { background: var(--surface-hover); border-color: var(--accent); }
-.install-block .body .copy.copied { background: #2b5a2b; border-color: var(--green); color: var(--green); }
+/* terminal block */
+term{display:block;background:#000;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+term .bar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border)}
+term .bar .lab{font-size:0.75em;color:var(--muted);font-family:"SF Mono","Cascadia Code","Consolas",monospace}
+term .body{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:12px}
+term .body code{font-family:"SF Mono","Cascadia Code","Consolas",monospace;font-size:0.82em;color:var(--green);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+term .body .cp{padding:6px 14px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.8em;cursor:pointer;transition:all .12s;white-space:nowrap;font-family:inherit}
+term .body .cp:hover{background:var(--surface2);border-color:var(--accent2)}
+term .body .cp.done{background:#064e3b;border-color:var(--green);color:var(--green)}
 
-/* Stats */
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  border-bottom: 1px solid var(--border);
-}
-.stat-cell {
-  padding: 28px 20px;
-  text-align: center;
-  border-right: 1px solid var(--border);
-}
-.stat-cell:last-child { border-right: none; }
-.stat-cell .num {
-  font-size: 1.8em; font-weight: 700;
-  color: var(--text-title);
-  font-variant-numeric: tabular-nums;
-}
-.stat-cell .label {
-  font-size: 0.82em; color: var(--text-dim);
-  margin-top: 4px;
-}
+/* stats row */
+.sr{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border)}
+.sc{padding:32px 20px;text-align:center;border-right:1px solid var(--border)}
+.sc:last-child{border-right:none}
+.sc .n{font-size:2em;font-weight:700;color:var(--title);font-variant-numeric:tabular-nums}
+.sc .l{font-size:0.82em;color:var(--muted);margin-top:2px}
 
-/* Section */
-.section { padding: 60px 0; border-bottom: 1px solid var(--border); }
-.section:last-of-type { border-bottom: none; }
-.section-header { margin-bottom: 32px; }
-.section-header h2 {
-  font-size: 1.5em; font-weight: 700;
-  color: var(--text-title);
-  margin-bottom: 6px;
-}
-.section-header .desc { color: var(--text-dim); font-size: 0.92em; }
+/* sections */
+.s{padding:64px 0;border-bottom:1px solid var(--border)}
+.s:last-of-type{border-bottom:none}
+.sh{margin-bottom:32px}
+.sh .t{font-size:0.8em;font-weight:600;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.sh h2{font-size:1.6em;font-weight:700;color:var(--title);margin-bottom:6px}
+.sh .d{color:var(--muted);font-size:0.92em}
 
-/* Module cards */
-.modules-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.module-card {
-  background: var(--bg);
-  padding: 24px;
-  transition: background 0.15s;
-}
-.module-card:hover { background: var(--surface); }
-.module-card .cmd {
-  font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
-  font-size: 0.78em;
-  color: var(--green);
-  margin-bottom: 8px;
-}
-.module-card h3 {
-  font-size: 1.05em;
-  font-weight: 600;
-  color: var(--text-title);
-  margin-bottom: 6px;
-}
-.module-card p {
-  font-size: 0.88em;
-  color: var(--text-dim);
-  line-height: 1.6;
-}
+/* module grid */
+.mg{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+.mc{padding:24px;border:1px solid var(--border);margin-top:-1px;margin-left:-1px;background:var(--surface);transition:background .15s}
+.mc:hover{background:var(--surface2)}
+.mc .l{font-family:"SF Mono","Cascadia Code","Consolas",monospace;font-size:0.78em;color:var(--green);margin-bottom:8px}
+.mc h3{font-size:1.05em;font-weight:600;color:var(--title);margin-bottom:6px}
+.mc p{font-size:0.88em;color:var(--muted);line-height:1.6}
+.mc .i{width:36px;height:36px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:14px}
 
-/* Features */
-.features-list { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.feature-cell {
-  background: var(--bg);
-  padding: 14px 18px;
-  font-size: 0.9em;
-  display: flex; align-items: center; gap: 10px;
-}
-.feature-cell::before {
-  content: '';
-  width: 6px; height: 6px;
-  background: var(--green);
-  border-radius: 50%;
-  flex-shrink: 0;
-}
+/* feature grid */
+.fg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.fc{padding:14px 18px;font-size:0.9em;background:var(--surface);display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)}
+.fc:nth-child(odd){border-right:1px solid var(--border)}
+.fc:nth-last-child(-n+2){border-bottom:none}
+.fc:nth-last-child(-n+2):nth-child(odd){border-bottom:none}
+.fc::before{content:'';width:5px;height:5px;background:var(--green);border-radius:50%;flex-shrink:0}
 
-/* Footer */
-.footer {
-  padding: 32px 0;
-  text-align: center;
-  color: var(--text-dim);
-  font-size: 0.85em;
-}
-.footer .links { display: flex; justify-content: center; gap: 16px; margin-bottom: 10px; }
+/* footer */
+.ft{padding:32px 0;text-align:center;font-size:0.85em;color:var(--muted)}
+.ft .lk{display:flex;justify-content:center;gap:16px;margin-bottom:10px}
+.ft .lk a{color:var(--muted)}
+.ft .lk a:hover{color:var(--text)}
 
-/* Responsive */
-@media (max-width: 768px) {
-  .hero h1 { font-size: 2em; }
-  .stats { grid-template-columns: repeat(2, 1fr); }
-  .stat-cell:nth-child(2) { border-right: none; }
-  .stat-cell:nth-child(3), .stat-cell:nth-child(4) { border-top: 1px solid var(--border); }
-  .features-list { grid-template-columns: 1fr; }
+/* responsive */
+@media(max-width:768px){
+  .hero h1{font-size:2.2em}
+  .sr{grid-template-columns:repeat(2,1fr)}
+  .sc:nth-child(2){border-right:none}
+  .sc:nth-child(3),.sc:nth-child(4){border-top:1px solid var(--border)}
+  .fg{grid-template-columns:1fr}
+  .fc{border-right:none!important}
+  .fc:nth-last-child(-n+2){border-bottom:1px solid var(--border)}
+  .fc:last-child{border-bottom:none!important}
 }
-@media (max-width: 480px) {
-  .install-block .body { flex-direction: column; align-items: stretch; }
-  .install-block .body .text { white-space: normal; word-break: break-all; }
+@media(max-width:480px){
+  term .body{flex-direction:column;align-items:stretch}
+  term .body code{white-space:normal;word-break:break-all}
 }
 </style>
 </head>
@@ -248,137 +107,133 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 
 <nav class="navbar">
   <div class="container">
-    <a href="#" class="logo">
-      <span class="logo-icon">⚡</span>
-      FusionBox
-    </a>
-    <div class="nav-links">
+    <a href="#" class="logo"><span class="logo-icon">⚡</span>FusionBox</a>
+    <nav>
       <a href="#modules">模块</a>
       <a href="#features">特性</a>
       <a href="https://github.com/motao123/FusionBox">GitHub</a>
-    </div>
+    </nav>
   </div>
 </nav>
 
 <section class="hero">
   <div class="container">
+    <div class="tag">v1.1.0 &mdash; Pure Bash</div>
     <h1>FusionBox</h1>
-    <p class="subtitle">一站式 Linux 服务器管理工具箱 — 九大核心模块，覆盖代理、系统、网络、网站部署、Docker、应用市场等日常运维场景。</p>
-    <div class="hero-actions">
-      <a href="https://github.com/motao123/FusionBox" class="btn btn-primary" target="_blank" rel="noopener">GitHub 仓库</a>
-      <a href="https://github.com/motao123/FusionBox/archive/refs/heads/main.zip" class="btn">下载源码</a>
+    <p class="sub">一站式 Linux 服务器管理工具箱。代理、系统、网络、网站部署、Docker、应用市场 &mdash; 覆盖日常运维全部场景。</p>
+    <div class="hero-btns">
+      <a href="https://github.com/motao123/FusionBox" class="btn btn-gh">GitHub 仓库</a>
+      <a href="https://github.com/motao123/FusionBox/archive/refs/heads/main.zip" class="btn btn-zip">下载 ZIP</a>
     </div>
-    <div class="install-block">
-      <div class="header">
-        <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
-        <span>安装 FusionBox</span>
-        <span></span>
+    <term>
+      <div class="bar">
+        <span class="lab">install.sh</span>
+        <span class="lab">bash</span>
       </div>
       <div class="body">
-        <span class="text">$ bash &lt;(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)</span>
-        <button class="copy" onclick="copyInstall(this)">复制</button>
+        <code>$ bash &lt;(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)</code>
+        <button class="cp" onclick="cpy(this)">复制</button>
       </div>
-    </div>
+    </term>
   </div>
 </section>
 
-<div class="stats">
-  <div class="stat-cell">
-    <div class="num">9</div>
-    <div class="label">核心模块</div>
-  </div>
-  <div class="stat-cell">
-    <div class="num">80+</div>
-    <div class="label">应用市场</div>
-  </div>
-  <div class="stat-cell">
-    <div class="num">15</div>
-    <div class="label">代理协议</div>
-  </div>
-  <div class="stat-cell">
-    <div class="num">4</div>
-    <div class="label">代理后端</div>
-  </div>
+<div class="sr">
+  <div class="sc"><div class="n">9</div><div class="l">核心模块</div></div>
+  <div class="sc"><div class="n">80+</div><div class="l">应用市场</div></div>
+  <div class="sc"><div class="n">15</div><div class="l">代理协议</div></div>
+  <div class="sc"><div class="n">4</div><div class="l">代理后端</div></div>
 </div>
 
-<section class="section" id="modules">
+<section class="s" id="modules">
   <div class="container">
-    <div class="section-header">
+    <div class="sh">
+      <div class="t">Modules</div>
       <h2>功能模块</h2>
-      <p class="desc">九大核心模块，覆盖 Linux 服务器运维的全部场景</p>
+      <p class="d">九大核心模块，覆盖 Linux 服务器运维全部场景</p>
     </div>
-    <div class="modules-grid">
-      <div class="module-card">
-        <div class="cmd">fusionbox proxy</div>
+    <div class="mg">
+      <div class="mc">
+        <div class="i">🛡️</div>
+        <div class="l">fusionbox proxy</div>
         <h3>代理管理</h3>
-        <p>Xray / v2ray / sing-box / Clash.Meta 四后端，15 种协议一键配置，支持 VLESS / VMess / Trojan / Hysteria2 / TUIC</p>
+        <p>Xray / v2ray / sing-box / Clash.Meta 四后端，15 种协议，一键安装配置</p>
       </div>
-      <div class="module-card">
-        <div class="cmd">fusionbox system</div>
+      <div class="mc">
+        <div class="i">⚙️</div>
+        <div class="l">fusionbox system</div>
         <h3>系统管理</h3>
-        <p>BBR 加速、性能测试、SSH 密钥、防火墙、定时任务、磁盘管理、时区同步、回收站</p>
+        <p>BBR 加速、性能测试、SSH 密钥、防火墙、定时任务、磁盘管理、回收站</p>
       </div>
-      <div class="module-card">
-        <div class="cmd">fusionbox network</div>
+      <div class="mc">
+        <div class="i">🌐</div>
+        <div class="l">fusionbox network</div>
         <h3>网络工具</h3>
-        <p>IP 查询、流媒体解锁检测、网速测试、DNS 对比、路由追踪、端口检测、Ping</p>
+        <p>IP 查询、流媒体检测、网速测试、DNS、路由追踪、端口检测、Ping</p>
       </div>
-      <div class="module-card">
-        <div class="cmd">fusionbox web</div>
+      <div class="mc">
+        <div class="i">🌍</div>
+        <div class="l">fusionbox web</div>
         <h3>网站部署</h3>
-        <p>LNMP 环境、17 种应用部署（WordPress / Nextcloud / Emby 等）、反向代理、SSL 证书、站点备份</p>
+        <p>LNMP 环境、17 种应用部署、反向代理、SSL 证书、站点备份</p>
       </div>
-      <div class="module-card">
-        <div class="cmd">fusionbox panels</div>
+      <div class="mc">
+        <div class="i">📦</div>
+        <div class="l">fusionbox panels</div>
         <h3>面板与工具</h3>
-        <p>Docker 完整管理、宝塔面板、FRP 内网穿透、Aria2、Rclone、哪吒监控</p>
+        <p>Docker 完整管理、宝塔面板、FRP、Aria2、Rclone、哪吒监控</p>
       </div>
-      <div class="module-card">
-        <div class="cmd">fusionbox market</div>
+      <div class="mc">
+        <div class="i">🏪</div>
+        <div class="l">fusionbox market</div>
         <h3>应用市场</h3>
-        <p>80+ 常用软件一键安装，覆盖开发、网络、系统、Web 服务、代理、容器等 10 大分类</p>
+        <p>80+ 软件一键安装，覆盖开发、网络、系统、Web、代理等 10 类</p>
       </div>
-      <div class="module-card">
-        <div class="cmd">fusionbox warp</div>
+      <div class="mc">
+        <div class="i">🔃</div>
+        <div class="l">fusionbox warp</div>
         <h3>WARP 管理</h3>
-        <p>Cloudflare WARP 一键安装，Proxy 模式 SOCKS5 出站，流媒体解锁</p>
+        <p>Cloudflare WARP Proxy 模式，SOCKS5 出站，流媒体解锁</p>
       </div>
-      <div class="module-card">
-        <div class="cmd">fusionbox workspace</div>
+      <div class="mc">
+        <div class="i">💻</div>
+        <div class="l">fusionbox workspace</div>
         <h3>后台工作区</h3>
         <p>Screen / Tmux 会话管理，后台长时间任务运行</p>
       </div>
-      <div class="module-card">
-        <div class="cmd">fusionbox cluster</div>
+      <div class="mc">
+        <div class="i">🔗</div>
+        <div class="l">fusionbox cluster</div>
         <h3>集群控制</h3>
-        <p>多服务器批量管理、游戏服务端部署、Oracle 防回收、k 命令快捷方式</p>
+        <p>多服务器批量管理、游戏服务端、Oracle 防回收、k 命令</p>
       </div>
     </div>
   </div>
 </section>
 
-<section class="section" id="features">
+<section class="s" id="features">
   <div class="container">
-    <div class="section-header">
+    <div class="sh">
+      <div class="t">Features</div>
       <h2>核心特性</h2>
-      <p class="desc">轻量、实用、易上手 — FusionBox 让服务器管理更简单</p>
+      <p class="d">轻量、实用、可靠 &mdash; 让服务器管理更简单</p>
     </div>
-    <div class="features-list">
-      <div class="feature-cell">纯 Bash 实现，零外部依赖</div>
-      <div class="feature-cell">支持 Debian / Ubuntu / CentOS / Fedora / Alpine</div>
-      <div class="feature-cell">支持 amd64 和 arm64 双架构</div>
-      <div class="feature-cell">中文交互界面，菜单 + 命令行双模式</div>
-      <div class="feature-cell">自动检测系统环境与依赖</div>
-      <div class="feature-cell">完整的操作日志记录</div>
-      <div class="feature-cell">内置一键更新</div>
-      <div class="feature-cell">MIT 开源协议</div>
+    <div class="fg">
+      <div class="fc">纯 Bash 实现，零外部依赖</div>
+      <div class="fc">支持 Debian / Ubuntu / CentOS / Fedora / Alpine</div>
+      <div class="fc">amd64 + arm64 双架构</div>
+      <div class="fc">中文交互界面，菜单 + 命令行双模式</div>
+      <div class="fc">自动检测系统环境与依赖</div>
+      <div class="fc">完整操作日志记录</div>
+      <div class="fc">内置一键更新</div>
+      <div class="fc">MIT 协议开源</div>
     </div>
   </div>
 </section>
 
-<footer class="footer">
+<footer class="ft">
   <div class="container">
-    <div class="links">
+    <div class="lk">
       <a href="https://github.com/motao123/FusionBox">GitHub</a>
       <a href="https://github.com/motao123/FusionBox/issues">Issues</a>
       <a href="https://github.com/motao123/FusionBox/blob/main/README.md">文档</a>
@@ -388,17 +243,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 </footer>
 
 <script>
-function copyInstall(btn) {
-  const text = "bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)";
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = '已复制';
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = '复制';
-      btn.classList.remove('copied');
-    }, 2000);
-  });
-}
+function cpy(el){navigator.clipboard.writeText("bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)").then(()=>{el.textContent='✓';el.classList.add('done');setTimeout(()=>{el.textContent='复制';el.classList.remove('done')},1800)})}
 </script>
 </body>
 </html>
