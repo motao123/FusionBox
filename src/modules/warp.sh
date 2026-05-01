@@ -54,7 +54,7 @@ warp_install() {
       ;;
   esac
 
-  if command -v warp-cli --accept-tos &>/dev/null || systemctl is-active warp-svc &>/dev/null; then
+  if command -v warp-cli &>/dev/null || systemctl is-active warp-svc &>/dev/null; then
     msg_ok "WARP 安装完成"
 
     # Register
@@ -78,7 +78,7 @@ warp_install() {
 # ---- 卸载 WARP ----
 warp_uninstall() {
   _require_root
-  if ! command -v warp-cli --accept-tos &>/dev/null && ! systemctl is-active warp-svc &>/dev/null; then
+  if ! command -v warp-cli &>/dev/null && ! systemctl is-active warp-svc &>/dev/null; then
     msg_warn "WARP 未安装"
     pause; return
   fi
@@ -99,7 +99,7 @@ warp_uninstall() {
 # ---- WARP 状态 ----
 warp_status() {
   msg ""
-  if command -v warp-cli --accept-tos &>/dev/null; then
+  if command -v warp-cli &>/dev/null; then
     msg "  ${F_BOLD}WARP 版本:${F_RESET} $(warp-cli --accept-tos --version 2>/dev/null)"
     local reg_status=$(warp-cli --accept-tos registration show 2>/dev/null | head -1)
     msg "  ${F_BOLD}注册状态:${F_RESET} ${reg_status:-未注册}"
@@ -115,9 +115,18 @@ warp_status() {
 # ---- 开启 WARP ----
 warp_on() {
   _require_root
-  if ! command -v warp-cli --accept-tos &>/dev/null; then
+  if ! command -v warp-cli &>/dev/null; then
     msg_err "WARP 未安装，请先安装"
     pause; return
+  fi
+
+  # 检查当前模式，如果是 WARP 全局模式，先切换到 Proxy 模式防止 SSH 断开
+  local current_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
+  if [[ "$current_mode" == "warp" ]]; then
+    msg_warn "检测到 WARP 全局模式，远程服务器使用此模式会导致 SSH 断开！"
+    msg "  ${F_BOLD}自动切换到 Proxy 模式 (SOCKS5 代理)${F_RESET}"
+    warp-cli --accept-tos mode proxy 2>/dev/null
+    sleep 1
   fi
 
   warp-cli --accept-tos connect 2>/dev/null
@@ -153,7 +162,7 @@ warp_off() {
 # ---- 切换模式 ----
 warp_mode() {
   _require_root
-  if ! command -v warp-cli --accept-tos &>/dev/null; then
+  if ! command -v warp-cli &>/dev/null; then
     msg_err "WARP 未安装"
     pause; return
   fi
