@@ -81,12 +81,12 @@ tr() {
 
 pause() {
   msg ""
-  msg "$(tr MSG_PRESS_ENTER "按 Enter 键继续...")"
+  msg "按 Enter 键继续..."
   read -r
 }
 
 confirm() {
-  local msg_str="${1:-$(tr MSG_CONFIRM "确认执行？")} [$F_GREEN$(tr MSG_YES "Y")$F_RESET/$(tr MSG_NO "n")]: "
+  local msg_str="${1:-确认执行？} [$F_GREEN Y $F_RESET/n]: "
   msg "$msg_str"
   read -r ans
   [[ "$ans" =~ ^[Yy]?$ ]] && return 0 || return 1
