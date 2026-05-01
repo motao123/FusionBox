@@ -180,35 +180,37 @@ show_help() {
 
 # ---- Main Menu ----
 main_menu() {
-  _print_banner
+  while true; do
+    _print_banner
 
-  msg_title "主菜单"
-  msg ""
-  msg "  ${F_GREEN}1${F_RESET}) 代理管理"
-  msg "  ${F_GREEN}2${F_RESET}) 系统管理"
-  msg "  ${F_GREEN}3${F_RESET}) 网络工具"
-  msg "  ${F_GREEN}4${F_RESET}) 网站部署"
-  msg "  ${F_GREEN}5${F_RESET}) 面板与工具"
-  msg "  ${F_GREEN}6${F_RESET}) 应用市场"
-  msg "  ${F_GREEN}7${F_RESET}) 系统状态"
-  msg "  ${F_GREEN}8${F_RESET}) 帮助"
-  msg "  ${F_GREEN}0${F_RESET}) 退出"
-  msg ""
+    msg_title "主菜单"
+    msg ""
+    msg "  ${F_GREEN}1${F_RESET}) 代理管理"
+    msg "  ${F_GREEN}2${F_RESET}) 系统管理"
+    msg "  ${F_GREEN}3${F_RESET}) 网络工具"
+    msg "  ${F_GREEN}4${F_RESET}) 网站部署"
+    msg "  ${F_GREEN}5${F_RESET}) 面板与工具"
+    msg "  ${F_GREEN}6${F_RESET}) 应用市场"
+    msg "  ${F_GREEN}7${F_RESET}) 系统状态"
+    msg "  ${F_GREEN}8${F_RESET}) 帮助"
+    msg "  ${F_GREEN}0${F_RESET}) 退出"
+    msg ""
 
-  read -p "请选择 [0-8]: " main_choice
+    read -p "请选择 [0-8]: " main_choice
 
-  case "$main_choice" in
-    1) route proxy ;;
-    2) route system ;;
-    3) route network ;;
-    4) route web ;;
-    5) route panels ;;
-    6) route market ;;
-    7) show_status ;;
-    8) show_help ;;
-    0) msg "再见！"; _log_write "FusionBox 会话已结束"; break ;;
-    *) main_menu ;;
-  esac
+    case "$main_choice" in
+      1) route proxy ;;
+      2) route system ;;
+      3) route network ;;
+      4) route web ;;
+      5) route panels ;;
+      6) route market ;;
+      7) show_status ; pause ;;
+      8) show_help ;;
+      0) msg "再见！"; _log_write "FusionBox 会话已结束"; return ;;
+      *) ;;
+    esac
+  done
 }
 
 # ---- Entry ----
