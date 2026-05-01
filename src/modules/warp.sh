@@ -54,15 +54,15 @@ warp_install() {
       ;;
   esac
 
-  if command -v warp-cli &>/dev/null || systemctl is-active warp-svc &>/dev/null; then
+  if command -v warp-cli --accept-tos &>/dev/null || systemctl is-active warp-svc &>/dev/null; then
     msg_ok "WARP 安装完成"
 
     # Register
     msg_info "正在注册 WARP..."
-    warp-cli registration new 2>/dev/null
+    warp-cli --accept-tos registration new 2>/dev/null
 
     # Set default mode to proxy
-    warp-cli mode proxy 2>/dev/null
+    warp-cli --accept-tos mode proxy 2>/dev/null
 
     msg_ok "WARP 已注册，默认模式: Proxy (SOCKS5)"
     msg ""
@@ -78,14 +78,14 @@ warp_install() {
 # ---- 卸载 WARP ----
 warp_uninstall() {
   _require_root
-  if ! command -v warp-cli &>/dev/null && ! systemctl is-active warp-svc &>/dev/null; then
+  if ! command -v warp-cli --accept-tos &>/dev/null && ! systemctl is-active warp-svc &>/dev/null; then
     msg_warn "WARP 未安装"
     pause; return
   fi
 
   if confirm "确认卸载 WARP？"; then
-    warp-cli disconnect 2>/dev/null
-    warp-cli registration delete 2>/dev/null
+    warp-cli --accept-tos disconnect 2>/dev/null
+    warp-cli --accept-tos registration delete 2>/dev/null
     case "$F_PKG_MGR" in
       apt) apt-get remove -y cloudflare-warp 2>/dev/null ;;
       yum) yum remove -y cloudflare-warp 2>/dev/null ;;
@@ -99,13 +99,13 @@ warp_uninstall() {
 # ---- WARP 状态 ----
 warp_status() {
   msg ""
-  if command -v warp-cli &>/dev/null; then
-    msg "  ${F_BOLD}WARP 版本:${F_RESET} $(warp-cli --version 2>/dev/null)"
-    local reg_status=$(warp-cli registration show 2>/dev/null | head -1)
+  if command -v warp-cli --accept-tos &>/dev/null; then
+    msg "  ${F_BOLD}WARP 版本:${F_RESET} $(warp-cli --accept-tos --version 2>/dev/null)"
+    local reg_status=$(warp-cli --accept-tos registration show 2>/dev/null | head -1)
     msg "  ${F_BOLD}注册状态:${F_RESET} ${reg_status:-未注册}"
-    local conn_status=$(warp-cli status 2>/dev/null | head -1)
+    local conn_status=$(warp-cli --accept-tos status 2>/dev/null | head -1)
     msg "  ${F_BOLD}连接状态:${F_RESET} ${conn_status:-未连接}"
-    local warp_mode=$(warp-cli settings 2>/dev/null | grep -i mode | awk '{print $NF}')
+    local warp_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
     msg "  ${F_BOLD}当前模式:${F_RESET} ${warp_mode:-未知}"
   else
     msg "  WARP 未安装"
@@ -115,19 +115,19 @@ warp_status() {
 # ---- 开启 WARP ----
 warp_on() {
   _require_root
-  if ! command -v warp-cli &>/dev/null; then
+  if ! command -v warp-cli --accept-tos &>/dev/null; then
     msg_err "WARP 未安装，请先安装"
     pause; return
   fi
 
-  warp-cli connect 2>/dev/null
+  warp-cli --accept-tos connect 2>/dev/null
   sleep 2
-  local status=$(warp-cli status 2>/dev/null | head -1)
+  local status=$(warp-cli --accept-tos status 2>/dev/null | head -1)
   if echo "$status" | grep -qi "connected"; then
     msg_ok "WARP 已开启"
 
     # Show proxy info if in proxy mode
-    local warp_mode=$(warp-cli settings 2>/dev/null | grep -i mode | awk '{print $NF}')
+    local warp_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
     if [[ "$warp_mode" == "warp_proxy" ]]; then
       msg "  ${F_BOLD}SOCKS5 代理:${F_RESET} 127.0.0.1:40000"
     fi
@@ -144,7 +144,7 @@ warp_on() {
 # ---- 关闭 WARP ----
 warp_off() {
   _require_root
-  warp-cli disconnect 2>/dev/null
+  warp-cli --accept-tos disconnect 2>/dev/null
   msg_ok "WARP 已关闭"
   _log_write "WARP 已关闭"
   pause
@@ -153,14 +153,14 @@ warp_off() {
 # ---- 切换模式 ----
 warp_mode() {
   _require_root
-  if ! command -v warp-cli &>/dev/null; then
+  if ! command -v warp-cli --accept-tos &>/dev/null; then
     msg_err "WARP 未安装"
     pause; return
   fi
 
   msg_title "WARP 模式切换"
   msg ""
-  local current_mode=$(warp-cli settings 2>/dev/null | grep -i mode | awk '{print $NF}')
+  local current_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
   msg "  ${F_BOLD}当前模式:${F_RESET} ${current_mode:-未知}"
   msg ""
   msg "  ${F_GREEN}1${F_RESET}) WARP 模式 (全局代理，所有流量经过 WARP)"
@@ -172,17 +172,17 @@ warp_mode() {
 
   case "$mode_choice" in
     1)
-      warp-cli mode warp 2>/dev/null
+      warp-cli --accept-tos mode warp 2>/dev/null
       msg_ok "已切换到 WARP 模式（全局代理）"
       msg_warn "所有流量将经过 Cloudflare WARP"
       ;;
     2)
-      warp-cli mode proxy 2>/dev/null
+      warp-cli --accept-tos mode proxy 2>/dev/null
       msg_ok "已切换到 Proxy 模式"
       msg "  SOCKS5 代理地址: 127.0.0.1:40000"
       ;;
     3)
-      warp-cli mode doh 2>/dev/null
+      warp-cli --accept-tos mode doh 2>/dev/null
       msg_ok "已切换到 DoH 模式"
       ;;
     0) return ;;
@@ -198,9 +198,9 @@ warp_ip() {
   local real_ip=$(curl -s4 --connect-timeout 5 https://api.ipify.org 2>/dev/null)
   local warp_ip_check=""
 
-  if warp-cli status 2>/dev/null | grep -qi "connected"; then
+  if warp-cli --accept-tos status 2>/dev/null | grep -qi "connected"; then
     # Test through WARP proxy
-    local warp_mode=$(warp-cli settings 2>/dev/null | grep -i mode | awk '{print $NF}')
+    local warp_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
     if [[ "$warp_mode" == "warp_proxy" ]]; then
       warp_ip_check=$(curl -s4 --connect-timeout 5 --socks5-hostname 127.0.0.1:40000 https://api.ipify.org 2>/dev/null)
     else
@@ -230,10 +230,10 @@ warp_proxy() {
   msg_title "WARP 代理配置"
   msg ""
 
-  if ! warp-cli status 2>/dev/null | grep -qi "connected"; then
+  if ! warp-cli --accept-tos status 2>/dev/null | grep -qi "connected"; then
     msg_warn "WARP 未连接"
     if confirm "是否开启 WARP？"; then
-      warp-cli connect 2>/dev/null
+      warp-cli --accept-tos connect 2>/dev/null
       sleep 2
     fi
   fi
