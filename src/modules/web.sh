@@ -294,7 +294,7 @@ web_ssl() {
       certbot --nginx -d "$domain" --non-interactive --agree-tos --email admin@"$domain" 2>/dev/null || \
         certbot --nginx -d "$domain" 2>/dev/null || \
         msg_err "SSL 证书申请失败，请检查域名 DNS。"
-      _log_write "SSL obtained for $domain"
+      _log_write "SSL 证书已获取: $domain"
     else
       msg_info "未指定域名，Certbot 已安装可供手动使用。"
     fi

@@ -93,55 +93,251 @@ system_bbr() {
   msg_title "BBR 管理"
   msg ""
 
-  local cc; cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
-  msg "  ${F_BOLD}当前:${F_RESET} $cc"
-
-  if [[ "$cc" == "bbr" ]]; then
-    msg_ok "BBR 已启用"
-    msg ""
-    msg "  1) 禁用 BBR (恢复为 cubic)"
-    msg "  0) Back"
-    read -p "请选择: " bbr_choice
-    if [[ "$bbr_choice" == "1" ]]; then
-      sed -i '/tcp_congestion_control/d' /etc/sysctl.conf
-      sed -i '/default_qdisc/d' /etc/sysctl.conf
-      echo "net.ipv4.tcp_congestion_control = cubic" >> /etc/sysctl.conf
-      echo "net.core.default_qdisc = fq" >> /etc/sysctl.conf
-      sysctl -p 2>/dev/null
-      msg_info "已恢复为 cubic"
-    fi
-    return
-  fi
-
-  # Check kernel version
+  # Detect current status
+  local cc; cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "未知")
+  local qdisc; qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null || echo "未知")
   local kmaj; kmaj=$(uname -r | cut -d. -f1)
   local kmin; kmin=$(uname -r | cut -d. -f2)
+  local kpatch; kpatch=$(uname -r | cut -d. -f3)
 
-  if [[ $kmaj -lt 4 ]] || [[ $kmaj -eq 4 && $kmin -lt 9 ]]; then
-    msg_err "BBR 需要内核 4.9+"
-    msg_info "当前内核: $(uname -r)"
-    if confirm "是否安装更新的内核？"; then
-      _system_install_kernel
+  msg "  ${F_BOLD}当前拥塞控制:${F_RESET} $cc"
+  msg "  ${F_BOLD}当前队列算法:${F_RESET} $qdisc"
+  msg "  ${F_BOLD}内核版本:${F_RESET} $(uname -r)"
+  msg ""
+
+  # Detect BBR version
+  local bbr_ver="未启用"
+  if [[ "$cc" == "bbr" ]]; then
+    if modinfo tcp_bbr2 &>/dev/null && lsmod | grep -q tcp_bbr2; then
+      bbr_ver="BBRv2"
+    elif echo "$kpatch" | grep -qi "bbrplus\|bbr2\|bbr_new"; then
+      bbr_ver="BBRplus/BBRv3"
+    else
+      bbr_ver="BBR v1"
     fi
-    return
+    msg "  ${F_BOLD}BBR 版本:${F_RESET} ${F_GREEN}$bbr_ver${F_RESET}"
+  else
+    msg "  ${F_BOLD}BBR 版本:${F_RESET} ${F_YELLOW}未启用${F_RESET}"
   fi
 
-  # Enable BBR and fq
+  # Check available BBR modules
+  msg ""
+  msg "  ${F_BOLD}[可用 BBR 模块]${F_RESET}"
+  if modinfo tcp_bbr &>/dev/null; then
+    msg "    ${F_GREEN}[可用]${F_RESET} tcp_bbr (BBR v1)"
+  else
+    msg "    ${F_RED}[不可用]${F_RESET} tcp_bbr (BBR v1)"
+  fi
+  if modinfo tcp_bbr2 &>/dev/null; then
+    msg "    ${F_GREEN}[可用]${F_RESET} tcp_bbr2 (BBR v2)"
+  else
+    msg "    ${F_YELLOW}[不可用]${F_RESET} tcp_bbr2 (BBR v2) - 需要内核 5.18+ 或补丁"
+  fi
+
+  msg ""
+  msg "  ${F_BOLD}[操作]${F_RESET}"
+  if [[ "$cc" == "bbr" ]]; then
+    msg "  ${F_GREEN}1${F_RESET}) 切换为 BBR v1"
+    if modinfo tcp_bbr2 &>/dev/null; then
+      msg "  ${F_GREEN}2${F_RESET}) 切换为 BBR v2"
+    fi
+    msg "  ${F_GREEN}3${F_RESET}) 禁用 BBR (恢复为 cubic)"
+    msg "  ${F_GREEN}4${F_RESET}) 更新内核以获取 BBRv2/BBRplus 支持"
+    msg "  ${F_GREEN}5${F_RESET}) 代理程序 BBR 配置说明"
+  else
+    msg "  ${F_GREEN}1${F_RESET}) 启用 BBR v1"
+    if modinfo tcp_bbr2 &>/dev/null; then
+      msg "  ${F_GREEN}2${F_RESET}) 启用 BBR v2"
+    fi
+    msg "  ${F_GREEN}3${F_RESET}) 更新内核以获取 BBRv2/BBRplus 支持"
+    msg "  ${F_GREEN}4${F_RESET}) 代理程序 BBR 配置说明"
+  fi
+  msg "  ${F_GREEN}0${F_RESET}) 返回"
+  msg ""
+  read -p "请选择: " bbr_choice
+
+  case "$bbr_choice" in
+    1)
+      _system_enable_bbr "bbr" "fq"
+      ;;
+    2)
+      if modinfo tcp_bbr2 &>/dev/null; then
+        modprobe tcp_bbr2 2>/dev/null
+        _system_enable_bbr "bbr2" "fq"
+      else
+        msg_err "tcp_bbr2 模块不可用，请先更新内核"
+      fi
+      ;;
+    3)
+      if [[ "$cc" == "bbr" ]]; then
+        _system_disable_bbr
+      else
+        _system_install_kernel_for_bbr
+      fi
+      ;;
+    4)
+      if [[ "$cc" == "bbr" ]]; then
+        _system_install_kernel_for_bbr
+      else
+        _system_proxy_bbr_info
+      fi
+      ;;
+    5)
+      if [[ "$cc" == "bbr" ]]; then
+        _system_proxy_bbr_info
+      fi
+      ;;
+  esac
+  pause
+}
+
+_system_enable_bbr() {
+  local algo="$1" qdisc="$2"
+  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
+  sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
+  cat >> /etc/sysctl.conf << SEOF
+
+# FusionBox BBR 设置
+net.ipv4.tcp_congestion_control = $algo
+net.core.default_qdisc = $qdisc
+SEOF
+  sysctl -p 2>/dev/null
+  modprobe tcp_${algo} 2>/dev/null
+  local new_cc; new_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+  if [[ "$new_cc" == "$algo" ]]; then
+    msg_ok "已启用 $algo (队列: $qdisc)"
+  else
+    msg_warn "设置已写入，但当前仍为 $new_cc，可能需要重启"
+  fi
+  _log_write "BBR 已启用: $algo"
+}
+
+_system_disable_bbr() {
+  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
+  sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
   cat >> /etc/sysctl.conf << 'SEOF'
 
-# FusionBox BBR Settings
-net.ipv4.tcp_congestion_control = bbr
+# FusionBox BBR 设置
+net.ipv4.tcp_congestion_control = cubic
 net.core.default_qdisc = fq
 SEOF
   sysctl -p 2>/dev/null
-  msg_ok "BBR 启用成功"
+  msg_info "已恢复为 cubic"
+  _log_write "BBR 已禁用，恢复为 cubic"
+}
 
-  # Show verification
-  msg_info "Verification:"
-  sysctl net.ipv4.tcp_congestion_control
-  lsmod | grep tcp_bbr 2>/dev/null || msg_info "tcp_bbr module may need module load"
-  _log_write "BBR enabled"
-  pause
+_system_install_kernel_for_bbr() {
+  msg_title "更新内核以支持 BBRv2/BBRplus"
+  msg ""
+  local kmaj; kmaj=$(uname -r | cut -d. -f1)
+  local kmin; kmin=$(uname -r | cut -d. -f2)
+
+  msg_info "当前内核: $(uname -r)"
+  msg ""
+  msg "  BBR 各版本内核要求："
+  msg "    BBR v1:    内核 4.9+（当前$( [[ $kmaj -ge 5 || ($kmaj -eq 4 && $kmin -ge 9) ]] && echo "满足" || echo "不满足" )）"
+  msg "    BBR v2:    内核 5.18+（当前$( [[ $kmaj -ge 6 || ($kmaj -eq 5 && $kmin -ge 18) ]] && echo "满足" || echo "不满足" )）"
+  msg "    BBRplus:   需要打补丁内核（cx9208/Linux-NetSpeed 或 ylx2016/Linux-NetSpeed）"
+  msg ""
+
+  if [[ $kmaj -ge 6 ]] || [[ $kmaj -eq 5 && $kmin -ge 18 ]]; then
+    msg_ok "当前内核已支持 BBRv2，尝试加载模块..."
+    if modprobe tcp_bbr2 2>/dev/null; then
+      msg_ok "tcp_bbr2 模块加载成功"
+      if confirm "是否启用 BBRv2？"; then
+        _system_enable_bbr "bbr2" "fq"
+      fi
+    else
+      msg_warn "模块加载失败，可能需要重新编译内核"
+    fi
+    return
+  fi
+
+  msg "  更新内核选项："
+  msg "  ${F_GREEN}1${F_RESET}) 安装发行版最新内核（推荐）"
+  msg "  ${F_GREEN}2${F_RESET}) 安装 BBRplus 补丁内核（适用于 4.9-5.17 内核）"
+  msg "  ${F_GREEN}0${F_RESET}) 返回"
+  msg ""
+  read -p "请选择: " kc_choice
+
+  case "$kc_choice" in
+    1)
+      _system_install_kernel
+      ;;
+    2)
+      _system_install_bbrplus_kernel
+      ;;
+  esac
+}
+
+_system_install_bbrplus_kernel() {
+  msg_info "正在安装 BBRplus 补丁内核..."
+  msg ""
+
+  case "$F_PKG_MGR" in
+    apt)
+      local tmpdir=$(mktemp -d)
+      # Use cx9208/Linux-NetSpeed scripts
+      msg_info "正在下载内核安装脚本..."
+      _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || \
+      _download "https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || {
+        msg_err "下载失败，请检查网络"
+        rm -rf "$tmpdir"
+        return 1
+      }
+      msg_info "已下载安装脚本"
+      msg_warn "即将运行内核安装脚本，请按提示操作"
+      msg ""
+      if confirm "运行 BBRplus 内核安装脚本？"; then
+        bash "$tmpdir/tcp.sh"
+      fi
+      rm -rf "$tmpdir"
+      ;;
+    yum)
+      msg_info "CentOS/RHEL 系统请手动编译内核"
+      msg_info "参考: https://github.com/cx9208/Linux-NetSpeed"
+      ;;
+    *)
+      msg_err "当前包管理器不支持自动安装补丁内核"
+      msg_info "请参考: https://github.com/cx9208/Linux-NetSpeed"
+      ;;
+  esac
+}
+
+_system_proxy_bbr_info() {
+  msg_title "代理程序 BBR 配置说明"
+  msg ""
+  msg "  ${F_BOLD}BBR 与代理程序的关系：${F_RESET}"
+  msg "  BBR 是内核级别的 TCP 拥塞控制算法，对所有 TCP 连接生效，"
+  msg "  包括代理程序的 TCP 传输（VLESS-TCP、VMess-TCP、Trojan 等）。"
+  msg ""
+  msg "  ${F_BOLD}各代理后端 BBR 相关配置：${F_RESET}"
+  msg ""
+  msg "  ${F_CYAN}Xray-core${F_RESET} (推荐):"
+  msg "    - TCP 传输自动使用系统 BBR"
+  msg "    - QUIC/HTTPUpgrade 有内置拥塞控制配置"
+  msg "    - streamSettings 可配置 tcpSettings.congestionControl"
+  msg ""
+  msg "  ${F_CYAN}v2ray-core${F_RESET}:"
+  msg "    - TCP 传输自动使用系统 BBR"
+  msg "    - QUIC 传输有拥塞控制选项"
+  msg "    - 建议配合 mKCP 使用 utcpCongestion: bbr"
+  msg ""
+  msg "  ${F_CYAN}sing-box${F_RESET}:"
+  msg "    - TCP 传输自动使用系统 BBR"
+  msg "    - QUIC/HTTPUpgrade 支持 congestion_control 配置"
+  msg "    - hysteria2/tuic 协议自带拥塞控制"
+  msg ""
+  msg "  ${F_CYAN}Clash.Meta${F_RESET}:"
+  msg "    - TCP 传输自动使用系统 BBR"
+  msg "    - hysteria/tuic 节点有独立拥塞控制"
+  msg ""
+  msg "  ${F_BOLD}建议：${F_RESET}"
+  msg "  1. 先在系统层面启用 BBR（选项 1）"
+  msg "  2. TCP 类型协议自动受益于系统 BBR"
+  msg "  3. UDP/QUIC 类型协议使用各自内置拥塞控制"
+  msg "  4. BBRv2/BBRplus 在高丢包网络下表现更好"
+  msg ""
 }
 
 _system_install_kernel() {
@@ -238,7 +434,7 @@ system_benchmark() {
   fi
 
   msg ""
-  _log_write "Benchmark completed"
+  _log_write "基准测试完成"
   pause
 }
 
@@ -334,7 +530,7 @@ system_backup() {
     if [[ -f "$backup_file" ]]; then
       local size; size=$(du -h "$backup_file" | cut -f1)
       msg_ok "备份已创建: $backup_file ($size)"
-      _log_write "System backup created: $backup_file"
+      _log_write "系统备份已创建: $backup_file"
     else
       msg_err "备份失败"
     fi
@@ -378,7 +574,7 @@ system_restore() {
     if confirm "这将覆盖现有文件，确认继续？"; then
       tar xzf "${backups[$idx]}" -C /
       msg_ok "恢复完成"
-      _log_write "System restored from ${backups[$idx]}"
+      _log_write "系统已从备份恢复: ${backups[$idx]}"
     fi
   fi
   pause
@@ -485,7 +681,7 @@ system_swap() {
         grep -q "/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
         msg_ok "Swap 已创建 (2GB)"
         free -h | grep Swap
-        _log_write "2GB swap created"
+        _log_write "2GB Swap 已创建"
       fi
       ;;
     2)
@@ -583,7 +779,7 @@ system_security() {
         if command -v ufw &>/dev/null; then
           ufw allow "$new_port"/tcp
         fi
-        _log_write "SSH port changed to $new_port"
+        _log_write "SSH 端口已更改为 $new_port"
       fi
       ;;
   esac

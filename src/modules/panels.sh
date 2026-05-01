@@ -149,14 +149,14 @@ services:
       - ./html:/usr/share/nginx/html
 YEOF
           mkdir -p "$proj_dir/html"
-          echo "Deployed by FusionBox" > "$proj_dir/html/index.html"
+          echo "由 FusionBox 部署" > "$proj_dir/html/index.html"
           msg_ok "项目 '$project' 已创建于 $proj_dir"
         fi
         ;;
       2)
         msg_info "正在自动部署所有项目..."
         for f in "$compose_dir"/*/docker-compose.yml; do
-          [[ -f "$f" ]] && docker compose -f "$f" up -d 2>/dev/null && msg_info "  Deployed: $(basename "$(dirname "$f")")"
+          [[ -f "$f" ]] && docker compose -f "$f" up -d 2>/dev/null && msg_info "  已部署: $(basename "$(dirname "$f")")"
         done
         ;;
     esac
@@ -246,7 +246,7 @@ panels_xui() {
     bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh) 2>/dev/null || \
     bash <(curl -Ls https://raw.githubusercontent.com/FranzKafkaYu/x-ui/master/install_en.sh) 2>/dev/null || \
       msg_err "X-UI 安装失败"
-    _log_write "X-UI installed"
+    _log_write "X-UI 已安装"
   fi
   pause
 }
@@ -398,7 +398,7 @@ panels_nezha() {
     curl -sL https://raw.githubusercontent.com/nezhahq/scripts/main/install.sh 2>/dev/null | \
       bash -s -- -s "$nezha_server" -p "$nezha_secret" 2>/dev/null || \
       msg_err "安装失败"
-    _log_write "Nezha agent configured"
+    _log_write "哪吒监控 Agent 已配置"
   fi
   pause
 }

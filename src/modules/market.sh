@@ -125,7 +125,7 @@ market_search() {
     read -p "请输入搜索关键词: " query
   fi
 
-  msg_title "Search: $query"
+  msg_title "搜索: $query"
   msg ""
   local found=0
   for app in "${MARKET_APPS[@]}"; do
