@@ -221,8 +221,18 @@ _proxy_rebuild_config() {
     [[ ! -f "$f" ]] && continue
     [[ "$(basename "$f")" == "config.json" ]] && continue
 
-    # Extract inbound object: remove "inbounds": [ prefix and }], suffix
-    local inbound=$(awk '/"inbounds"/,/}],/' "$f" | sed 's/.*"inbounds": \[//; s/}],/}/')
+    # Use python3/jq to extract inbounds if available, else use sed with unique marker
+    local inbound=""
+    if command -v jq &>/dev/null; then
+      inbound=$(jq -c '.inbounds[]' "$f" 2>/dev/null)
+    elif command -v python3 &>/dev/null; then
+      inbound=$(python3 -c "import json; d=json.load(open('$f')); [print(json.dumps(x)) for x in d.get('inbounds',[])]" 2>/dev/null)
+    else
+      # Fallback: use awk with a unique start marker and end at the line with only }],
+      inbound=$(awk '/"inbounds"/{found=1; next} found && /^[[:space:]]*\}\],/{exit} found{print}' "$f")
+      # Remove trailing }],
+      inbound=$(echo "$inbound" | sed '$ s/}],.*//')
+    fi
     if [[ -n "$inbound" ]]; then
       if [[ $first -eq 1 ]]; then
         all_inbounds="$inbound"
