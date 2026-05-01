@@ -221,8 +221,8 @@ _proxy_rebuild_config() {
     [[ ! -f "$f" ]] && continue
     [[ "$(basename "$f")" == "config.json" ]] && continue
 
-    # Extract inbound object between "inbounds": [{ and }],
-    local inbound=$(awk '/"inbounds"/,/}],/' "$f" | grep -v '"inbounds"' | grep -v '^\s*}],')
+    # Extract inbound object: remove "inbounds": [ prefix and }], suffix
+    local inbound=$(awk '/"inbounds"/,/}],/' "$f" | sed 's/.*"inbounds": \[//; s/}],.*//')
     if [[ -n "$inbound" ]]; then
       if [[ $first -eq 1 ]]; then
         all_inbounds="$inbound"
