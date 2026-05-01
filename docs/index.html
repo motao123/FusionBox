@@ -47,10 +47,8 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
 .term-dot.green{background:#51cf66}
 .term-bar .term-fname{margin-left:auto;font-family:"SF Mono","Cascadia Code","Consolas",monospace;color:var(--muted);font-size:.9em}
 .term-body{padding:20px 24px}
-.term-body .cmd-block{display:flex;align-items:flex-start;gap:12px;font-family:"SF Mono","Cascadia Code","Consolas",monospace;font-size:.88em;line-height:1.7;color:#000;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--border2)}
-.term-body .cmd-block .prompt{color:var(--green);flex-shrink:0;user-select:none}
-.term-body .cmd-block .cmd-text{word-break:break-all}
-.term-body .copy-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--code-bg);border-radius:8px}
+.term-body .copy-row{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--code-bg);border-radius:8px}
+.term-body .copy-row .prompt{color:var(--green);flex-shrink:0;user-select:none;font-family:"SF Mono","Cascadia Code","Consolas",monospace;font-size:.88em}
 .term-body .copy-row code{font-family:"SF Mono","Cascadia Code","Consolas",monospace;font-size:.82em;color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .term-body .copy-row .cp{padding:6px 16px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:.82em;cursor:pointer;transition:all .12s;font-family:inherit;color:var(--text);white-space:nowrap;flex-shrink:0}
 .term-body .copy-row .cp:hover{border-color:var(--accent);color:var(--accent)}
@@ -153,11 +151,8 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
             <span class="term-fname">install.sh</span>
           </div>
           <div class="term-body">
-            <div class="cmd-block">
-              <span class="prompt">$</span>
-              <span class="cmd-text">bash &lt;(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)</span>
-            </div>
             <div class="copy-row">
+              <span class="prompt">$</span>
               <code>bash &lt;(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)</code>
               <button class="cp" onclick="cpy(this)">复制</button>
             </div>
