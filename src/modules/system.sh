@@ -90,221 +90,443 @@ system_info() {
 # ---- BBR Management ----
 system_bbr() {
   _require_root
-  msg_title "BBR 管理"
-  msg ""
+  while true; do
+    clear
+    _print_banner
 
-  # Detect current status
-  local cc; cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "未知")
-  local qdisc; qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null || echo "未知")
-  local kmaj; kmaj=$(uname -r | cut -d. -f1)
-  local kmin; kmin=$(uname -r | cut -d. -f2)
-  local kpatch; kpatch=$(uname -r | cut -d. -f3)
+    # Detect current status
+    local cc; cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "未知")
+    local qdisc; qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null || echo "未知")
+    local kver; kver=$(uname -r)
+    local kernel_status; kernel_status=$(_bbr_detect_kernel_type)
+    local run_status; run_status=$(_bbr_detect_run_status "$cc" "$kernel_status")
 
-  msg "  ${F_BOLD}当前拥塞控制:${F_RESET} $cc"
-  msg "  ${F_BOLD}当前队列算法:${F_RESET} $qdisc"
-  msg "  ${F_BOLD}内核版本:${F_RESET} $(uname -r)"
-  msg ""
+    msg_title "TCP 加速管理"
+    msg ""
+    msg "  ${F_BOLD}系统信息:${F_RESET} $F_OS_NAME $F_OS_VER ($F_ARCH)"
+    msg "  ${F_BOLD}内核版本:${F_RESET} $kver"
+    msg "  ${F_BOLD}内核类型:${F_RESET} $kernel_status"
+    msg "  ${F_BOLD}运行状态:${F_RESET} $run_status"
+    msg "  ${F_BOLD}拥塞控制:${F_RESET} $cc  ${F_BOLD}队列算法:${F_RESET} $qdisc"
+    msg ""
+    msg "————————————————————————————————————————————————————————"
+    msg "  ${F_BOLD}[安装内核]${F_RESET}"
+    msg "  ${F_GREEN} 1${F_RESET}) 安装 BBR 原版内核"
+    msg "  ${F_GREEN} 2${F_RESET}) 安装 BBRplus 内核"
+    msg "  ${F_GREEN} 3${F_RESET}) 安装 BBRplus 新版内核"
+    msg "  ${F_GREEN} 4${F_RESET}) 安装 xanmod 内核 (BBRv3)"
+    msg "  ${F_GREEN} 5${F_RESET}) 安装 cloud 内核 (精简版)"
+    msg ""
+    msg "  ${F_BOLD}[切换加速]${F_RESET}"
+    msg "  ${F_GREEN}11${F_RESET}) BBR + FQ          ${F_GREEN}12${F_RESET}) BBR + FQ_PIE"
+    msg "  ${F_GREEN}13${F_RESET}) BBR + CAKE         ${F_GREEN}14${F_RESET}) BBR2 + FQ"
+    msg "  ${F_GREEN}15${F_RESET}) BBR2 + FQ_PIE      ${F_GREEN}16${F_RESET}) BBR2 + CAKE"
+    msg "  ${F_GREEN}17${F_RESET}) BBRplus + FQ       ${F_GREEN}18${F_RESET}) Lotserver(锐速)"
+    msg ""
+    msg "  ${F_BOLD}[系统优化]${F_RESET}"
+    msg "  ${F_GREEN}21${F_RESET}) 系统网络优化 (标准)    ${F_GREEN}22${F_RESET}) 系统网络优化 (激进)"
+    msg "  ${F_GREEN}23${F_RESET}) 开启 ECN              ${F_GREEN}24${F_RESET}) 关闭 ECN"
+    msg "  ${F_GREEN}25${F_RESET}) 禁用 IPv6             ${F_GREEN}26${F_RESET}) 开启 IPv6"
+    msg ""
+    msg "  ${F_BOLD}[管理]${F_RESET}"
+    msg "  ${F_GREEN}31${F_RESET}) 卸载全部加速"
+    msg "  ${F_GREEN}32${F_RESET}) 删除多余内核"
+    msg "  ${F_GREEN}33${F_RESET}) 代理程序 BBR 配置说明"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg "————————————————————————————————————————————————————————"
+    msg ""
+    read -p "请输入数字: " num
 
-  # Detect BBR version
-  local bbr_ver="未启用"
-  if [[ "$cc" == "bbr" ]]; then
-    if modinfo tcp_bbr2 &>/dev/null && lsmod | grep -q tcp_bbr2; then
-      bbr_ver="BBRv2"
-    elif echo "$kpatch" | grep -qi "bbrplus\|bbr2\|bbr_new"; then
-      bbr_ver="BBRplus/BBRv3"
+    case "$num" in
+      1)  _bbr_install_bbr ;;
+      2)  _bbr_install_bbrplus ;;
+      3)  _bbr_install_bbrplus_new ;;
+      4)  _bbr_install_xanmod ;;
+      5)  _bbr_install_cloud ;;
+      11) _bbr_apply "bbr" "fq" ;;
+      12) _bbr_apply "bbr" "fq_pie" ;;
+      13) _bbr_apply "bbr" "cake" ;;
+      14) _bbr_apply "bbr2" "fq" ;;
+      15) _bbr_apply "bbr2" "fq_pie" ;;
+      16) _bbr_apply "bbr2" "cake" ;;
+      17) _bbr_apply "bbrplus" "fq" ;;
+      18) _bbr_enable_lotserver ;;
+      21) _bbr_optimize_standard ;;
+      22) _bbr_optimize_radical ;;
+      23) _bbr_set_ecn 1 ;;
+      24) _bbr_set_ecn 0 ;;
+      25) _bbr_set_ipv6 0 ;;
+      26) _bbr_set_ipv6 1 ;;
+      31) _bbr_remove_all ;;
+      32) _bbr_delete_old_kernels ;;
+      33) _bbr_proxy_info ;;
+      0)  break ;;
+      *)  ;;
+    esac
+  done
+}
+
+# ---- 状态检测 ----
+_bbr_detect_kernel_type() {
+  local kver; kver=$(uname -r)
+  if [[ "$kver" == *bbrplus* ]]; then
+    echo "BBRplus"
+  elif [[ "$kver" == *xanmod* ]]; then
+    echo "xanmod"
+  elif [[ "$kver" =~ (4\.9|4\.15|4\.8|3\.16|3\.2|2\.6\.32|4\.4|4\.11) ]]; then
+    echo "Lotserver"
+  else
+    local kmaj; kmaj=$(echo "$kver" | cut -d. -f1)
+    local kmin; kmin=$(echo "$kver" | cut -d. -f2)
+    if [[ $kmaj -ge 5 ]] || [[ $kmaj -eq 4 && $kmin -ge 9 ]]; then
+      echo "BBR"
     else
-      bbr_ver="BBR v1"
+      echo "不支持加速"
     fi
-    msg "  ${F_BOLD}BBR 版本:${F_RESET} ${F_GREEN}$bbr_ver${F_RESET}"
-  else
-    msg "  ${F_BOLD}BBR 版本:${F_RESET} ${F_YELLOW}未启用${F_RESET}"
   fi
+}
 
-  # Check available BBR modules
-  msg ""
-  msg "  ${F_BOLD}[可用 BBR 模块]${F_RESET}"
-  if modinfo tcp_bbr &>/dev/null; then
-    msg "    ${F_GREEN}[可用]${F_RESET} tcp_bbr (BBR v1)"
-  else
-    msg "    ${F_RED}[不可用]${F_RESET} tcp_bbr (BBR v1)"
-  fi
-  if modinfo tcp_bbr2 &>/dev/null; then
-    msg "    ${F_GREEN}[可用]${F_RESET} tcp_bbr2 (BBR v2)"
-  else
-    msg "    ${F_YELLOW}[不可用]${F_RESET} tcp_bbr2 (BBR v2) - 需要内核 5.18+ 或补丁"
-  fi
-
-  msg ""
-  msg "  ${F_BOLD}[操作]${F_RESET}"
-  if [[ "$cc" == "bbr" ]]; then
-    msg "  ${F_GREEN}1${F_RESET}) 切换为 BBR v1"
-    if modinfo tcp_bbr2 &>/dev/null; then
-      msg "  ${F_GREEN}2${F_RESET}) 切换为 BBR v2"
-    fi
-    msg "  ${F_GREEN}3${F_RESET}) 禁用 BBR (恢复为 cubic)"
-    msg "  ${F_GREEN}4${F_RESET}) 更新内核以获取 BBRv2/BBRplus 支持"
-    msg "  ${F_GREEN}5${F_RESET}) 代理程序 BBR 配置说明"
-  else
-    msg "  ${F_GREEN}1${F_RESET}) 启用 BBR v1"
-    if modinfo tcp_bbr2 &>/dev/null; then
-      msg "  ${F_GREEN}2${F_RESET}) 启用 BBR v2"
-    fi
-    msg "  ${F_GREEN}3${F_RESET}) 更新内核以获取 BBRv2/BBRplus 支持"
-    msg "  ${F_GREEN}4${F_RESET}) 代理程序 BBR 配置说明"
-  fi
-  msg "  ${F_GREEN}0${F_RESET}) 返回"
-  msg ""
-  read -p "请选择: " bbr_choice
-
-  case "$bbr_choice" in
-    1)
-      _system_enable_bbr "bbr" "fq"
-      ;;
-    2)
-      if modinfo tcp_bbr2 &>/dev/null; then
-        modprobe tcp_bbr2 2>/dev/null
-        _system_enable_bbr "bbr2" "fq"
-      else
-        msg_err "tcp_bbr2 模块不可用，请先更新内核"
-      fi
-      ;;
-    3)
-      if [[ "$cc" == "bbr" ]]; then
-        _system_disable_bbr
-      else
-        _system_install_kernel_for_bbr
-      fi
-      ;;
-    4)
-      if [[ "$cc" == "bbr" ]]; then
-        _system_install_kernel_for_bbr
-      else
-        _system_proxy_bbr_info
-      fi
-      ;;
-    5)
-      if [[ "$cc" == "bbr" ]]; then
-        _system_proxy_bbr_info
-      fi
-      ;;
+_bbr_detect_run_status() {
+  local cc="$1" ktype="$2"
+  case "$cc" in
+    bbr)     echo "BBR 运行中" ;;
+    bbr2)    echo "BBR2 运行中" ;;
+    bbrplus) echo "BBRplus 运行中" ;;
+    cubic)   echo "未启用加速 (cubic)" ;;
+    *)       echo "$cc" ;;
   esac
+}
+
+# ---- 启用加速 ----
+_bbr_apply() {
+  local algo="$1" qdisc="$2"
+  _bbr_remove_accel
+  cat >> /etc/sysctl.conf << SEOF
+
+# FusionBox TCP 加速
+net.core.default_qdisc = $qdisc
+net.ipv4.tcp_congestion_control = $algo
+SEOF
+  modprobe "tcp_${algo}" 2>/dev/null
+  sysctl -p 2>/dev/null
+  local new_cc; new_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+  if [[ "$new_cc" == "$algo" ]]; then
+    msg_ok "已启用 ${algo^^} + ${qdisc^^}"
+  else
+    msg_warn "设置已写入，当前为 $new_cc，可能需要重启生效"
+  fi
+  _log_write "TCP 加速已启用: $algo + $qdisc"
   pause
 }
 
-_system_enable_bbr() {
-  local algo="$1" qdisc="$2"
-  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
-  sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
-  cat >> /etc/sysctl.conf << SEOF
-
-# FusionBox BBR 设置
-net.ipv4.tcp_congestion_control = $algo
-net.core.default_qdisc = $qdisc
-SEOF
-  sysctl -p 2>/dev/null
-  modprobe tcp_${algo} 2>/dev/null
-  local new_cc; new_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
-  if [[ "$new_cc" == "$algo" ]]; then
-    msg_ok "已启用 $algo (队列: $qdisc)"
-  else
-    msg_warn "设置已写入，但当前仍为 $new_cc，可能需要重启"
-  fi
-  _log_write "BBR 已启用: $algo"
+# ---- Lotserver(锐速) ----
+_bbr_enable_lotserver() {
+  _bbr_remove_accel
+  _install_pkg ethtool 2>/dev/null
+  msg_info "正在安装 Lotserver(锐速)..."
+  bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fei5seven/lotServer/master/lotServerInstall.sh) install 2>/dev/null || {
+    msg_err "Lotserver 安装失败"
+    pause; return
+  }
+  sed -i '/advinacc/d' /appex/etc/config 2>/dev/null
+  sed -i '/maxmode/d' /appex/etc/config 2>/dev/null
+  echo -e 'advinacc="1"\nmaxmode="1"' >> /appex/etc/config 2>/dev/null
+  /appex/bin/lotServer.sh restart 2>/dev/null
+  msg_ok "Lotserver(锐速) 已启用"
+  _log_write "Lotserver 已启用"
+  pause
 }
 
-_system_disable_bbr() {
-  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
+# ---- 卸载加速 ----
+_bbr_remove_accel() {
+  sed -i '/net.ipv4.tcp_ecn/d' /etc/sysctl.conf
   sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
-  cat >> /etc/sysctl.conf << 'SEOF'
-
-# FusionBox BBR 设置
-net.ipv4.tcp_congestion_control = cubic
-net.core.default_qdisc = fq
-SEOF
+  sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
+  sed -i '/FusionBox TCP/d' /etc/sysctl.conf
   sysctl -p 2>/dev/null
-  msg_info "已恢复为 cubic"
-  _log_write "BBR 已禁用，恢复为 cubic"
 }
 
-_system_install_kernel_for_bbr() {
-  msg_title "更新内核以支持 BBRv2/BBRplus"
-  msg ""
-  local kmaj; kmaj=$(uname -r | cut -d. -f1)
-  local kmin; kmin=$(uname -r | cut -d. -f2)
-
-  msg_info "当前内核: $(uname -r)"
-  msg ""
-  msg "  BBR 各版本内核要求："
-  msg "    BBR v1:    内核 4.9+（当前$( [[ $kmaj -ge 5 || ($kmaj -eq 4 && $kmin -ge 9) ]] && echo "满足" || echo "不满足" )）"
-  msg "    BBR v2:    内核 5.18+（当前$( [[ $kmaj -ge 6 || ($kmaj -eq 5 && $kmin -ge 18) ]] && echo "满足" || echo "不满足" )）"
-  msg "    BBRplus:   需要打补丁内核（cx9208/Linux-NetSpeed 或 ylx2016/Linux-NetSpeed）"
-  msg ""
-
-  if [[ $kmaj -ge 6 ]] || [[ $kmaj -eq 5 && $kmin -ge 18 ]]; then
-    msg_ok "当前内核已支持 BBRv2，尝试加载模块..."
-    if modprobe tcp_bbr2 2>/dev/null; then
-      msg_ok "tcp_bbr2 模块加载成功"
-      if confirm "是否启用 BBRv2？"; then
-        _system_enable_bbr "bbr2" "fq"
-      fi
-    else
-      msg_warn "模块加载失败，可能需要重新编译内核"
+_bbr_remove_all() {
+  if confirm "确认卸载全部加速配置？"; then
+    _bbr_remove_accel
+    if [[ -e /appex/bin/lotServer.sh ]]; then
+      bash /appex/bin/lotServer.sh stop 2>/dev/null
+      msg_info "Lotserver 已停止"
     fi
-    return
+    msg_ok "全部加速已卸载"
+    _log_write "全部加速已卸载"
   fi
+  pause
+}
 
-  msg "  更新内核选项："
-  msg "  ${F_GREEN}1${F_RESET}) 安装发行版最新内核（推荐）"
-  msg "  ${F_GREEN}2${F_RESET}) 安装 BBRplus 补丁内核（适用于 4.9-5.17 内核）"
-  msg "  ${F_GREEN}0${F_RESET}) 返回"
-  msg ""
-  read -p "请选择: " kc_choice
+# ---- 内核安装 ----
+_bbr_install_bbr() {
+  msg_info "正在安装 BBR 原版内核..."
+  _system_install_kernel
+}
 
-  case "$kc_choice" in
-    1)
-      _system_install_kernel
+_bbr_install_bbrplus() {
+  msg_info "正在安装 BBRplus 内核 (4.14.129)..."
+  local tmpdir=$(mktemp -d)
+  case "$F_PKG_MGR" in
+    apt)
+      local arch="amd64"; [[ "$F_ARCH" == "arm64" ]] && arch="arm64"
+      _download "https://github.com/cx9208/Linux-NetSpeed/raw/master/bbrplus/debian-bbrplus/linux-headers-4.14.129-bbrplus.deb" "$tmpdir/headers.deb" || \
+      _download "https://github.com/ylx2016/Linux-NetSpeed/raw/master/bbrplus/debian-bbrplus/linux-headers-4.14.129-bbrplus.deb" "$tmpdir/headers.deb"
+      _download "https://github.com/cx9208/Linux-NetSpeed/raw/master/bbrplus/debian-bbrplus/linux-image-4.14.129-bbrplus.deb" "$tmpdir/image.deb" || \
+      _download "https://github.com/ylx2016/Linux-NetSpeed/raw/master/bbrplus/debian-bbrplus/linux-image-4.14.129-bbrplus.deb" "$tmpdir/image.deb"
+      if [[ -f "$tmpdir/headers.deb" && -f "$tmpdir/image.deb" ]]; then
+        dpkg -i "$tmpdir/headers.deb" "$tmpdir/image.deb"
+        _bbr_grub_update
+        msg_ok "BBRplus 内核安装完成，需要重启"
+        confirm "是否立即重启？" && reboot
+      else
+        msg_err "下载失败，请检查网络"
+      fi
       ;;
-    2)
-      _system_install_bbrplus_kernel
+    yum)
+      _download "https://github.com/cx9208/Linux-NetSpeed/raw/master/bbrplus/centos-bbrplus/kernel-4.14.129-bbrplus.rpm" "$tmpdir/kernel.rpm" || \
+      _download "https://github.com/ylx2016/Linux-NetSpeed/raw/master/bbrplus/centos-bbrplus/kernel-4.14.129-bbrplus.rpm" "$tmpdir/kernel.rpm"
+      if [[ -f "$tmpdir/kernel.rpm" ]]; then
+        rpm -ivh "$tmpdir/kernel.rpm"
+        _bbr_grub_update
+        msg_ok "BBRplus 内核安装完成，需要重启"
+        confirm "是否立即重启？" && reboot
+      else
+        msg_err "下载失败，请检查网络"
+      fi
+      ;;
+    *)
+      msg_err "当前系统不支持自动安装，请手动编译内核"
       ;;
   esac
+  rm -rf "$tmpdir"
+  pause
 }
 
-_system_install_bbrplus_kernel() {
-  msg_info "正在安装 BBRplus 补丁内核..."
+_bbr_install_bbrplus_new() {
+  msg_info "正在安装 BBRplus 新版内核..."
+  local tmpdir=$(mktemp -d)
+  _download "https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || \
+  _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || {
+    msg_err "下载失败"; rm -rf "$tmpdir"; pause; return
+  }
+  msg_warn "即将运行内核安装脚本，选择选项 5 安装 BBRplus 新版内核"
+  bash "$tmpdir/tcp.sh"
+  rm -rf "$tmpdir"
+  pause
+}
+
+_bbr_install_xanmod() {
+  msg_info "正在安装 xanmod 内核 (BBRv3)..."
+  if [[ "$F_PKG_MGR" != "apt" ]]; then
+    msg_err "xanmod 内核仅支持 Debian/Ubuntu 系统"
+    pause; return
+  fi
+  local tmpdir=$(mktemp -d)
+  _download "https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || \
+  _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || {
+    msg_err "下载失败"; rm -rf "$tmpdir"; pause; return
+  }
+  msg_warn "即将运行内核安装脚本，选择选项 4 安装 xanmod 内核"
+  bash "$tmpdir/tcp.sh"
+  rm -rf "$tmpdir"
+  pause
+}
+
+_bbr_install_cloud() {
+  msg_info "正在安装 cloud 内核..."
+  if [[ "$F_PKG_MGR" != "apt" ]]; then
+    msg_err "cloud 内核仅支持 Debian 系统"
+    pause; return
+  fi
+  local tmpdir=$(mktemp -d)
+  _download "https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || \
+  _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || {
+    msg_err "下载失败"; rm -rf "$tmpdir"; pause; return
+  }
+  msg_warn "即将运行内核安装脚本，选择选项 8 安装 cloud 内核"
+  bash "$tmpdir/tcp.sh"
+  rm -rf "$tmpdir"
+  pause
+}
+
+_bbr_grub_update() {
+  if command -v grub2-set-default &>/dev/null; then
+    grub2-set-default 0 2>/dev/null
+  elif command -v update-grub &>/dev/null; then
+    update-grub 2>/dev/null
+  fi
+}
+
+# ---- 系统网络优化 ----
+_bbr_optimize_standard() {
+  msg_info "正在应用标准网络优化..."
+  cat > /etc/sysctl.d/99-fusionbox-optimize.conf << 'SEOF'
+# FusionBox 标准网络优化
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_max_tw_buckets = 5000
+net.ipv4.tcp_max_syn_backlog = 8192
+net.ipv4.ip_local_port_range = 1024 65535
+net.core.somaxconn = 8192
+net.core.netdev_max_backlog = 8192
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_keepalive_time = 600
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_keepalive_probes = 3
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_retries2 = 8
+net.ipv4.tcp_synack_retries = 2
+net.ipv4.tcp_syn_retries = 2
+net.ipv4.tcp_ecn = 0
+fs.file-max = 1048576
+fs.inotify.max_user_instances = 8192
+SEOF
+  sysctl --system 2>/dev/null
+  msg_ok "标准网络优化已应用"
+  _log_write "标准网络优化已应用"
+  pause
+}
+
+_bbr_optimize_radical() {
+  msg_info "正在应用激进网络优化..."
+  cat > /etc/sysctl.d/99-fusionbox-optimize.conf << 'SEOF'
+# FusionBox 激进网络优化
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_max_tw_buckets = 2000
+net.ipv4.tcp_max_syn_backlog = 16384
+net.ipv4.ip_local_port_range = 1024 65535
+net.core.somaxconn = 16384
+net.core.netdev_max_backlog = 16384
+net.ipv4.tcp_fin_timeout = 10
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_keepalive_time = 300
+net.ipv4.tcp_keepalive_intvl = 15
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_retries2 = 5
+net.ipv4.tcp_synack_retries = 2
+net.ipv4.tcp_syn_retries = 2
+net.ipv4.tcp_ecn = 0
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_timestamps = 1
+net.ipv4.tcp_sack = 1
+net.ipv4.tcp_no_metrics_save = 1
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 87380 16777216
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.core.rmem_default = 1048576
+net.core.wmem_default = 1048576
+net.ipv4.udp_rmem_min = 8192
+net.ipv4.udp_wmem_min = 8192
+fs.file-max = 2097152
+fs.inotify.max_user_instances = 8192
+fs.inotify.max_user_watches = 524288
+SEOF
+  sysctl --system 2>/dev/null
+  msg_ok "激进网络优化已应用"
+  _log_write "激进网络优化已应用"
+  pause
+}
+
+# ---- ECN ----
+_bbr_set_ecn() {
+  local val="$1"
+  sed -i '/net.ipv4.tcp_ecn/d' /etc/sysctl.conf
+  sed -i '/net.ipv4.tcp_ecn/d' /etc/sysctl.d/99-fusionbox-optimize.conf 2>/dev/null
+  echo "net.ipv4.tcp_ecn=$val" >> /etc/sysctl.conf
+  sysctl -p 2>/dev/null
+  if [[ "$val" == "1" ]]; then
+    msg_ok "ECN 已开启"
+  else
+    msg_ok "ECN 已关闭"
+  fi
+  _log_write "ECN 设置为 $val"
+  pause
+}
+
+# ---- IPv6 ----
+_bbr_set_ipv6() {
+  local val="$1"
+  sed -i '/net.ipv6.conf.all.disable_ipv6/d' /etc/sysctl.conf
+  sed -i '/net.ipv6.conf.default.disable_ipv6/d' /etc/sysctl.conf
+  if [[ "$val" == "0" ]]; then
+    cat >> /etc/sysctl.conf << 'SEOF'
+
+# 禁用 IPv6
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+SEOF
+    sysctl -p 2>/dev/null
+    msg_ok "IPv6 已禁用"
+  else
+    cat >> /etc/sysctl.conf << 'SEOF'
+
+# 启用 IPv6
+net.ipv6.conf.all.disable_ipv6 = 0
+net.ipv6.conf.default.disable_ipv6 = 0
+SEOF
+    sysctl -p 2>/dev/null
+    msg_ok "IPv6 已启用"
+  fi
+  _log_write "IPv6 设置为 $val"
+  pause
+}
+
+# ---- 删除多余内核 ----
+_bbr_delete_old_kernels() {
+  local current_kver; current_kver=$(uname -r)
+  msg_info "当前内核: $current_kver"
   msg ""
 
   case "$F_PKG_MGR" in
     apt)
-      local tmpdir=$(mktemp -d)
-      # Use cx9208/Linux-NetSpeed scripts
-      msg_info "正在下载内核安装脚本..."
-      _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || \
-      _download "https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || {
-        msg_err "下载失败，请检查网络"
-        rm -rf "$tmpdir"
-        return 1
-      }
-      msg_info "已下载安装脚本"
-      msg_warn "即将运行内核安装脚本，请按提示操作"
-      msg ""
-      if confirm "运行 BBRplus 内核安装脚本？"; then
-        bash "$tmpdir/tcp.sh"
+      local old_kernels=$(dpkg -l | grep linux-image | awk '{print $2}' | grep -v "$current_kver" | grep -v "linux-image-$current_kver")
+      if [[ -z "$old_kernels" ]]; then
+        msg_ok "没有多余的内核"
+        pause; return
       fi
-      rm -rf "$tmpdir"
+      msg_info "检测到以下旧内核:"
+      echo "$old_kernels" | while read -r k; do msg "  $k"; done
+      msg ""
+      if confirm "确认删除以上旧内核？"; then
+        echo "$old_kernels" | while read -r k; do
+          apt-get purge -y "$k" 2>/dev/null
+        done
+        apt-get autoremove -y 2>/dev/null
+        msg_ok "旧内核已删除"
+      fi
       ;;
     yum)
-      msg_info "CentOS/RHEL 系统请手动编译内核"
-      msg_info "参考: https://github.com/cx9208/Linux-NetSpeed"
+      local old_kernels=$(rpm -qa | grep kernel | grep -v "$current_kver" | grep -v "noarch")
+      if [[ -z "$old_kernels" ]]; then
+        msg_ok "没有多余的内核"
+        pause; return
+      fi
+      msg_info "检测到以下旧内核:"
+      echo "$old_kernels" | while read -r k; do msg "  $k"; done
+      msg ""
+      if confirm "确认删除以上旧内核？"; then
+        echo "$old_kernels" | while read -r k; do
+          rpm --nodeps -e "$k" 2>/dev/null
+        done
+        msg_ok "旧内核已删除"
+      fi
       ;;
     *)
-      msg_err "当前包管理器不支持自动安装补丁内核"
-      msg_info "请参考: https://github.com/cx9208/Linux-NetSpeed"
+      msg_err "当前系统不支持自动删除内核"
       ;;
   esac
+  _log_write "旧内核清理完成"
+  pause
 }
 
-_system_proxy_bbr_info() {
+# ---- 代理程序 BBR 说明 ----
+_bbr_proxy_info() {
   msg_title "代理程序 BBR 配置说明"
   msg ""
   msg "  ${F_BOLD}BBR 与代理程序的关系：${F_RESET}"
@@ -332,12 +554,18 @@ _system_proxy_bbr_info() {
   msg "    - TCP 传输自动使用系统 BBR"
   msg "    - hysteria/tuic 节点有独立拥塞控制"
   msg ""
-  msg "  ${F_BOLD}建议：${F_RESET}"
-  msg "  1. 先在系统层面启用 BBR（选项 1）"
-  msg "  2. TCP 类型协议自动受益于系统 BBR"
-  msg "  3. UDP/QUIC 类型协议使用各自内置拥塞控制"
-  msg "  4. BBRv2/BBRplus 在高丢包网络下表现更好"
+  msg "  ${F_BOLD}队列算法说明：${F_RESET}"
+  msg "    fq      - Fair Queue，适合大多数场景"
+  msg "    fq_pie  - Fair Queue + PIE，适合低延迟场景"
+  msg "    cake    - CAKE，适合高带宽场景"
   msg ""
+  msg "  ${F_BOLD}建议：${F_RESET}"
+  msg "  1. TCP 类型协议自动受益于系统 BBR"
+  msg "  2. UDP/QUIC 类型协议使用各自内置拥塞控制"
+  msg "  3. BBRplus 在高丢包网络下表现更好"
+  msg "  4. 搭配系统网络优化效果更佳"
+  msg ""
+  pause
 }
 
 _system_install_kernel() {
@@ -791,7 +1019,7 @@ system_help() {
   msg_title "系统管理 帮助"
   msg ""
   msg "  fusionbox system info           查看系统信息"
-  msg "  fusionbox system bbr            BBR 管理"
+  msg "  fusionbox system bbr            TCP 加速管理 (BBR/BBR2/BBRplus/Lotserver)"
   msg "  fusionbox system benchmark      运行基准测试"
   msg "  fusionbox system monitor        实时系统监控"
   msg "  fusionbox system backup         备份系统配置"
