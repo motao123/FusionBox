@@ -206,7 +206,7 @@ main_menu() {
     6) route market ;;
     7) show_status ;;
     8) show_help ;;
-    0) msg "再见！"; _log_write "FusionBox 会话已结束"; exit 0 ;;
+    0) msg "再见！"; _log_write "FusionBox 会话已结束"; break ;;
     *) main_menu ;;
   esac
 }
@@ -216,6 +216,3 @@ _log_write "FusionBox v$FUSION_VER started with args: $*"
 
 # Route the command
 route "$@"
-
-# If route returns without looping, show main menu
-[[ $# -eq 0 ]] && main_menu
