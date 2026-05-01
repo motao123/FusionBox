@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FusionBox - Linux 服务器全能管理工具箱</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.6; }
+.container { max-width: 1000px; margin: 0 auto; padding: 0 20px; }
+a { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.hero { text-align: center; padding: 80px 0 40px; }
+.hero h1 { font-size: 3em; color: #f0f6fc; margin-bottom: 10px; }
+.hero .subtitle { font-size: 1.2em; color: #8b949e; margin-bottom: 30px; }
+.hero .install-box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 24px; display: inline-block; font-family: monospace; font-size: 0.95em; color: #7ee787; cursor: pointer; }
+.hero .install-box:hover { border-color: #58a6ff; }
+.btn { display: inline-block; padding: 10px 24px; border-radius: 6px; font-size: 1em; margin: 10px 5px; cursor: pointer; }
+.btn-primary { background: #238636; color: #fff; border: 1px solid #238636; }
+.btn-primary:hover { background: #2ea043; text-decoration: none; }
+.btn-outline { background: transparent; color: #c9d1d9; border: 1px solid #30363d; }
+.btn-outline:hover { border-color: #58a6ff; text-decoration: none; }
+
+.stats { display: flex; justify-content: center; gap: 40px; padding: 20px 0 40px; }
+.stats .stat { text-align: center; }
+.stats .num { font-size: 2em; font-weight: 700; color: #58a6ff; }
+.stats .label { color: #8b949e; font-size: 0.9em; }
+
+.modules { padding: 40px 0; }
+.modules h2 { text-align: center; font-size: 1.8em; color: #f0f6fc; margin-bottom: 30px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; transition: border-color 0.2s; }
+.card:hover { border-color: #58a6ff; }
+.card h3 { color: #f0f6fc; margin-bottom: 8px; }
+.card .cmd { font-family: monospace; font-size: 0.85em; color: #7ee787; background: #0d1117; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-bottom: 8px; }
+.card p { color: #8b949e; font-size: 0.9em; }
+
+.features { padding: 40px 0; }
+.features h2 { text-align: center; font-size: 1.8em; color: #f0f6fc; margin-bottom: 30px; }
+.feature-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.feature-item { display: flex; align-items: center; gap: 10px; }
+.feature-item .check { color: #3fb950; font-weight: bold; }
+
+.footer { text-align: center; padding: 40px 0; border-top: 1px solid #21262d; margin-top: 40px; color: #8b949e; }
+
+@media (max-width: 600px) {
+  .hero h1 { font-size: 2em; }
+  .stats { flex-direction: column; gap: 20px; }
+  .feature-list { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="container">
+    <h1>FusionBox</h1>
+    <p class="subtitle">一站式 Linux 服务器全能管理工具箱</p>
+    <div>
+      <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub</a>
+      <a href="https://github.com/motao123/FusionBox/archive/refs/heads/main.zip" class="btn btn-outline">下载</a>
+    </div>
+    <br>
+    <div class="install-box" onclick="navigator.clipboard.writeText('bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)');this.textContent='已复制!';setTimeout(()=>this.textContent='bash <(curl -fsSL .../install.sh)',2000)">
+      bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
+    </div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="container" style="display:flex;justify-content:center;gap:40px;flex-wrap:wrap;">
+    <div class="stat"><div class="num">9</div><div class="label">核心模块</div></div>
+    <div class="stat"><div class="num">80+</div><div class="label">应用市场</div></div>
+    <div class="stat"><div class="num">15</div><div class="label">代理协议</div></div>
+    <div class="stat"><div class="num">4</div><div class="label">代理后端</div></div>
+  </div>
+</div>
+
+<div class="modules">
+  <div class="container">
+    <h2>功能模块</h2>
+    <div class="grid">
+      <div class="card">
+        <div class="cmd">fusionbox proxy</div>
+        <h3>代理管理</h3>
+        <p>Xray / v2ray / sing-box / Clash.Meta 四后端，15 种协议，一键安装配置</p>
+      </div>
+      <div class="card">
+        <div class="cmd">fusionbox system</div>
+        <h3>系统管理</h3>
+        <p>BBR 加速、性能测试、SSH 密钥、防火墙、定时任务、磁盘、回收站</p>
+      </div>
+      <div class="card">
+        <div class="cmd">fusionbox network</div>
+        <h3>网络工具</h3>
+        <p>IP 查询、流媒体检测、网速测试、DNS 测试、路由追踪、端口检测</p>
+      </div>
+      <div class="card">
+        <div class="cmd">fusionbox web</div>
+        <h3>网站部署</h3>
+        <p>LNMP 环境、17 种应用一键部署、反向代理、L4 端口转发、站点备份</p>
+      </div>
+      <div class="card">
+        <div class="cmd">fusionbox panels</div>
+        <h3>面板与工具</h3>
+        <p>Docker 完整管理、宝塔面板、FRP 内网穿透、Aria2、Rclone</p>
+      </div>
+      <div class="card">
+        <div class="cmd">fusionbox market</div>
+        <h3>应用市场</h3>
+        <p>80+ 常用软件一键安装，覆盖开发、网络、系统、安全等 10 个分类</p>
+      </div>
+      <div class="card">
+        <div class="cmd">fusionbox warp</div>
+        <h3>WARP 管理</h3>
+        <p>Cloudflare WARP Proxy 模式，解锁流媒体，SOCKS5 代理出站</p>
+      </div>
+      <div class="card">
+        <div class="cmd">fusionbox workspace</div>
+        <h3>后台工作区</h3>
+        <p>Screen / Tmux 终端会话管理，后台运行长时间任务</p>
+      </div>
+      <div class="card">
+        <div class="cmd">fusionbox cluster</div>
+        <h3>集群控制</h3>
+        <p>多服务器批量管理、游戏服务端部署、Oracle 防回收、k 命令快捷方式</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="features">
+  <div class="container">
+    <h2>特性</h2>
+    <div class="feature-list">
+      <div class="feature-item"><span class="check">✓</span> 纯 Bash 实现，无额外依赖</div>
+      <div class="feature-item"><span class="check">✓</span> 支持 Debian / Ubuntu / CentOS / Fedora / Alpine</div>
+      <div class="feature-item"><span class="check">✓</span> 支持 amd64 和 arm64 架构</div>
+      <div class="feature-item"><span class="check">✓</span> 中文交互界面</div>
+      <div class="feature-item"><span class="check">✓</span> 交互菜单 + 命令行双模式</div>
+      <div class="feature-item"><span class="check">✓</span> 自动检测系统环境</div>
+      <div class="feature-item"><span class="check">✓</span> 操作日志记录</div>
+      <div class="feature-item"><span class="check">✓</span> 一键更新</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <div class="container">
+    <p>FusionBox &copy; 2026 | MIT License</p>
+    <p><a href="https://github.com/motao123/FusionBox">GitHub</a></p>
+  </div>
+</div>
+
+</body>
+</html>
