@@ -383,7 +383,7 @@ _proxy_generate_config() {
     "listen": "0.0.0.0",
     "port": $port,
     "protocol": "vless",
-    "settings": {"clients": [{"id": "$uuid"}]},
+    "settings": {"clients": [{"id": "$uuid"}], "decryption": "none"},
     "streamSettings": {"network": "$p_transport"}
   }],
   "outbounds": [{"protocol": "freedom", "tag": "direct"}]
