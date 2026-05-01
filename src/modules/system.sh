@@ -116,12 +116,15 @@ system_bbr() {
     msg "  ${F_GREEN} 3${F_RESET}) 安装 BBRplus 新版内核"
     msg "  ${F_GREEN} 4${F_RESET}) 安装 xanmod 内核 (BBRv3)"
     msg "  ${F_GREEN} 5${F_RESET}) 安装 cloud 内核 (精简版)"
+    msg "  ${F_GREEN} 6${F_RESET}) 编译 BBR 魔改版 (tcp_tsunami)"
+    msg "  ${F_GREEN} 7${F_RESET}) 编译 暴力BBR魔改版 (tcp_nanqinlang)"
     msg ""
     msg "  ${F_BOLD}[切换加速]${F_RESET}"
     msg "  ${F_GREEN}11${F_RESET}) BBR + FQ          ${F_GREEN}12${F_RESET}) BBR + FQ_PIE"
     msg "  ${F_GREEN}13${F_RESET}) BBR + CAKE         ${F_GREEN}14${F_RESET}) BBR2 + FQ"
     msg "  ${F_GREEN}15${F_RESET}) BBR2 + FQ_PIE      ${F_GREEN}16${F_RESET}) BBR2 + CAKE"
     msg "  ${F_GREEN}17${F_RESET}) BBRplus + FQ       ${F_GREEN}18${F_RESET}) Lotserver(锐速)"
+    msg "  ${F_GREEN}19${F_RESET}) BBR魔改版 + FQ     ${F_GREEN}20${F_RESET}) 暴力BBR魔改 + FQ"
     msg ""
     msg "  ${F_BOLD}[系统优化]${F_RESET}"
     msg "  ${F_GREEN}21${F_RESET}) 系统网络优化 (标准)    ${F_GREEN}22${F_RESET}) 系统网络优化 (激进)"
@@ -143,6 +146,8 @@ system_bbr() {
       3)  _bbr_install_bbrplus_new ;;
       4)  _bbr_install_xanmod ;;
       5)  _bbr_install_cloud ;;
+      6)  _bbr_compile_tsunami ;;
+      7)  _bbr_compile_nanqinlang ;;
       11) _bbr_apply "bbr" "fq" ;;
       12) _bbr_apply "bbr" "fq_pie" ;;
       13) _bbr_apply "bbr" "cake" ;;
@@ -151,6 +156,8 @@ system_bbr() {
       16) _bbr_apply "bbr2" "cake" ;;
       17) _bbr_apply "bbrplus" "fq" ;;
       18) _bbr_enable_lotserver ;;
+      19) _bbr_apply "tsunami" "fq" ;;
+      20) _bbr_apply "nanqinlang" "fq" ;;
       21) _bbr_optimize_standard ;;
       22) _bbr_optimize_radical ;;
       23) _bbr_set_ecn 1 ;;
@@ -189,9 +196,11 @@ _bbr_detect_kernel_type() {
 _bbr_detect_run_status() {
   local cc="$1" ktype="$2"
   case "$cc" in
-    bbr)     echo "BBR 运行中" ;;
-    bbr2)    echo "BBR2 运行中" ;;
-    bbrplus) echo "BBRplus 运行中" ;;
+    bbr)        echo "BBR 运行中" ;;
+    bbr2)       echo "BBR2 运行中" ;;
+    bbrplus)    echo "BBRplus 运行中" ;;
+    tsunami)    echo "BBR魔改版 运行中" ;;
+    nanqinlang) echo "暴力BBR魔改版 运行中" ;;
     cubic)   echo "未启用加速 (cubic)" ;;
     *)       echo "$cc" ;;
   esac
@@ -357,6 +366,68 @@ _bbr_grub_update() {
   elif command -v update-grub &>/dev/null; then
     update-grub 2>/dev/null
   fi
+}
+
+# ---- 编译 BBR 魔改版 ----
+_bbr_compile_tsunami() {
+  msg_info "正在编译 BBR 魔改版 (tcp_tsunami)..."
+  _check_pkg gcc gcc 2>/dev/null
+  _check_pkg make make 2>/dev/null
+  if ! command -v gcc &>/dev/null || ! command -v make &>/dev/null; then
+    msg_err "gcc 和 make 是编译必需的，请先安装"
+    pause; return
+  fi
+  local tmpdir=$(mktemp -d)
+  _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/bbr/tcp_tsunami.c" "$tmpdir/tcp_tsunami.c" || \
+  _download "https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/bbr/tcp_tsunami.c" "$tmpdir/tcp_tsunami.c" || {
+    msg_err "下载 tcp_tsunami.c 失败"; rm -rf "$tmpdir"; pause; return
+  }
+  echo "obj-m:=tcp_tsunami.o" > "$tmpdir/Makefile"
+  if make -C "/lib/modules/$(uname -r)/build" M="$tmpdir" modules CC=/usr/bin/gcc 2>/dev/null; then
+    cp "$tmpdir/tcp_tsunami.ko" "/lib/modules/$(uname -r)/kernel/net/ipv4/" 2>/dev/null
+    depmod -a 2>/dev/null
+    modprobe tcp_tsunami 2>/dev/null
+    msg_ok "tcp_tsunami 编译并加载成功"
+    if confirm "是否启用 BBR魔改版 + FQ？"; then
+      _bbr_apply "tsunami" "fq"
+    fi
+  else
+    msg_err "编译失败，可能需要安装内核头文件: apt install linux-headers-$(uname -r)"
+  fi
+  rm -rf "$tmpdir"
+  _log_write "BBR魔改版 tcp_tsunami 编译完成"
+  pause
+}
+
+# ---- 编译 暴力BBR魔改版 ----
+_bbr_compile_nanqinlang() {
+  msg_info "正在编译 暴力BBR魔改版 (tcp_nanqinlang)..."
+  _check_pkg gcc gcc 2>/dev/null
+  _check_pkg make make 2>/dev/null
+  if ! command -v gcc &>/dev/null || ! command -v make &>/dev/null; then
+    msg_err "gcc 和 make 是编译必需的，请先安装"
+    pause; return
+  fi
+  local tmpdir=$(mktemp -d)
+  _download "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/bbr/tcp_nanqinlang.c" "$tmpdir/tcp_nanqinlang.c" || \
+  _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/bbr/tcp_nanqinlang.c" "$tmpdir/tcp_nanqinlang.c" || {
+    msg_err "下载 tcp_nanqinlang.c 失败"; rm -rf "$tmpdir"; pause; return
+  }
+  echo "obj-m := tcp_nanqinlang.o" > "$tmpdir/Makefile"
+  if make -C "/lib/modules/$(uname -r)/build" M="$tmpdir" modules CC=/usr/bin/gcc 2>/dev/null; then
+    cp "$tmpdir/tcp_nanqinlang.ko" "/lib/modules/$(uname -r)/kernel/net/ipv4/" 2>/dev/null
+    depmod -a 2>/dev/null
+    modprobe tcp_nanqinlang 2>/dev/null
+    msg_ok "tcp_nanqinlang 编译并加载成功"
+    if confirm "是否启用 暴力BBR魔改版 + FQ？"; then
+      _bbr_apply "nanqinlang" "fq"
+    fi
+  else
+    msg_err "编译失败，可能需要安装内核头文件: apt install linux-headers-$(uname -r)"
+  fi
+  rm -rf "$tmpdir"
+  _log_write "暴力BBR魔改版 tcp_nanqinlang 编译完成"
+  pause
 }
 
 # ---- 系统网络优化 ----
