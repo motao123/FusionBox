@@ -11,7 +11,6 @@ MARKET_APPS=(
   "dev:Redis:redis:内存数据结构存储"
   "dev:Memcached:memcached:分布式内存缓存"
   "dev:SQLite:sqlite3:轻量级嵌入式数据库"
-  "dev:Docker CE:docker-ce:容器化平台"
 
   "net:Wget:wget:网络下载工具"
   "net:Curl:curl:数据传输工具"
@@ -29,8 +28,6 @@ MARKET_APPS=(
   "sys:Glances:glances:系统监控"
   "sys:Nano:nano:文本编辑器"
   "sys:Vim:vim:高级文本编辑器"
-  "sys:Screen:screen:终端复用器"
-  "sys:TMUX:tmux:终端复用器"
   "sys:Unzip:unzip:文件解压工具"
   "sys:Zip:zip:文件压缩工具"
   "sys:Tmux:tmux:终端复用器"
@@ -61,6 +58,37 @@ MARKET_APPS=(
   "media:FFmpeg:ffmpeg:多媒体处理工具"
   "media:ImageMagick:imagemagick:图像处理工具"
   "media:ExifTool:exiftool:元数据工具"
+
+  "docker:Docker CE:docker-ce:容器化平台"
+  "docker:Docker Compose:docker-compose-plugin:容器编排工具"
+  "docker:Portainer:portainer:容器管理 Web UI"
+  "docker:cAdvisor:cadvisor:容器资源监控"
+
+  "monitor:Netdata:netdata:实时系统监控"
+  "monitor:Glances:glances:系统监控工具"
+  "monitor:Bashtop:bashtop:终端资源监控"
+  "monitor:Neofetch:neofetch:系统信息显示"
+  "monitor:Fastfetch:fastfetch:快速系统信息"
+
+  "security:ClamAV:clamav:杀毒软件"
+  "security:Rkhunter:rkhunter:Rootkit 检测"
+  "security:Lynis:lynis:安全审计工具"
+  "security:Unattended-upgrades:unattended-upgrades:自动安全更新"
+
+  "utility:Aria2:aria2:多协议下载工具"
+  "utility:FileBrowser:filebrowser:Web 文件管理器"
+  "utility:Gost:gost:隧道工具"
+  "utility:Warp:cloudflare-warp:Cloudflare WARP VPN"
+  "utility:7zip:p7zip-full:7z 压缩工具"
+  "utility:Tmux:tmux:终端复用器"
+  "utility:JQ:jq:JSON 处理工具"
+  "utility:yq:yq:YAML 处理工具"
+  "utility:Tree:tree:目录树显示"
+  "utility:Lsof:lsof:打开文件查看"
+  "utility:Strace:strace:系统调用追踪"
+  "utility:Tcpdump:tcpdump:网络抓包工具"
+  "utility:Hdparm:hdparm:硬盘性能工具"
+  "utility:Ddrescue:ddrescue:数据恢复工具"
 )
 
 market_main() {
@@ -97,12 +125,16 @@ market_list() {
       if [[ "$cat" != "$current_cat" ]]; then
         current_cat="$cat"
         case "$cat" in
-          dev)   msg "  ${F_BOLD}${F_CYAN}[开发工具]${F_RESET}" ;;
-          net)   msg "  ${F_BOLD}${F_CYAN}[网络工具]${F_RESET}" ;;
-          sys)   msg "  ${F_BOLD}${F_CYAN}[系统工具]${F_RESET}" ;;
-          web)   msg "  ${F_BOLD}${F_CYAN}[Web 服务与数据库]${F_RESET}" ;;
-          proxy) msg "  ${F_BOLD}${F_CYAN}[代理与隧道]${F_RESET}" ;;
-          media) msg "  ${F_BOLD}${F_CYAN}[媒体工具]${F_RESET}" ;;
+          dev)      msg "  ${F_BOLD}${F_CYAN}[开发工具]${F_RESET}" ;;
+          net)      msg "  ${F_BOLD}${F_CYAN}[网络工具]${F_RESET}" ;;
+          sys)      msg "  ${F_BOLD}${F_CYAN}[系统工具]${F_RESET}" ;;
+          web)      msg "  ${F_BOLD}${F_CYAN}[Web 服务与数据库]${F_RESET}" ;;
+          proxy)    msg "  ${F_BOLD}${F_CYAN}[代理与隧道]${F_RESET}" ;;
+          media)    msg "  ${F_BOLD}${F_CYAN}[媒体工具]${F_RESET}" ;;
+          docker)   msg "  ${F_BOLD}${F_CYAN}[容器相关]${F_RESET}" ;;
+          monitor)  msg "  ${F_BOLD}${F_CYAN}[监控工具]${F_RESET}" ;;
+          security) msg "  ${F_BOLD}${F_CYAN}[安全工具]${F_RESET}" ;;
+          utility)  msg "  ${F_BOLD}${F_CYAN}[实用工具]${F_RESET}" ;;
         esac
       fi
       # Check if installed
@@ -234,7 +266,7 @@ market_install() {
   pause
 }
 
-_caddy_from_pkg() {
+_install_caddy_from_pkg() {
   case "$F_PKG_MGR" in
     apt) _install_pkg caddy ;;
     yum) _install_pkg caddy ;;
@@ -427,12 +459,16 @@ market_category() {
   if [[ -z "$cat" ]]; then
     msg_title "应用分类"
     msg ""
-    msg "  ${F_GREEN}dev${F_RESET})     开发工具"
-    msg "  ${F_GREEN}net${F_RESET})     网络工具"
-    msg "  ${F_GREEN}sys${F_RESET})     系统工具"
-    msg "  ${F_GREEN}web${F_RESET})     Web 服务与数据库"
-    msg "  ${F_GREEN}proxy${F_RESET})   代理与隧道"
-    msg "  ${F_GREEN}media${F_RESET})   媒体工具"
+    msg "  ${F_GREEN}dev${F_RESET})       开发工具"
+    msg "  ${F_GREEN}net${F_RESET})       网络工具"
+    msg "  ${F_GREEN}sys${F_RESET})       系统工具"
+    msg "  ${F_GREEN}web${F_RESET})       Web 服务与数据库"
+    msg "  ${F_GREEN}proxy${F_RESET})     代理与隧道"
+    msg "  ${F_GREEN}media${F_RESET})     媒体工具"
+    msg "  ${F_GREEN}docker${F_RESET})    容器相关"
+    msg "  ${F_GREEN}monitor${F_RESET})   监控工具"
+    msg "  ${F_GREEN}security${F_RESET})  安全工具"
+    msg "  ${F_GREEN}utility${F_RESET})   实用工具"
     msg ""
     read -p "请选择分类: " cat
   fi

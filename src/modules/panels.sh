@@ -171,6 +171,400 @@ YEOF
   pause
 }
 
+# ---- Docker 端口访问控制 ----
+panels_docker_port_control() {
+  _require_root
+  if ! command -v docker &>/dev/null; then
+    msg_err "Docker 未安装"; pause; return
+  fi
+
+  msg_title "容器端口访问控制"
+  msg ""
+
+  docker ps --format "table {{.Names}}\t{{.Ports}}" 2>/dev/null | while read -r line; do
+    msg "  $line"
+  done
+
+  msg ""
+  msg "  1) 开放容器端口到公网"
+  msg "  2) 限制容器仅本地访问"
+  msg "  3) 查看容器端口详情"
+  msg "  0) 返回"
+  read -p "请选择: " pc_choice
+
+  case "$pc_choice" in
+    1)
+      read -p "要开放的端口: " port
+      if [[ -n "$port" ]]; then
+        iptables -I DOCKER-USER -p tcp --dport "$port" -j ACCEPT 2>/dev/null
+        iptables -I DOCKER-USER -p udp --dport "$port" -j ACCEPT 2>/dev/null
+        if command -v ufw &>/dev/null; then ufw allow "$port" 2>/dev/null; fi
+        msg_ok "端口 $port 已开放"
+        _log_write "Docker 端口已开放: $port"
+      fi
+      ;;
+    2)
+      read -p "要限制的端口: " port
+      if [[ -n "$port" ]]; then
+        iptables -I DOCKER-USER -p tcp --dport "$port" -j DROP 2>/dev/null
+        iptables -I DOCKER-USER -p udp --dport "$port" -j DROP 2>/dev/null
+        msg_ok "端口 $port 已限制为仅本地"
+      fi
+      ;;
+    3)
+      read -p "容器名称: " c
+      docker port "$c" 2>/dev/null
+      docker inspect "$c" --format '{{json .HostConfig.PortBindings}}' 2>/dev/null
+      ;;
+  esac
+  pause
+}
+
+# ---- Docker IPv6 网络配置 ----
+panels_docker_ipv6() {
+  _require_root
+  local daemon_json="/etc/docker/daemon.json"
+  msg_title "Docker IPv6 网络配置"
+  msg ""
+
+  msg "  1) 启用 Docker IPv6"
+  msg "  2) 禁用 Docker IPv6"
+  msg "  3) 创建 IPv6 网络"
+  msg "  0) 返回"
+  read -p "请选择: " ipv6_choice
+
+  case "$ipv6_choice" in
+    1)
+      mkdir -p /etc/docker
+      if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
+        python3 -c "
+import json
+with open('$daemon_json') as f: cfg = json.load(f)
+cfg['ipv6'] = True
+cfg['fixed-cidr-v6'] = 'fd00::/80'
+with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+      else
+        echo '{"ipv6": true, "fixed-cidr-v6": "fd00::/80"}' > "$daemon_json"
+      fi
+      systemctl restart docker 2>/dev/null
+      msg_ok "Docker IPv6 已启用"
+      _log_write "Docker IPv6 已启用"
+      ;;
+    2)
+      if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
+        python3 -c "
+import json
+with open('$daemon_json') as f: cfg = json.load(f)
+cfg.pop('ipv6', None)
+cfg.pop('fixed-cidr-v6', None)
+with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+        systemctl restart docker 2>/dev/null
+        msg_ok "Docker IPv6 已禁用"
+      fi
+      ;;
+    3)
+      read -p "网络名称: " net_name
+      read -p "IPv6 子网 (如 fd00:1::/64): " ipv6_subnet
+      if [[ -n "$net_name" && -n "$ipv6_subnet" ]]; then
+        docker network create --ipv6 --subnet "$ipv6_subnet" "$net_name" 2>/dev/null && \
+          msg_ok "IPv6 网络 '$net_name' 已创建" || msg_err "创建失败"
+      fi
+      ;;
+  esac
+  pause
+}
+
+# ---- Docker daemon.json 编辑 ----
+panels_docker_daemon() {
+  _require_root
+  local daemon_json="/etc/docker/daemon.json"
+  msg_title "Docker daemon.json 配置"
+  msg ""
+
+  if [[ -f "$daemon_json" ]]; then
+    msg "  ${F_BOLD}当前配置:${F_RESET}"
+    cat "$daemon_json" 2>/dev/null
+  else
+    msg "  当前使用默认配置"
+  fi
+
+  msg ""
+  msg "  1) 配置镜像加速"
+  msg "  2) 配置日志限制"
+  msg "  3) 配置 DNS"
+  msg "  4) 手动编辑 daemon.json"
+  msg "  5) 重置为默认"
+  msg "  0) 返回"
+  read -p "请选择: " dm_choice
+
+  case "$dm_choice" in
+    1)
+      read -p "请输入镜像加速地址: " mirror_url
+      if [[ -n "$mirror_url" ]]; then
+        mkdir -p /etc/docker
+        if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
+          python3 -c "
+import json
+with open('$daemon_json') as f: cfg = json.load(f)
+cfg['registry-mirrors'] = ['$mirror_url']
+with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+        else
+          echo "{\"registry-mirrors\": [\"$mirror_url\"]}" > "$daemon_json"
+        fi
+        systemctl restart docker 2>/dev/null
+        msg_ok "镜像加速已配置"
+      fi
+      ;;
+    2)
+      if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
+        python3 -c "
+import json
+with open('$daemon_json') as f: cfg = json.load(f)
+cfg['log-driver'] = 'json-file'
+cfg['log-opts'] = {'max-size': '10m', 'max-file': '3'}
+with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+      else
+        echo '{"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "3"}}' > "$daemon_json"
+      fi
+      systemctl restart docker 2>/dev/null
+      msg_ok "日志限制已配置 (10MB x 3)"
+      ;;
+    3)
+      read -p "DNS 服务器 (如 8.8.8.8): " dns_server
+      if [[ -n "$dns_server" ]]; then
+        if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
+          python3 -c "
+import json
+with open('$daemon_json') as f: cfg = json.load(f)
+cfg['dns'] = ['$dns_server']
+with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null
+        fi
+        systemctl restart docker 2>/dev/null
+        msg_ok "DNS 已设为 $dns_server"
+      fi
+      ;;
+    4)
+      ${EDITOR:-vi} "$daemon_json"
+      systemctl restart docker 2>/dev/null
+      ;;
+    5)
+      if confirm "确认重置 daemon.json？"; then
+        rm -f "$daemon_json"
+        systemctl restart docker 2>/dev/null
+        msg_ok "已重置为默认配置"
+      fi
+      ;;
+  esac
+  pause
+}
+
+# ---- Docker 备份/迁移/恢复 ----
+panels_docker_backup() {
+  _require_root
+  if ! command -v docker &>/dev/null; then
+    msg_err "Docker 未安装"; pause; return
+  fi
+
+  msg_title "Docker 备份/迁移/恢复"
+  msg ""
+  msg "  1) 备份所有容器"
+  msg "  2) 备份指定容器"
+  msg "  3) 备份所有镜像"
+  msg "  4) 备份 Compose 项目"
+  msg "  5) 恢复容器/镜像"
+  msg "  6) 容器迁移到远程服务器"
+  msg "  0) 返回"
+  read -p "请选择: " dbk_choice
+
+  local backup_dir="/root/docker_backups"
+  mkdir -p "$backup_dir"
+  local date_str=$(date '+%Y%m%d_%H%M%S')
+
+  case "$dbk_choice" in
+    1)
+      msg_info "正在备份所有容器..."
+      for container in $(docker ps -a --format '{{.Names}}' 2>/dev/null); do
+        docker export "$container" > "$backup_dir/${container}_${date_str}.tar" 2>/dev/null && \
+          msg "  已导出: $container"
+      done
+      msg_ok "所有容器已备份到 $backup_dir"
+      _log_write "Docker 容器已全部备份"
+      ;;
+    2)
+      read -p "容器名称: " c
+      if [[ -n "$c" ]]; then
+        docker export "$c" > "$backup_dir/${c}_${date_str}.tar" 2>/dev/null
+        msg_ok "容器 '$c' 已备份"
+      fi
+      ;;
+    3)
+      local img_file="$backup_dir/all_images_${date_str}.tar"
+      msg_info "正在备份所有镜像..."
+      docker save $(docker images -q 2>/dev/null) -o "$img_file" 2>/dev/null
+      msg_ok "所有镜像已备份: $img_file ($(du -h "$img_file" | cut -f1))"
+      ;;
+    4)
+      local compose_backup="$backup_dir/compose_${date_str}.tar.gz"
+      tar czf "$compose_backup" /opt/docker/ 2>/dev/null
+      msg_ok "Compose 项目已备份: $compose_backup"
+      ;;
+    5)
+      ls -lh "$backup_dir"/*.tar "$backup_dir"/*.tar.gz 2>/dev/null
+      read -p "输入备份文件名: " backup_file
+      if [[ -f "$backup_dir/$backup_file" ]]; then
+        if [[ "$backup_file" == *images*.tar ]]; then
+          docker load -i "$backup_dir/$backup_file" 2>/dev/null && msg_ok "镜像已恢复"
+        elif [[ "$backup_file" == *.tar.gz ]]; then
+          tar xzf "$backup_dir/$backup_file" -C / && msg_ok "Compose 项目已恢复"
+        else
+          read -p "新容器名称: " new_name
+          docker import "$backup_dir/$backup_file" "$new_name" 2>/dev/null && msg_ok "已导入: $new_name"
+        fi
+      fi
+      ;;
+    6)
+      read -p "容器名称: " c
+      read -p "远程主机 (user@host): " remote_host
+      if [[ -n "$c" && -n "$remote_host" ]]; then
+        local img_file="$backup_dir/${c}_${date_str}.tar"
+        docker export "$c" > "$img_file" 2>/dev/null
+        scp "$img_file" "${remote_host}:/tmp/" 2>/dev/null && \
+          msg_ok "已传输到 $remote_host:/tmp/$(basename "$img_file")" || msg_err "传输失败"
+        msg "在远程运行: docker import /tmp/$(basename "$img_file") $c"
+      fi
+      ;;
+  esac
+  pause
+}
+
+# ---- Docker 容器管理 ----
+panels_docker_container_mgmt() {
+  _require_root
+  if ! command -v docker &>/dev/null; then
+    msg_err "Docker 未安装"; pause; return
+  fi
+
+  msg_title "容器管理"
+  msg ""
+  docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" 2>/dev/null | while read -r line; do
+    msg "  $line"
+  done
+
+  msg ""
+  msg "  1) 启动容器"
+  msg "  2) 停止容器"
+  msg "  3) 重启容器"
+  msg "  4) 删除容器"
+  msg "  5) 查看容器日志"
+  msg "  6) 进入容器终端"
+  msg "  7) 查看资源占用"
+  msg "  8) 设置自动重启"
+  msg "  0) 返回"
+  read -p "请选择: " cm_choice
+
+  case "$cm_choice" in
+    1) read -p "容器名称: " c; docker start "$c" 2>/dev/null && msg_ok "已启动: $c" ;;
+    2) read -p "容器名称: " c; docker stop "$c" 2>/dev/null && msg_ok "已停止: $c" ;;
+    3) read -p "容器名称: " c; docker restart "$c" 2>/dev/null && msg_ok "已重启: $c" ;;
+    4)
+      read -p "容器名称: " c
+      if confirm "确认删除容器 $c？"; then
+        docker stop "$c" 2>/dev/null; docker rm "$c" 2>/dev/null && msg_ok "已删除: $c"
+      fi
+      ;;
+    5) read -p "容器名称: " c; read -p "行数 (默认50): " n; docker logs --tail "${n:-50}" "$c" 2>/dev/null ;;
+    6) read -p "容器名称: " c; docker exec -it "$c" /bin/bash 2>/dev/null || docker exec -it "$c" /bin/sh 2>/dev/null ;;
+    7) docker stats --no-stream 2>/dev/null ;;
+    8)
+      read -p "容器名称: " c
+      msg "  1) 设置自动重启  2) 取消自动重启"
+      read -p "请选择: " r
+      [[ "$r" == "1" ]] && docker update --restart=always "$c" 2>/dev/null && msg_ok "已设置" || \
+        docker update --restart=no "$c" 2>/dev/null && msg_ok "已取消"
+      ;;
+  esac
+  pause
+}
+
+# ---- Docker 网络管理 ----
+panels_docker_network() {
+  _require_root
+  if ! command -v docker &>/dev/null; then
+    msg_err "Docker 未安装"; pause; return
+  fi
+
+  msg_title "Docker 网络管理"
+  msg ""
+  docker network ls 2>/dev/null | while read -r line; do
+    msg "  $line"
+  done
+
+  msg ""
+  msg "  1) 创建网络"
+  msg "  2) 查看网络详情"
+  msg "  3) 连接容器到网络"
+  msg "  4) 删除网络"
+  msg "  0) 返回"
+  read -p "请选择: " net_choice
+
+  case "$net_choice" in
+    1)
+      read -p "网络名称: " net_name
+      read -p "子网 (如 172.20.0.0/16，可留空): " subnet
+      if [[ -n "$net_name" ]]; then
+        if [[ -n "$subnet" ]]; then
+          docker network create --subnet "$subnet" "$net_name" 2>/dev/null
+        else
+          docker network create "$net_name" 2>/dev/null
+        fi
+        msg_ok "网络 '$net_name' 已创建"
+      fi
+      ;;
+    2) read -p "网络名称: " n; docker network inspect "$n" 2>/dev/null ;;
+    3)
+      read -p "网络名称: " n; read -p "容器名称: " c
+      docker network connect "$n" "$c" 2>/dev/null && msg_ok "已连接"
+      ;;
+    4) read -p "网络名称: " n; confirm "确认删除？" && docker network rm "$n" 2>/dev/null && msg_ok "已删除" ;;
+  esac
+  pause
+}
+
+# ---- Docker 卷管理 ----
+panels_docker_volumes() {
+  _require_root
+  if ! command -v docker &>/dev/null; then
+    msg_err "Docker 未安装"; pause; return
+  fi
+
+  msg_title "Docker 卷管理"
+  msg ""
+  docker volume ls 2>/dev/null | while read -r line; do
+    msg "  $line"
+  done
+
+  msg ""
+  msg "  1) 创建卷"
+  msg "  2) 查看卷详情"
+  msg "  3) 删除卷"
+  msg "  4) 清理未使用卷"
+  msg "  0) 返回"
+  read -p "请选择: " vol_choice
+
+  case "$vol_choice" in
+    1) read -p "卷名称: " v; docker volume create "$v" 2>/dev/null && msg_ok "卷 '$v' 已创建" ;;
+    2) read -p "卷名称: " v; docker volume inspect "$v" 2>/dev/null ;;
+    3) read -p "卷名称: " v; confirm "确认删除？" && docker volume rm "$v" 2>/dev/null && msg_ok "已删除" ;;
+    4) confirm "清理所有未使用的卷？" && docker volume prune -f 2>/dev/null && msg_ok "已清理" ;;
+  esac
+  pause
+}
+
 panels_docker_menu() {
   while true; do
     clear
@@ -185,20 +579,34 @@ panels_docker_menu() {
       msg "  Docker 未安装"
     fi
     msg ""
-    msg "  1) 安装 Docker"
-    msg "  2) 列出容器"
-    msg "  3) 列出镜像"
-    msg "  4) Docker Compose / 项目"
-    msg "  5) 清理 (prune)"
-    msg "  0) 返回"
+    msg "  ${F_GREEN} 1${F_RESET}) 安装 Docker"
+    msg "  ${F_GREEN} 2${F_RESET}) 列出容器"
+    msg "  ${F_GREEN} 3${F_RESET}) 列出镜像"
+    msg "  ${F_GREEN} 4${F_RESET}) Docker Compose / 项目"
+    msg "  ${F_GREEN} 5${F_RESET}) 清理 (prune)"
+    msg "  ${F_GREEN} 6${F_RESET}) 容器端口访问控制"
+    msg "  ${F_GREEN} 7${F_RESET}) Docker IPv6 网络配置"
+    msg "  ${F_GREEN} 8${F_RESET}) 编辑 daemon.json"
+    msg "  ${F_GREEN} 9${F_RESET}) Docker 备份/迁移/恢复"
+    msg "  ${F_GREEN}10${F_RESET}) 容器管理 (启动/停止/重启/删除)"
+    msg "  ${F_GREEN}11${F_RESET}) 网络管理"
+    msg "  ${F_GREEN}12${F_RESET}) 卷管理"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-5]: " dk_choice
+    read -p "请选择 [0-12]: " dk_choice
     case "$dk_choice" in
       1) panels_docker_install; pause ;;
       2) panels_docker_ps ;;
       3) panels_docker_images ;;
       4) panels_docker_compose ;;
       5) panels_docker_prune ;;
+      6) panels_docker_port_control ;;
+      7) panels_docker_ipv6 ;;
+      8) panels_docker_daemon ;;
+      9) panels_docker_backup ;;
+      10) panels_docker_container_mgmt ;;
+      11) panels_docker_network ;;
+      12) panels_docker_volumes ;;
       0) break ;;
     esac
   done

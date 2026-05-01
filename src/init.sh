@@ -74,7 +74,7 @@ _module_status() {
 # ---- Shell completion helper ----
 _fusion_completion() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
-  local cmds="proxy system network web panels market help version update status"
+  local cmds="proxy system network web panels market warp workspace cluster help version update status"
   COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
 }
 complete -F _fusion_completion fusionbox 2>/dev/null

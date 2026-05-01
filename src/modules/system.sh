@@ -16,6 +16,13 @@ system_main() {
     swap)             system_swap "$@" ;;
     users)            system_users "$@" ;;
     security|sec)     system_security "$@" ;;
+    sshkey|ssh)       system_sshkey "$@" ;;
+    firewall|fw)      system_firewall "$@" ;;
+    cron|crontab)     system_cron "$@" ;;
+    disk)             system_disk "$@" ;;
+    timezone|tz)      system_timezone "$@" ;;
+    trash)            system_trash "$@" ;;
+    tools)            system_tools_menu ;;
     menu|main)        system_menu ;;
     help|h)           system_help ;;
     *)                system_menu ;;
@@ -1085,6 +1092,537 @@ system_security() {
   pause
 }
 
+# ---- SSH 密钥管理 ----
+system_sshkey() {
+  _require_root
+  msg_title "SSH 密钥管理"
+  msg ""
+
+  msg "  ${F_BOLD}当前授权密钥:${F_RESET}"
+  if [[ -f ~/.ssh/authorized_keys ]]; then
+    local key_count=0
+    while IFS= read -r line; do
+      [[ -z "$line" || "$line" == "#"* ]] && continue
+      key_count=$((key_count+1))
+      local key_type=$(echo "$line" | awk '{print $1}')
+      local key_comment=$(echo "$line" | awk '{print $NF}')
+      msg "  $key_count) [$key_type] $key_comment"
+    done < ~/.ssh/authorized_keys
+    [[ $key_count -eq 0 ]] && msg "    暂无授权密钥"
+  else
+    msg "    暂无授权密钥"
+  fi
+
+  msg ""
+  msg "  1) 添加公钥（粘贴）"
+  msg "  2) 生成新密钥对"
+  msg "  3) 删除指定密钥"
+  msg "  4) 禁用密码登录（仅密钥）"
+  msg "  0) 返回"
+  read -p "请选择: " ssh_choice
+
+  case "$ssh_choice" in
+    1)
+      msg "请粘贴公钥内容（以 ssh-rsa/ssh-ed25519 开头）:"
+      read -r pubkey
+      if [[ -n "$pubkey" ]]; then
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        echo "$pubkey" >> ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
+        msg_ok "公钥已添加"
+        _log_write "SSH 公钥已添加"
+      fi
+      ;;
+    2)
+      local key_type; key_type=$(select_option "选择密钥类型:" "ed25519 (推荐)" "RSA 4096")
+      local key_file
+      if [[ "$key_type" == "1" ]]; then
+        key_file="$HOME/.ssh/id_ed25519"
+        ssh-keygen -t ed25519 -f "$key_file" -N "" -C "fusionbox@$(hostname)" 2>/dev/null
+      else
+        key_file="$HOME/.ssh/id_rsa"
+        ssh-keygen -t rsa -b 4096 -f "$key_file" -N "" -C "fusionbox@$(hostname)" 2>/dev/null
+      fi
+      if [[ -f "$key_file" ]]; then
+        msg_ok "密钥对已生成:"
+        msg "  私钥: $key_file"
+        msg "  公钥: ${key_file}.pub"
+        msg ""
+        msg "  公钥内容:"
+        cat "${key_file}.pub"
+      fi
+      ;;
+    3)
+      if [[ -f ~/.ssh/authorized_keys ]]; then
+        read -p "输入要删除的密钥行号: " line_num
+        if [[ -n "$line_num" ]]; then
+          sed -i "${line_num}d" ~/.ssh/authorized_keys
+          msg_ok "密钥已删除"
+        fi
+      fi
+      ;;
+    4)
+      if confirm "确认禁用密码登录？请确保已配置密钥！"; then
+        sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+        systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
+        msg_ok "密码登录已禁用，仅允许密钥登录"
+        _log_write "SSH 密码登录已禁用"
+      fi
+      ;;
+  esac
+  pause
+}
+
+# ---- 防火墙管理 ----
+system_firewall() {
+  _require_root
+  msg_title "防火墙管理"
+  msg ""
+
+  # Detect firewall
+  local fw_type="none"
+  if command -v ufw &>/dev/null; then
+    fw_type="ufw"
+    msg "  ${F_BOLD}防火墙:${F_RESET} UFW"
+    msg "  $(ufw status 2>/dev/null | head -1)"
+  elif command -v firewall-cmd &>/dev/null; then
+    fw_type="firewalld"
+    msg "  ${F_BOLD}防火墙:${F_RESET} firewalld"
+    firewall-cmd --state 2>/dev/null
+  elif command -v iptables &>/dev/null; then
+    fw_type="iptables"
+    msg "  ${F_BOLD}防火墙:${F_RESET} iptables"
+    local rule_count=$(iptables -L -n 2>/dev/null | wc -l)
+    msg "  规则数: $rule_count"
+  fi
+
+  msg ""
+  msg "  1) 安装并启用 UFW"
+  msg "  2) 开放端口"
+  msg "  3) 关闭端口"
+  msg "  4) 查看当前规则"
+  msg "  5) 允许指定 IP"
+  msg "  6) 封禁指定 IP"
+  msg "  7) 安装 Fail2Ban"
+  msg "  8) 配置 Fail2Ban"
+  msg "  9) 重置防火墙"
+  msg "  0) 返回"
+  read -p "请选择: " fw_choice
+
+  case "$fw_choice" in
+    1)
+      _install_pkg ufw
+      ufw default deny incoming 2>/dev/null
+      ufw default allow outgoing 2>/dev/null
+      ufw allow ssh 2>/dev/null
+      ufw --force enable 2>/dev/null
+      msg_ok "UFW 已启用（默认拒绝入站，允许出站，SSH 已放行）"
+      _log_write "UFW 防火墙已启用"
+      ;;
+    2)
+      read -p "请输入要开放的端口（如 80、443、8000-9000）: " port
+      if [[ -n "$port" ]]; then
+        local proto; proto=$(select_option "协议:" "TCP+UDP (默认)" "仅 TCP" "仅 UDP")
+        case "$proto" in
+          2) ufw allow "$port"/tcp 2>/dev/null; iptables -A INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null ;;
+          3) ufw allow "$port"/udp 2>/dev/null; iptables -A INPUT -p udp --dport "$port" -j ACCEPT 2>/dev/null ;;
+          *) ufw allow "$port" 2>/dev/null; iptables -A INPUT -p tcp --dport "$port" -j ACCEPT 2>/dev/null; iptables -A INPUT -p udp --dport "$port" -j ACCEPT 2>/dev/null ;;
+        esac
+        msg_ok "端口 $port 已开放"
+        _log_write "端口已开放: $port"
+      fi
+      ;;
+    3)
+      read -p "请输入要关闭的端口: " port
+      if [[ -n "$port" ]]; then
+        ufw deny "$port" 2>/dev/null
+        iptables -A INPUT -p tcp --dport "$port" -j DROP 2>/dev/null
+        msg_ok "端口 $port 已关闭"
+      fi
+      ;;
+    4)
+      if [[ "$fw_type" == "ufw" ]]; then
+        ufw status verbose 2>/dev/null
+      elif [[ "$fw_type" == "firewalld" ]]; then
+        firewall-cmd --list-all 2>/dev/null
+      else
+        iptables -L -n -v 2>/dev/null | head -30
+      fi
+      ;;
+    5)
+      read -p "请输入要允许的 IP 地址: " ip_addr
+      if [[ -n "$ip_addr" ]]; then
+        ufw allow from "$ip_addr" 2>/dev/null
+        iptables -A INPUT -s "$ip_addr" -j ACCEPT 2>/dev/null
+        msg_ok "已允许 $ip_addr"
+      fi
+      ;;
+    6)
+      read -p "请输入要封禁的 IP 地址: " ip_addr
+      if [[ -n "$ip_addr" ]]; then
+        ufw deny from "$ip_addr" 2>/dev/null
+        iptables -A INPUT -s "$ip_addr" -j DROP 2>/dev/null
+        msg_ok "已封禁 $ip_addr"
+        _log_write "已封禁 IP: $ip_addr"
+      fi
+      ;;
+    7)
+      _install_pkg fail2ban
+      systemctl enable --now fail2ban 2>/dev/null || true
+      msg_ok "Fail2Ban 已安装并启动"
+      ;;
+    8)
+      if ! command -v fail2ban-client &>/dev/null; then
+        msg_err "请先安装 Fail2Ban"
+      else
+        msg "  当前状态:"
+        fail2ban-client status 2>/dev/null
+        msg ""
+        read -p "SSH 最大重试次数 (默认 5): " max_retry
+        max_retry=${max_retry:-5}
+        read -p "封禁时间（秒，默认 3600）: " ban_time
+        ban_time=${ban_time:-3600}
+        cat > /etc/fail2ban/jail.local << FEOF
+[DEFAULT]
+bantime = $ban_time
+findtime = 600
+maxretry = $max_retry
+
+[sshd]
+enabled = true
+port = ssh
+logpath = %(sshd_log)s
+backend = %(sshd_backend)s
+FEOF
+        systemctl restart fail2ban 2>/dev/null
+        msg_ok "Fail2Ban 已配置: $max_retry 次失败后封禁 $ban_time 秒"
+      fi
+      ;;
+    9)
+      if confirm "确认重置防火墙规则？"; then
+        ufw --force reset 2>/dev/null
+        iptables -F 2>/dev/null
+        iptables -X 2>/dev/null
+        msg_ok "防火墙已重置"
+      fi
+      ;;
+  esac
+  pause
+}
+
+# ---- 定时任务管理 ----
+system_cron() {
+  _require_root
+  msg_title "定时任务管理"
+  msg ""
+
+  msg "  ${F_BOLD}当前定时任务:${F_RESET}"
+  local cron_list=$(crontab -l 2>/dev/null | grep -v "^#" | grep -v "^$")
+  if [[ -n "$cron_list" ]]; then
+    echo "$cron_list" | while IFS= read -r line; do
+      msg "  $line"
+    done
+  else
+    msg "    暂无定时任务"
+  fi
+
+  msg ""
+  msg "  1) 添加定时任务"
+  msg "  2) 删除定时任务"
+  msg "  3) 编辑 crontab"
+  msg "  4) 添加系统备份定时任务"
+  msg "  5) 添加日志清理定时任务"
+  msg "  6) 查看系统 cron 服务"
+  msg "  0) 返回"
+  read -p "请选择: " cron_choice
+
+  case "$cron_choice" in
+    1)
+      msg "  常用时间格式:"
+      msg "  每天凌晨3点:  0 3 * * *"
+      msg "  每小时:       0 * * * *"
+      msg "  每周一:       0 0 * * 1"
+      msg "  每5分钟:      */5 * * * *"
+      msg ""
+      read -p "请输入 cron 表达式: " cron_expr
+      read -p "请输入要执行的命令: " cron_cmd
+      if [[ -n "$cron_expr" && -n "$cron_cmd" ]]; then
+        (crontab -l 2>/dev/null; echo "$cron_expr $cron_cmd") | crontab -
+        msg_ok "定时任务已添加"
+        _log_write "定时任务已添加: $cron_expr $cron_cmd"
+      fi
+      ;;
+    2)
+      crontab -l 2>/dev/null | grep -v "^#" | grep -v "^$" | nl -ba
+      read -p "输入要删除的行号: " del_line
+      if [[ -n "$del_line" ]]; then
+        crontab -l 2>/dev/null | sed "${del_line}d" | crontab -
+        msg_ok "已删除"
+      fi
+      ;;
+    3)
+      crontab -e 2>/dev/null || msg_err "请安装编辑器"
+      ;;
+    4)
+      local backup_cron="0 3 * * * /bin/bash -c 'source /etc/fusionbox/src/init.sh && system_backup /root/backups'"
+      (crontab -l 2>/dev/null; echo "$backup_cron") | crontab -
+      msg_ok "每天凌晨 3 点自动备份已配置"
+      _log_write "自动备份定时任务已配置"
+      ;;
+    5)
+      local clean_cron="0 4 * * 0 journalctl --vacuum-time=7d && rm -rf /tmp/*.tmp"
+      (crontab -l 2>/dev/null; echo "$clean_cron") | crontab -
+      msg_ok "每周日凌晨 4 点自动清理日志已配置"
+      ;;
+    6)
+      systemctl status cron 2>/dev/null || systemctl status crond 2>/dev/null || service cron status 2>/dev/null
+      ;;
+  esac
+  pause
+}
+
+# ---- 磁盘管理 ----
+system_disk() {
+  _require_root
+  msg_title "磁盘管理"
+  msg ""
+
+  msg "  ${F_BOLD}磁盘分区:${F_RESET}"
+  lsblk -f 2>/dev/null || fdisk -l 2>/dev/null | head -20
+
+  msg ""
+  msg "  ${F_BOLD}挂载信息:${F_RESET}"
+  df -hT 2>/dev/null | awk 'NR<=10{printf "  %-20s %-8s %-8s %-8s %-5s %s\n", $1, $2, $3, $4, $5, $7}'
+
+  msg ""
+  msg "  ${F_BOLD}inode 使用:${F_RESET}"
+  df -i / 2>/dev/null | awk 'NR==2{printf "  总计: %s  已用: %s  可用: %s  使用率: %s\n", $2, $3, $4, $5}'
+
+  msg ""
+  msg "  1) 磁盘分区（fdisk）"
+  msg "  2) 格式化磁盘"
+  msg "  3) 挂载磁盘"
+  msg "  4) 卸载磁盘"
+  msg "  5) 扩展分区（growpart）"
+  msg "  6) 查看大文件（Top 20）"
+  msg "  7) 查看目录大小"
+  msg "  0) 返回"
+  read -p "请选择: " disk_choice
+
+  case "$disk_choice" in
+    1)
+      read -p "请输入磁盘设备（如 /dev/sdb）: " disk_dev
+      if [[ -b "$disk_dev" ]]; then
+        msg_warn "进入 fdisk 交互模式，输入 m 查看帮助"
+        fdisk "$disk_dev"
+      else
+        msg_err "设备不存在: $disk_dev"
+      fi
+      ;;
+    2)
+      read -p "请输入要格式化的分区（如 /dev/sdb1）: " part_dev
+      if [[ -b "$part_dev" ]]; then
+        local fs_type; fs_type=$(select_option "文件系统:" "ext4 (推荐)" "xfs" "btrfs")
+        case "$fs_type" in
+          1) mkfs.ext4 "$part_dev" ;;
+          2) mkfs.xfs "$part_dev" ;;
+          3) mkfs.btrfs "$part_dev" ;;
+          *) mkfs.ext4 "$part_dev" ;;
+        esac
+        msg_ok "格式化完成"
+      fi
+      ;;
+    3)
+      read -p "请输入分区（如 /dev/sdb1）: " part_dev
+      read -p "请输入挂载点（如 /data）: " mount_point
+      if [[ -b "$part_dev" && -n "$mount_point" ]]; then
+        mkdir -p "$mount_point"
+        mount "$part_dev" "$mount_point"
+        echo "$part_dev $mount_point auto defaults 0 2" >> /etc/fstab
+        msg_ok "已挂载 $part_dev 到 $mount_point"
+      fi
+      ;;
+    4)
+      read -p "请输入挂载点: " mount_point
+      if [[ -n "$mount_point" ]]; then
+        umount "$mount_point" 2>/dev/null && msg_ok "已卸载 $mount_point" || msg_err "卸载失败"
+      fi
+      ;;
+    5)
+      read -p "请输入磁盘设备（如 /dev/sda）: " disk_dev
+      read -p "请输入分区号（如 2）: " part_num
+      if [[ -b "$disk_dev" && -n "$part_num" ]]; then
+        _install_pkg cloud-guest-utils 2>/dev/null || _install_pkg cloud-utils-growpart 2>/dev/null
+        growpart "$disk_dev" "$part_num" 2>/dev/null && msg_ok "分区已扩展" || msg_err "扩展失败"
+        # Auto resize filesystem
+        local part_dev="${disk_dev}${part_num}"
+        if [[ -b "$part_dev" ]]; then
+          resize2fs "$part_dev" 2>/dev/null || xfs_growfs "$part_dev" 2>/dev/null || true
+          msg_ok "文件系统已扩展"
+        fi
+      fi
+      ;;
+    6)
+      msg_info "正在扫描大文件..."
+      find / -type f -size +100M -exec du -h {} + 2>/dev/null | sort -rh | head -20
+      ;;
+    7)
+      read -p "目录路径（默认 /）: " dir_path
+      dir_path=${dir_path:-/}
+      du -h --max-depth=2 "$dir_path" 2>/dev/null | sort -rh | head -20
+      ;;
+  esac
+  pause
+}
+
+# ---- 时区管理 ----
+system_timezone() {
+  _require_root
+  msg_title "时区管理"
+  msg ""
+
+  msg "  ${F_BOLD}当前时区:${F_RESET} $(timedatectl 2>/dev/null | grep "Time zone" | awk '{print $3, $4}' || cat /etc/timezone 2>/dev/null || date +%Z)"
+  msg "  ${F_BOLD}当前时间:${F_RESET} $(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+  msg ""
+  msg "  1) 设置时区为 亚洲/上海"
+  msg "  2) 设置时区为 亚洲/东京"
+  msg "  3) 设置时区为 美国/纽约"
+  msg "  4) 设置时区为 欧洲/伦敦"
+  msg "  5) 自定义时区"
+  msg "  6) 同步时间（NTP）"
+  msg "  0) 返回"
+  read -p "请选择: " tz_choice
+
+  case "$tz_choice" in
+    1) timedatectl set-timezone Asia/Shanghai 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime; msg_ok "时区已设置为 Asia/Shanghai" ;;
+    2) timedatectl set-timezone Asia/Tokyo 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime; msg_ok "时区已设置为 Asia/Tokyo" ;;
+    3) timedatectl set-timezone America/New_York 2>/dev/null || ln -sf /usr/share/zoneinfo/America/New_York /etc/localtime; msg_ok "时区已设置为 America/New_York" ;;
+    4) timedatectl set-timezone Europe/London 2>/dev/null || ln -sf /usr/share/zoneinfo/Europe/London /etc/localtime; msg_ok "时区已设置为 Europe/London" ;;
+    5)
+      read -p "请输入时区（如 Asia/Shanghai）: " custom_tz
+      if [[ -n "$custom_tz" ]]; then
+        timedatectl set-timezone "$custom_tz" 2>/dev/null || ln -sf "/usr/share/zoneinfo/$custom_tz" /etc/localtime
+        msg_ok "时区已设置为 $custom_tz"
+      fi
+      ;;
+    6)
+      _install_pkg ntp 2>/dev/null || _install_pkg chrony 2>/dev/null || true
+      if command -v ntpdate &>/dev/null; then
+        ntpdate pool.ntp.org 2>/dev/null && msg_ok "时间已同步"
+      elif command -v chronyc &>/dev/null; then
+        chronyc makestep 2>/dev/null && msg_ok "时间已同步"
+      elif command -v timedatectl &>/dev/null; then
+        timedatectl set-ntp true 2>/dev/null && msg_ok "NTP 已启用"
+      fi
+      msg "  当前时间: $(date '+%Y-%m-%d %H:%M:%S')"
+      ;;
+  esac
+  _log_write "时区设置已更改"
+  pause
+}
+
+# ---- 回收站管理 ----
+system_trash() {
+  _require_root
+  local trash_dir="/root/.fusionbox_trash"
+  mkdir -p "$trash_dir"
+
+  msg_title "回收站管理"
+  msg ""
+
+  local trash_count=$(find "$trash_dir" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+  msg "  ${F_BOLD}回收站:${F_RESET} $trash_dir"
+  msg "  ${F_BOLD}文件数:${F_RESET} $trash_count"
+
+  if [[ $trash_count -gt 0 ]]; then
+    msg ""
+    msg "  ${F_BOLD}最近删除:${F_RESET}"
+    ls -lhrt "$trash_dir" 2>/dev/null | tail -10 | awk '{printf "  %s %s %s %s\n", $6, $7, $5, $9}'
+  fi
+
+  msg ""
+  msg "  1) 安全删除文件（移入回收站）"
+  msg "  2) 恢复文件"
+  msg "  3) 清空回收站"
+  msg "  4) 查看回收站内容"
+  msg "  0) 返回"
+  read -p "请选择: " trash_choice
+
+  case "$trash_choice" in
+    1)
+      read -p "请输入要删除的文件/目录路径: " target_path
+      if [[ -e "$target_path" ]]; then
+        local trash_name="$(basename "$target_path")_$(date +%s)"
+        mv "$target_path" "$trash_dir/$trash_name"
+        msg_ok "已移入回收站: $target_path → $trash_dir/$trash_name"
+        _log_write "文件已移入回收站: $target_path"
+      else
+        msg_err "文件不存在: $target_path"
+      fi
+      ;;
+    2)
+      if [[ $trash_count -eq 0 ]]; then
+        msg "回收站为空"
+      else
+        ls -lhrt "$trash_dir" | tail -10 | nl -ba
+        read -p "输入要恢复的文件名: " restore_name
+        if [[ -e "$trash_dir/$restore_name" ]]; then
+          read -p "恢复到路径: " restore_path
+          mv "$trash_dir/$restore_name" "$restore_path"
+          msg_ok "已恢复到: $restore_path"
+        fi
+      fi
+      ;;
+    3)
+      if confirm "确认清空回收站？此操作不可恢复！"; then
+        rm -rf "$trash_dir"/*
+        msg_ok "回收站已清空"
+        _log_write "回收站已清空"
+      fi
+      ;;
+    4)
+      find "$trash_dir" -mindepth 1 -maxdepth 1 -exec ls -lh {} \; 2>/dev/null
+      ;;
+  esac
+  pause
+}
+
+# ---- 系统工具子菜单 ----
+system_tools_menu() {
+  while true; do
+    clear
+    _print_banner
+    msg_title "系统工具"
+    msg ""
+    msg "  ${F_GREEN} 1${F_RESET}) SSH 密钥管理"
+    msg "  ${F_GREEN} 2${F_RESET}) 防火墙管理"
+    msg "  ${F_GREEN} 3${F_RESET}) 定时任务管理"
+    msg "  ${F_GREEN} 4${F_RESET}) 磁盘管理"
+    msg "  ${F_GREEN} 5${F_RESET}) 时区管理"
+    msg "  ${F_GREEN} 6${F_RESET}) 回收站"
+    msg "  ${F_GREEN} 7${F_RESET}) 用户管理"
+    msg "  ${F_GREEN} 8${F_RESET}) 安全审计"
+    msg "  ${F_GREEN} 9${F_RESET}) Swap 管理"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-9]: " tools_choice
+    case "$tools_choice" in
+      1) system_sshkey ;;
+      2) system_firewall ;;
+      3) system_cron ;;
+      4) system_disk ;;
+      5) system_timezone ;;
+      6) system_trash ;;
+      7) system_users ;;
+      8) system_security ;;
+      9) system_swap ;;
+      0) break ;;
+    esac
+  done
+}
+
 # ---- Help ----
 system_help() {
   msg_title "系统管理 帮助"
@@ -1099,6 +1637,13 @@ system_help() {
   msg "  fusionbox system clean          系统清理"
   msg "  fusionbox system swap           Swap 管理"
   msg "  fusionbox system security       安全审计与加固"
+  msg "  fusionbox system sshkey         SSH 密钥管理"
+  msg "  fusionbox system firewall       防火墙管理 (UFW/iptables)"
+  msg "  fusionbox system cron           定时任务管理"
+  msg "  fusionbox system disk           磁盘管理"
+  msg "  fusionbox system timezone       时区管理"
+  msg "  fusionbox system trash          回收站管理"
+  msg "  fusionbox system tools          系统工具子菜单"
   msg ""
 }
 
@@ -1109,16 +1654,16 @@ system_menu() {
     _print_banner
     msg_title "系统管理"
     msg ""
-    msg "  ${F_GREEN}1${F_RESET}) 系统信息"
-    msg "  ${F_GREEN}2${F_RESET}) BBR 管理"
-    msg "  ${F_GREEN}3${F_RESET}) 运行基准测试"
-    msg "  ${F_GREEN}4${F_RESET}) 系统监控"
-    msg "  ${F_GREEN}5${F_RESET}) 备份系统"
-    msg "  ${F_GREEN}6${F_RESET}) 恢复系统"
-    msg "  ${F_GREEN}7${F_RESET}) 更新系统"
-    msg "  ${F_GREEN}8${F_RESET}) 系统清理"
-    msg "  ${F_GREEN}9${F_RESET}) Swap 与安全"
-    msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
+    msg "  ${F_GREEN} 1${F_RESET}) 系统信息"
+    msg "  ${F_GREEN} 2${F_RESET}) BBR 管理"
+    msg "  ${F_GREEN} 3${F_RESET}) 运行基准测试"
+    msg "  ${F_GREEN} 4${F_RESET}) 系统监控"
+    msg "  ${F_GREEN} 5${F_RESET}) 备份系统"
+    msg "  ${F_GREEN} 6${F_RESET}) 恢复系统"
+    msg "  ${F_GREEN} 7${F_RESET}) 更新系统"
+    msg "  ${F_GREEN} 8${F_RESET}) 系统清理"
+    msg "  ${F_GREEN} 9${F_RESET}) 系统工具 (SSH/防火墙/定时任务/磁盘/时区/回收站)"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回主菜单"
     msg ""
     read -p "请选择 [0-9]: " choice
     case "$choice" in
@@ -1130,7 +1675,7 @@ system_menu() {
       6) system_restore ;;
       7) system_update ;;
       8) system_clean ;;
-      9) system_swap; system_security ;;
+      9) system_tools_menu ;;
       0) break ;;
     esac
   done

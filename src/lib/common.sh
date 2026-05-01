@@ -214,6 +214,9 @@ _detect_env() {
     "web"      "$FUSION_MODULES/web.sh"
     "panels"   "$FUSION_MODULES/panels.sh"
     "market"   "$FUSION_MODULES/market.sh"
+    "warp"     "$FUSION_MODULES/warp.sh"
+    "workspace" "$FUSION_MODULES/workspace.sh"
+    "cluster"  "$FUSION_MODULES/cluster.sh"
   )
 }
 

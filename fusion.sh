@@ -46,6 +46,21 @@ route() {
       _load_module "market"
       market_main "$@"
       ;;
+    # WARP management
+    warp)
+      _load_module "warp"
+      warp_main "$@"
+      ;;
+    # Workspace management
+    workspace|ws)
+      _load_module "workspace"
+      workspace_main "$@"
+      ;;
+    # Cluster & tools
+    cluster|cl)
+      _load_module "cluster"
+      cluster_main "$@"
+      ;;
     # System commands
     status)
       show_status
@@ -59,6 +74,11 @@ route() {
       ;;
     help|h)
       show_help
+      ;;
+    # k command shortcut - pass to system
+    k)
+      _load_module "cluster"
+      cluster_kcmd "$@"
       ;;
     # Interactive main menu (no args)
     menu|main)
@@ -111,6 +131,12 @@ show_status() {
     _module_status "Nginx" "$(nginx -v 2>&1 | awk -F/ '{print $2}')"
   fi
 
+  # Check WARP
+  if command -v warp-cli &>/dev/null; then
+    local warp_st=$(warp-cli status 2>/dev/null | head -1)
+    _module_status "WARP" "$warp_st"
+  fi
+
   msg ""
   pause
 }
@@ -150,11 +176,14 @@ show_help() {
   msg ""
   msg "  ${F_BOLD}模块:${F_RESET}"
   msg "  ${F_GREEN}proxy, p${F_RESET}        代理管理 - 多后端代理管理"
-  msg "  ${F_GREEN}system, sys${F_RESET}      系统管理 - BBR、基准测试、备份"
+  msg "  ${F_GREEN}system, sys${F_RESET}      系统管理 - BBR、基准测试、备份、工具"
   msg "  ${F_GREEN}network, net${F_RESET}     网络工具 - IP、流媒体、测速"
-  msg "  ${F_GREEN}web${F_RESET}              网站部署 - LNMP、网站、SSL"
+  msg "  ${F_GREEN}web${F_RESET}              网站部署 - LNMP、网站、SSL、反代"
   msg "  ${F_GREEN}panels, tools${F_RESET}    面板与工具 - Docker、面板、实用工具"
   msg "  ${F_GREEN}market${F_RESET}           应用市场 - 一键安装应用"
+  msg "  ${F_GREEN}warp${F_RESET}             WARP 管理 - Cloudflare WARP 解锁"
+  msg "  ${F_GREEN}workspace, ws${F_RESET}    后台工作区 - Screen/Tmux 管理"
+  msg "  ${F_GREEN}cluster, cl${F_RESET}      集群控制 - 多服务器/游戏服务端"
   msg ""
   msg "  ${F_BOLD}命令:${F_RESET}"
   msg "  ${F_GREEN}status${F_RESET}            系统状态概览"
@@ -164,10 +193,15 @@ show_help() {
   msg ""
   msg "  ${F_BOLD}示例:${F_RESET}"
   msg "  fusionbox proxy add              # 添加代理配置"
-  msg "  fusionbox system bbr             # 启用 BBR"
+  msg "  fusionbox system bbr             # BBR 管理"
+  msg "  fusionbox system tools           # 系统工具 (SSH/防火墙/磁盘/...)"
   msg "  fusionbox network speedtest      # 网速测试"
   msg "  fusionbox web lnmp               # 安装 LNMP"
+  msg "  fusionbox web deploy             # LDNMP 应用部署"
+  msg "  fusionbox web proxy              # 反向代理"
   msg "  fusionbox panels docker          # Docker 管理"
+  msg "  fusionbox warp install           # 安装 WARP"
+  msg "  fusionbox cluster game           # 游戏服务端"
   msg ""
 
   # Quick reference per module
@@ -185,18 +219,21 @@ main_menu() {
 
     msg_title "主菜单"
     msg ""
-    msg "  ${F_GREEN}1${F_RESET}) 代理管理"
-    msg "  ${F_GREEN}2${F_RESET}) 系统管理"
-    msg "  ${F_GREEN}3${F_RESET}) 网络工具"
-    msg "  ${F_GREEN}4${F_RESET}) 网站部署"
-    msg "  ${F_GREEN}5${F_RESET}) 面板与工具"
-    msg "  ${F_GREEN}6${F_RESET}) 应用市场"
-    msg "  ${F_GREEN}7${F_RESET}) 系统状态"
-    msg "  ${F_GREEN}8${F_RESET}) 帮助"
-    msg "  ${F_GREEN}0${F_RESET}) 退出"
+    msg "  ${F_GREEN} 1${F_RESET}) 代理管理"
+    msg "  ${F_GREEN} 2${F_RESET}) 系统管理"
+    msg "  ${F_GREEN} 3${F_RESET}) 网络工具"
+    msg "  ${F_GREEN} 4${F_RESET}) 网站部署"
+    msg "  ${F_GREEN} 5${F_RESET}) 面板与工具"
+    msg "  ${F_GREEN} 6${F_RESET}) 应用市场"
+    msg "  ${F_GREEN} 7${F_RESET}) WARP 管理"
+    msg "  ${F_GREEN} 8${F_RESET}) 后台工作区"
+    msg "  ${F_GREEN} 9${F_RESET}) 集群控制与工具"
+    msg "  ${F_GREEN}10${F_RESET}) 系统状态"
+    msg "  ${F_GREEN}11${F_RESET}) 帮助"
+    msg "  ${F_GREEN} 0${F_RESET}) 退出"
     msg ""
 
-    read -p "请选择 [0-8]: " main_choice
+    read -p "请选择 [0-11]: " main_choice
 
     case "$main_choice" in
       1) route proxy ;;
@@ -205,8 +242,11 @@ main_menu() {
       4) route web ;;
       5) route panels ;;
       6) route market ;;
-      7) show_status ; pause ;;
-      8) show_help ;;
+      7) route warp ;;
+      8) route workspace ;;
+      9) route cluster ;;
+      10) show_status ; pause ;;
+      11) show_help ;;
       0) msg "再见！"; _log_write "FusionBox 会话已结束"; return ;;
       *) ;;
     esac
