@@ -211,6 +211,38 @@ _proxy_download_clash() {
   mv "$tmpdir/mihomo" "$tmpdir/clash-meta" 2>/dev/null
 }
 
+# ---- 重建主配置文件（合并所有子配置） ----
+_proxy_rebuild_config() {
+  local all_inbounds=""
+  local all_outbounds='[{"protocol": "freedom", "tag": "direct"}]'
+  local first=1
+
+  for f in "$P_CONF_DIR"/*.json; do
+    [[ ! -f "$f" ]] && continue
+    [[ "$(basename "$f")" == "config.json" ]] && continue
+
+    # Extract inbounds array content (between first [ and ])
+    local inbounds=$(sed -n '/"inbounds"/,/^\s*\]/p' "$f" | sed '1d;$d')
+    if [[ -n "$inbounds" ]]; then
+      if [[ $first -eq 1 ]]; then
+        all_inbounds="$inbounds"
+        first=0
+      else
+        all_inbounds="$inbounds,$all_inbounds"
+      fi
+    fi
+  done
+
+  cat > "$P_CONF_DIR/config.json" << MEOF
+{
+  "inbounds": [
+$all_inbounds
+  ],
+  "outbounds": $all_outbounds
+}
+MEOF
+}
+
 # ---- 安装 systemd 服务 ----
 _proxy_install_service() {
   local backend="$1"
@@ -306,6 +338,7 @@ proxy_add() {
   if [[ -f "$conf_file" ]]; then
     msg_ok "$p_name 配置已创建: $conf_file"
     msg_info "端口: $port | UUID: $uuid"
+    _proxy_rebuild_config
     proxy_service "restart" 2>/dev/null
     _log_write "添加代理配置: $p_name (端口 $port)"
   else
@@ -517,6 +550,7 @@ proxy_del() {
 
   confirm "确认删除配置 $(basename "$conf_file")？" || return
   rm -f "$conf_file"
+  _proxy_rebuild_config
   msg_ok "配置已删除"
   proxy_service "restart" 2>/dev/null
   _log_write "删除代理配置: $(basename "$conf_file")"
