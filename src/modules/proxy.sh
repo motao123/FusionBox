@@ -44,6 +44,54 @@ _proxy_gen_secret() {
   fi
 }
 
+# ---- 233boy/sing-box 集成 ----
+# 社区最佳实践的 sing-box 管理脚本：https://github.com/233boy/sing-box
+# 真实内核装在 /etc/sing-box/bin/（与 FusionBox 自有内核目录不冲突），
+# 管理命令为 /usr/local/bin/sing-box，服务名 sing-box，配置 /etc/sing-box/conf/
+SB_SH_BIN="/usr/local/bin/sing-box"
+SB_CORE_DIR="/etc/sing-box"
+
+_singbox_233_installed() {
+  [[ -x "$SB_SH_BIN" && -d "$SB_CORE_DIR/sh" ]]
+}
+
+# 233boy/sing-box 安装（脚本落地临时文件再执行；官方安装器全程无交互）
+_singbox_233_install() {
+  msg_info "正在安装 233boy/sing-box（下载内核与管理脚本，约 1 分钟）..."
+  local tmpf
+  tmpf=$(mktemp)
+  if ! _download "https://raw.githubusercontent.com/233boy/sing-box/main/install.sh" "$tmpf"; then
+    msg_err "下载 233boy/sing-box 安装脚本失败"
+    rm -f "$tmpf"
+    return 1
+  fi
+  bash "$tmpf"
+  local rc=$?
+  rm -f "$tmpf"
+  if [[ $rc -ne 0 || ! -x "$SB_SH_BIN" ]]; then
+    msg_err "233boy/sing-box 安装失败（退出码 $rc），可查看上方输出定位原因"
+    return 1
+  fi
+  msg_ok "233boy/sing-box 安装完成（已自动创建 REALITY 配置）"
+  msg_info "管理入口: fusionbox proxy sb   （或直接运行 sb）"
+  _log_write "233boy/sing-box 已安装"
+}
+
+# 入口: fusionbox proxy sb [参数] —— 无参数进 233boy 交互主菜单，带参数原样透传
+proxy_sb() {
+  _require_root
+  if ! _singbox_233_installed; then
+    confirm "未检测到 233boy/sing-box，是否立即安装？（自动创建 REALITY 配置）" || return 1
+    _singbox_233_install || return 1
+    return
+  fi
+  if [[ $# -gt 0 ]]; then
+    "$SB_SH_BIN" "$@"
+  else
+    "$SB_SH_BIN"
+  fi
+}
+
 # ---- 主入口 ----
 proxy_main() {
   local cmd="${1:-menu}"; shift || true
@@ -61,6 +109,7 @@ proxy_main() {
     status|s)       proxy_status ;;
     log)            proxy_log ;;
     bbr)            proxy_bbr "$@" ;;
+    sb|singbox)     proxy_sb "$@" ;;
     url|share)      proxy_url "$@" ;;
     menu|main)      proxy_menu ;;
     help|h)         proxy_help ;;
@@ -99,6 +148,18 @@ proxy_install() {
   local rest="${be_entry#*:}"
   local be_label="${rest%%:*}"
   local be_repo="${rest#*:}"
+
+  # sing-box 后端交由 233boy 脚本接管（社区最佳实践，自动 REALITY + 全协议管理）
+  if [[ "$be_name" == "sing-box" ]]; then
+    if _singbox_233_installed; then
+      msg_ok "233boy/sing-box 已安装"
+      proxy_sb
+      return
+    fi
+    confirm "sing-box 将由社区最佳实践的 233boy 脚本安装与管理（自动创建 REALITY 配置），是否继续？" || return
+    _singbox_233_install
+    return
+  fi
 
   # 检查是否已安装
   if [[ -f "$P_BIN_DIR/$be_name" ]]; then
@@ -313,6 +374,13 @@ proxy_uninstall() {
   rm -rf "$P_BASE_DIR" "$P_LOG_DIR"
   [[ -n "$backend" ]] && rm -f "/usr/local/bin/$backend"
 
+  # 联动卸载 233boy/sing-box（由其自带卸载器处理，交互确认交给用户）
+  if _singbox_233_installed; then
+    if confirm "同时卸载 233boy/sing-box？"; then
+      "$SB_SH_BIN" uninstall
+    fi
+  fi
+
   msg_ok "代理模块已卸载"
   _log_write "代理模块已卸载"
   pause
@@ -345,6 +413,11 @@ proxy_add() {
 
   local backend=$(cat "$P_BASE_DIR/current_backend" 2>/dev/null)
   if [[ -z "$backend" ]]; then
+    if _singbox_233_installed; then
+      msg_info "检测到 233boy/sing-box 实例（由其自有服务管理）"
+      msg_info "请使用: fusionbox proxy sb add   （或进入 fusionbox proxy sb 主菜单）"
+      return 1
+    fi
     msg_err "未找到已安装的代理后端"
     return 1
   fi
@@ -617,6 +690,13 @@ proxy_del() {
 }
 
 # ---- 服务管理 ----
+proxy_service_menu() {
+  msg "1) 启动  2) 停止  3) 重启"
+  read -p "操作: " act
+  case "$act" in 1) proxy_service "start" ;; 2) proxy_service "stop" ;; 3) proxy_service "restart" ;; esac
+  pause
+}
+
 proxy_service() {
   local action="$1"
   case "$action" in
@@ -672,6 +752,19 @@ proxy_status() {
 
   local count=$(find "$P_CONF_DIR" -name "*.json" 2>/dev/null | wc -l)
   msg "  ${F_BOLD}配置:${F_RESET} $count 个"
+
+  # 233boy/sing-box 实例（独立于 FusionBox 自有后端）
+  if _singbox_233_installed; then
+    local sb_status
+    if systemctl is-active sing-box &>/dev/null; then
+      sb_status="${F_GREEN}运行中${F_RESET}"
+    else
+      sb_status="${F_YELLOW}已停止${F_RESET}"
+    fi
+    local sb_count
+    sb_count=$(find "$SB_CORE_DIR/conf" -name "*.json" 2>/dev/null | wc -l)
+    msg "  ${F_BOLD}233boy/sing-box:${F_RESET} $sb_status | 配置 $sb_count 个 | 管理: fusionbox proxy sb"
+  fi
   msg ""
 }
 
@@ -771,8 +864,9 @@ proxy_help() {
   msg "  ${F_GREEN}fusionbox proxy bbr${F_RESET}            启用 BBR 加速"
   msg "  ${F_GREEN}fusionbox proxy url <名称>${F_RESET}     生成分享链接"
   msg ""
-  msg "  ${F_BOLD}支持的后端:${F_RESET} Xray-core、v2ray-core、sing-box、Clash.Meta"
-  msg "  ${F_BOLD}支持的协议:${F_RESET} VLESS、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5"
+  msg "  ${F_BOLD}支持的后端:${F_RESET} Xray-core、v2ray-core、233boy/sing-box（推荐）、Clash.Meta"
+  msg "  ${F_BOLD}支持的协议:${F_RESET} VLESS(含Reality)、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5"
+  msg "  ${F_BOLD}sing-box:${F_RESET}   fusionbox proxy sb     # 233boy 脚本管理（自动 REALITY）"
   msg ""
 }
 
@@ -792,23 +886,20 @@ proxy_menu() {
     msg "  ${F_GREEN}6${F_RESET}) 启动/停止/重启"
     msg "  ${F_GREEN}7${F_RESET}) 启用 BBR"
     msg "  ${F_GREEN}8${F_RESET}) 生成分享链接"
+    msg "  ${F_GREEN}9${F_RESET}) sing-box 管理 (233boy)"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-8]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-9]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) proxy_install ;;
       2) proxy_add ;;
       3) proxy_list; pause ;;
       4) proxy_info; pause ;;
       5) proxy_del ;;
-      6)
-        msg "1) 启动  2) 停止  3) 重启"
-        read -p "操作: " act
-        case "$act" in 1) proxy_service "start" ;; 2) proxy_service "stop" ;; 3) proxy_service "restart" ;; esac
-        pause
-        ;;
+      6) proxy_service_menu ;;
       7) proxy_bbr; pause ;;
       8) proxy_url; pause ;;
+      9) proxy_sb; pause ;;
       0) break ;;
     esac
   done

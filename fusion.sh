@@ -132,6 +132,17 @@ show_status() {
   fi
   _module_status "代理管理" "$proxy_status"
 
+  # Check 233boy sing-box
+  if [[ -x /usr/local/bin/sing-box && -d /etc/sing-box/sh ]]; then
+    local sb_st
+    if systemctl is-active sing-box &>/dev/null; then
+      sb_st="运行中"
+    else
+      sb_st="已停止"
+    fi
+    _module_status "sing-box(233boy)" "$sb_st"
+  fi
+
   # Check BBR
   local bbr_status=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")
   _module_status "BBR" "$bbr_status"

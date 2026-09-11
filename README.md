@@ -26,20 +26,23 @@ FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理
 
 多后端通用代理管理，支持一键安装和配置：
 
-- **支持后端**：Xray-core、v2ray-core、sing-box、Clash.Meta (mihomo)
-- **支持协议**：VLESS、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5
+- **支持后端**：Xray-core、v2ray-core、**233boy/sing-box（推荐）**、Clash.Meta
+- **支持协议**：VLESS(含 Reality)、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5
 - **传输方式**：TCP、WebSocket、gRPC、HTTPUpgrade
 - **配置管理**：自动合并多配置、分享链接生成
-- **协议适配**：配置生成当前针对 Xray/v2ray 内核（Hysteria2/TUIC 需对应内核支持，添加时自动校验拒绝不支持的组合；sing-box/Clash.Meta 可安装，配置生成适配中）
+- **协议适配**：FusionBox 自带配置生成针对 Xray/v2ray 内核；sing-box 后端由社区最佳实践的 [233boy/sing-box](https://github.com/233boy/sing-box) 脚本接管（安装时自动创建 REALITY 配置，支持 TUIC/Hysteria2 等全协议）；添加配置时自动校验拒绝后端不支持的协议组合
 
 ```bash
-fusionbox proxy install          # 安装代理核心（4选1）
+fusionbox proxy install          # 安装代理核心（4选1，sing-box 走 233boy 脚本）
 fusionbox proxy add              # 添加代理配置（按后端自动校验协议）
+fusionbox proxy sb               # 进入 233boy sing-box 交互主菜单
+fusionbox proxy sb add           # 透传：添加 sing-box 配置（同 sing-box add）
+fusionbox proxy sb url           # 透传：生成分享链接
 fusionbox proxy list             # 列出所有配置
 fusionbox proxy start            # 启动代理服务
 fusionbox proxy stop             # 停止代理服务
 fusionbox proxy restart          # 重启代理服务
-fusionbox proxy status           # 查看代理状态
+fusionbox proxy status           # 查看代理状态（含 233boy sing-box 实例）
 fusionbox proxy url <名称>       # 生成分享链接
 fusionbox proxy del <名称>       # 删除配置
 fusionbox proxy bbr              # 启用 BBR 加速
