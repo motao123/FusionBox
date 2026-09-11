@@ -8,7 +8,7 @@ FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理
 
 | 模块 | 命令 | 功能 |
 |------|------|------|
-| 代理管理 | `fusionbox proxy` | 多后端代理 (Xray/v2ray/sing-box/Clash.Meta) |
+| 代理管理 | `fusionbox proxy` | 多后端代理 (Xray/v2ray/233boy sing-box/Clash.Meta) |
 | 系统管理 | `fusionbox system` | BBR/基准测试/备份/SSH/防火墙/定时任务/磁盘/时区/回收站 |
 | 网络工具 | `fusionbox network` | IP查询/流媒体检测/测速/DNS/路由追踪/端口检测 |
 | 网站部署 | `fusionbox web` | LNMP/SSL/17种应用部署/反向代理/L4转发/站点备份 |
@@ -358,6 +358,19 @@ v1.2.0 对全项目做了一轮安全审计与真机功能实测（Ubuntu 24.04 
 - 应用部署/代理服务失败不再谎报成功；Docker Compose 部署失败返回错误
 - 全部交互菜单在 stdin 关闭（CI/管道）时安全退出，不再死循环
 - 新增 `fusionbox uninstall` 完整卸载；版本号统一从 version.txt 读取
+
+## 更新日志
+
+### v1.3.0
+
+- **代理管理集成 [233boy/sing-box](https://github.com/233boy/sing-box)**：`fusionbox proxy install` 选择 sing-box 后端时由该社区脚本接管（安装全自动、自动创建 REALITY 配置，支持 TUIC/Hysteria2 等全协议）
+- 新增 `fusionbox proxy sb [参数]`：无参数进入 233boy 交互主菜单，带参数原样透传（`sb add` / `sb url` / `sb del` / `sb status`…）
+- 代理状态与总状态页并列显示 233boy sing-box 实例；`proxy uninstall` 支持联动卸载
+- 修复：只装 233boy sing-box（无自有后端）时 `proxy status` 误显示"未安装"、`proxy add` 不给正确引导
+
+### v1.2.0
+
+- 全项目安全加固与真机功能实测（详见下方"安全与健壮性"）；新增 `fusionbox uninstall`；CI 增加测试卡发布
 
 ## 开源协议
 
