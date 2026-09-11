@@ -11,6 +11,12 @@ FUSION_SRC="${FUSION_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
   exit 1
 }
 
+# Version: single source of truth is version.txt at the repo root
+if [[ -f "$FUSION_DIR/version.txt" ]]; then
+  FUSION_VER="$(tr -d '[:space:]' < "$FUSION_DIR/version.txt")"
+  export FUSION_VER
+fi
+
 # Detect environment
 _detect_env
 
@@ -25,7 +31,7 @@ _init_log
 
 # Print startup banner
 _print_banner() {
-  clear
+  [[ -t 1 ]] && clear   # 非 tty（重定向/CI）下不清屏，避免转义码污染输出
   msg "${F_BOLD}${F_CYAN}"
   msg "  ███████╗██╗   ██╗███████╗██╗ ██████╗ ███╗   ██╗██████╗  ██████╗ ██╗  ██╗"
   msg "  ██╔════╝██║   ██║██╔════╝██║██╔═══██╗████╗  ██║██╔══██╗██╔═══██╗╚██╗██╔╝"
@@ -74,7 +80,7 @@ _module_status() {
 # ---- Shell completion helper ----
 _fusion_completion() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
-  local cmds="proxy system network web panels market warp workspace cluster help version update status"
+  local cmds="proxy system network web panels market warp workspace cluster help version update status uninstall"
   COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
 }
 complete -F _fusion_completion fusionbox 2>/dev/null

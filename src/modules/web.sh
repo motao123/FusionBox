@@ -25,6 +25,11 @@ web_main() {
   esac
 }
 
+# ---- 工具函数 ----
+_web_validate_domain() {
+  [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+}
+
 # ---- Install LNMP ----
 web_install_lnmp() {
   _require_root
@@ -195,6 +200,10 @@ web_create_site() {
 
   local domain; domain=$(read_input "请输入域名（如 example.com）")
   [[ -z "$domain" ]] && domain="localhost"
+  if ! _web_validate_domain "$domain"; then
+    msg_err "域名格式不合法: $domain"
+    pause; return 1
+  fi
 
   local web_root="/var/www/$domain"
   mkdir -p "$web_root"
@@ -216,7 +225,8 @@ h1{color:#333}.info{color:#666;margin-top:20px}
 </body>
 </html>
 HEOF
-  chmod -R 755 "$web_root"
+  find "$web_root" -type d -exec chmod 755 {} +
+  find "$web_root" -type f -exec chmod 644 {} +
 
   # Create Nginx config
   local nginx_conf="/etc/nginx/sites-available/$domain"
@@ -255,14 +265,15 @@ NEOF
     cp "$nginx_conf" /etc/nginx/conf.d/ 2>/dev/null
 
   # Test Nginx
-  nginx -t 2>/dev/null && {
-    systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
-    msg_ok "网站已创建: http://$domain"
-    msg_info "根目录: $web_root"
-    _log_write "网站已创建: $domain"
-  } || {
-    msg_err "Nginx 配置测试失败，请检查 $nginx_conf"
-  }
+  if ! nginx -t 2>/dev/null; then
+    rm -f "$nginx_conf" "/etc/nginx/sites-enabled/$domain" "/etc/nginx/conf.d/$domain"
+    msg_err "nginx 配置校验失败，已删除 $nginx_conf"
+    pause; return 1
+  fi
+  systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+  msg_ok "网站已创建: http://$domain"
+  msg_info "根目录: $web_root"
+  _log_write "网站已创建: $domain"
 
   pause
 }
@@ -386,15 +397,32 @@ web_mysql() {
 
     case "$db_choice" in
       1)
-        read -p "数据库名: " db_name
-        mysql -e "CREATE DATABASE IF NOT EXISTS \`$db_name\` CHARACTER SET utf8mb4;" 2>/dev/null && \
+        read -r -p "数据库名: " db_name
+        [[ "$db_name" =~ ^[A-Za-z0-9_]+$ ]] || { msg_err "数据库名仅允许字母数字下划线"; return 1; }
+        printf 'CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4;\n' "$db_name" | mysql 2>/dev/null && \
           msg_ok "数据库 '$db_name' 已创建" || msg_err "创建失败"
         ;;
       2)
-        read -p "用户名: " db_user
-        read -p "密码: " db_pass
-        read -p "数据库: " db_name
-        mysql -e "CREATE USER '$db_user'@'localhost' IDENTIFIED BY '$db_pass'; GRANT ALL ON \`$db_name\`.* TO '$db_user'@'localhost'; FLUSH PRIVILEGES;" 2>/dev/null && \
+        read -r -p "用户名: " db_user
+        read -r -p "密码: " db_pass   # -r 必须保留：不带 -r 的 read 会吞掉密码中的反斜杠
+        read -r -p "数据库: " db_name
+        [[ "$db_user" =~ ^[A-Za-z0-9_]+$ ]] || { msg_err "用户名仅允许字母数字下划线"; return 1; }
+        [[ "$db_name" =~ ^[A-Za-z0-9_]+$ ]] || { msg_err "数据库名仅允许字母数字下划线"; return 1; }
+        # 值转义：反斜杠加倍 + 单引号加倍（SQL 层）。SQL 必须经 heredoc/stdin 传入：
+        # 若放在 bash 双引号 -e "..." 里，bash 会把转义好的 \\ 再次折叠成 \，
+        # 导致 SQL 层把 \x 当未知转义丢掉反斜杠（v1.1.0 实测密码被静默改写）
+        local esc_user="$db_user"
+        esc_user=${esc_user//\\/\\\\}
+        esc_user=${esc_user//\'/\'\'}
+        local esc_pass="$db_pass"
+        esc_pass=${esc_pass//\\/\\\\}
+        esc_pass=${esc_pass//\'/\'\'}
+        mysql 2>/dev/null << SQLEOF
+CREATE USER '${esc_user}'@'localhost' IDENTIFIED BY '${esc_pass}';
+GRANT ALL ON \`${db_name}\`.* TO '${esc_user}'@'localhost';
+FLUSH PRIVILEGES;
+SQLEOF
+        [[ $? -eq 0 ]] && \
           msg_ok "用户 '$db_user' 已授权访问 '$db_name'" || msg_err "创建失败"
         ;;
       3)
@@ -417,12 +445,25 @@ web_firewall() {
 
   msg_info "正在启用 Web 安全头..."
   local nginx_conf="/etc/nginx/nginx.conf"
+  local conf_bak=""
   if [[ -f "$nginx_conf" ]]; then
+    conf_bak="$nginx_conf.fb-bak-$(date +%s)"
+    cp "$nginx_conf" "$conf_bak"
     # Add security headers in http block if not present
-    grep -q "X-Content-Type-Options" "$nginx_conf" 2>/dev/null || \
-      sed -i '/http {/a\    add_header X-Content-Type-Options nosniff;\n    add_header X-Frame-Options SAMEORIGIN;\n    add_header X-XSS-Protection "1; mode=block";' "$nginx_conf" 2>/dev/null && \
-      msg_ok "安全头已添加" || msg_warn "无法添加安全头"
-    nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+    if grep -q "X-Content-Type-Options" "$nginx_conf" 2>/dev/null; then
+      msg_info "安全头已存在，跳过"
+    elif sed -i '/http {/a\    add_header X-Content-Type-Options nosniff;\n    add_header X-Frame-Options SAMEORIGIN;\n    add_header X-XSS-Protection "1; mode=block";' "$nginx_conf" 2>/dev/null; then
+      msg_ok "安全头已添加"
+    else
+      msg_warn "无法添加安全头"
+    fi
+    if ! nginx -t 2>/dev/null; then
+      cp "$conf_bak" "$nginx_conf"
+      msg_err "nginx 配置校验失败，已回滚"
+      pause; return 1
+    fi
+    systemctl reload nginx 2>/dev/null || true
+    cp "$nginx_conf" "$conf_bak"
   fi
 
   # Rate limiting
@@ -430,10 +471,14 @@ web_firewall() {
   if [[ ! "$rate_ans" =~ ^[Nn] ]]; then
     grep -q "limit_req_zone" "$nginx_conf" 2>/dev/null || \
       sed -i '/http {/a\    limit_req_zone $binary_remote_addr zone=fusionbox:10m rate=10r/s;' "$nginx_conf" 2>/dev/null
+    if ! nginx -t 2>/dev/null; then
+      [[ -n "$conf_bak" ]] && cp "$conf_bak" "$nginx_conf"
+      msg_err "nginx 配置校验失败，已回滚"
+      pause; return 1
+    fi
+    nginx -s reload 2>/dev/null || true
     msg_ok "速率限制已配置 (10 请求/秒)"
   fi
-
-  nginx -t 2>/dev/null && nginx -s reload 2>/dev/null || true
   _log_write "Web 防火墙已配置"
   pause
 }
@@ -446,6 +491,8 @@ web_optimize() {
   if command -v nginx &>/dev/null; then
     msg_info "正在优化 Nginx..."
     local nginx_conf="/etc/nginx/nginx.conf"
+    local conf_bak="$nginx_conf.fb-bak-$(date +%s)"
+    cp "$nginx_conf" "$conf_bak" 2>/dev/null
 
     # Optimize worker processes
     local cpu_count; cpu_count=$(nproc --all)
@@ -462,7 +509,12 @@ web_optimize() {
     sed -i 's/# tcp_nopush/tcp_nopush/' "$nginx_conf" 2>/dev/null
     sed -i 's/# tcp_nodelay/tcp_nodelay/' "$nginx_conf" 2>/dev/null
 
-    nginx -t 2>/dev/null && nginx -s reload 2>/dev/null
+    if ! nginx -t 2>/dev/null; then
+      cp "$conf_bak" "$nginx_conf" 2>/dev/null
+      msg_err "nginx 配置校验失败，已回滚"
+      pause; return 1
+    fi
+    nginx -s reload 2>/dev/null || true
     msg_ok "Nginx 已优化: $cpu_count 个 worker，gzip 已启用"
     _log_write "Nginx 优化完成"
   fi
@@ -533,7 +585,7 @@ web_deploy_app() {
   msg ""
   msg "  ${F_GREEN} 0${F_RESET}) 返回"
   msg ""
-  read -p "请选择 [0-17]: " app_choice
+  read -p "请选择 [0-17]: " app_choice || return   # stdin 关闭时退出
 
   case "$app_choice" in
     1)  _deploy_wordpress ;;
@@ -562,6 +614,10 @@ _deploy_wordpress() {
   _require_root
   local app_dir="/opt/docker/wordpress"
   local domain; domain=$(read_input "请输入域名（如 wp.example.com）" "localhost")
+  if ! _web_validate_domain "$domain"; then
+    msg_err "域名格式不合法: $domain"
+    pause; return 1
+  fi
   local db_pass; db_pass=$(read_input "请输入 MySQL root 密码" "$(openssl rand -hex 12)")
   local wp_pass; wp_pass=$(read_input "请输入 WordPress 管理员密码" "$(openssl rand -hex 8)")
 
@@ -608,8 +664,13 @@ volumes:
 networks:
   wp_net:
 WPEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "WordPress 已部署"
   msg "  访问: http://${domain}:8080"
   msg "  数据库密码: $db_pass"
@@ -623,6 +684,10 @@ _deploy_typecho() {
   _require_root
   local app_dir="/opt/docker/typecho"
   local domain; domain=$(read_input "请输入域名" "localhost")
+  if ! _web_validate_domain "$domain"; then
+    msg_err "域名格式不合法: $domain"
+    pause; return 1
+  fi
   local db_pass; db_pass=$(read_input "请输入数据库密码" "$(openssl rand -hex 12)")
 
   mkdir -p "$app_dir"
@@ -663,8 +728,13 @@ volumes:
   tc_db_data:
   tc_data:
 TCEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Typecho 已部署"
   msg "  访问: http://${domain}:8081"
   _log_write "Typecho 已部署"
@@ -696,8 +766,13 @@ services:
 volumes:
   halo_data:
 HAEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Halo 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8090"
   _log_write "Halo 已部署"
@@ -753,8 +828,13 @@ volumes:
   dz_db:
   dz_data:
 DZEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Discuz! Q 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8082"
   _log_write "Discuz Q 已部署"
@@ -779,8 +859,13 @@ services:
     volumes:
       - ./data:/code/data
 KDEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "可道云已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8083"
   _log_write "可道云已部署"
@@ -829,8 +914,13 @@ volumes:
   nc_db:
   nc_data:
 NCEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Nextcloud 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8084"
   _log_write "Nextcloud 已部署"
@@ -859,8 +949,13 @@ services:
       - PGID=0
       - UMASK=022
 ALEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   sleep 3
   local admin_pass=$(docker logs alist 2>&1 | grep "password" | awk -F': ' '{print $NF}' | tail -1)
   msg_ok "Alist 已部署"
@@ -908,6 +1003,7 @@ volumes:
   ac_db:
   ac_data:
 ACEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
   # Fallback: use generic PHP+MySQL if specific image not available
   cat > "$app_dir/docker-compose.yml" << ACEOF2
@@ -938,8 +1034,13 @@ volumes:
   ac_db:
   ac_data:
 ACEOF2
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "苹果 CMS 已部署 (需要手动下载源码)"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8085"
   _log_write "苹果 CMS 已部署"
@@ -968,8 +1069,13 @@ services:
       - ./config:/config
       - ./media:/media
 EMEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Emby 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8096"
   msg "  媒体目录: $app_dir/media"
@@ -997,8 +1103,13 @@ services:
       - ./cache:/cache
       - ./media:/media
 JFEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Jellyfin 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8097"
   _log_write "Jellyfin 已部署"
@@ -1049,8 +1160,13 @@ volumes:
   fl_db:
   fl_data:
 FLEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Flarum 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8086"
   _log_write "Flarum 已部署"
@@ -1077,8 +1193,13 @@ services:
     volumes:
       - ./data:/htdocs
 LLEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "LinkStack 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8087"
   _log_write "LinkStack 已部署"
@@ -1106,8 +1227,13 @@ services:
     volumes:
       - ./data:/data
 BWEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Bitwarden (Vaultwarden) 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8088"
   _log_write "Bitwarden 已部署"
@@ -1132,8 +1258,13 @@ services:
     volumes:
       - ./data:/app/data
 UKEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Uptime Kuma 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):3001"
   _log_write "Uptime Kuma 已部署"
@@ -1156,8 +1287,13 @@ services:
     ports:
       - "8880:80"
 ITEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "IT-Tools 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):8880"
   _log_write "IT-Tools 已部署"
@@ -1174,7 +1310,7 @@ _deploy_memos() {
 version: '3.8'
 services:
   memos:
-    image: neosmemo/memos:latest
+    image: ghcr.io/usememos/memos:latest
     container_name: memos
     restart: always
     ports:
@@ -1182,8 +1318,13 @@ services:
     volumes:
       - ./data:/var/opt/memos
 MEOF
+  chmod 600 "$app_dir/docker-compose.yml"
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    msg_err "部署失败，请执行 docker compose logs 查看"
+    pause; return 1
+  fi
   msg_ok "Memos 已部署"
   msg "  访问: http://$(hostname -I | awk '{print $1}'):5230"
   _log_write "Memos 已部署"
@@ -1219,6 +1360,10 @@ web_reverse_proxy() {
       local domain; domain=$(read_input "请输入域名")
       local backend; backend=$(read_input "请输入后端地址 (如 127.0.0.1:3000)")
       [[ -z "$domain" || -z "$backend" ]] && { msg_err "域名和后端不能为空"; pause; return; }
+      if ! _web_validate_domain "$domain"; then
+        msg_err "域名格式不合法: $domain"
+        pause; return 1
+      fi
 
       cat > "/etc/nginx/sites-available/$domain" << RPEOF
 server {
@@ -1239,7 +1384,12 @@ server {
 }
 RPEOF
       ln -sf "/etc/nginx/sites-available/$domain" /etc/nginx/sites-enabled/ 2>/dev/null
-      nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+      if ! nginx -t 2>/dev/null; then
+        rm -f "/etc/nginx/sites-available/$domain" "/etc/nginx/sites-enabled/$domain"
+        msg_err "nginx 配置校验失败，已删除 $domain 配置"
+        pause; return 1
+      fi
+      systemctl reload nginx 2>/dev/null
       msg_ok "反向代理已配置: $domain → $backend"
       _log_write "反向代理已配置: $domain → $backend"
       ;;
@@ -1247,6 +1397,10 @@ RPEOF
       local domain; domain=$(read_input "请输入域名")
       local backend; backend=$(read_input "请输入后端地址")
       [[ -z "$domain" || -z "$backend" ]] && { msg_err "域名和后端不能为空"; pause; return; }
+      if ! _web_validate_domain "$domain"; then
+        msg_err "域名格式不合法: $domain"
+        pause; return 1
+      fi
 
       # First create HTTP config
       cat > "/etc/nginx/sites-available/$domain" << RPEOF2
@@ -1285,11 +1439,20 @@ RPEOF2
       else
         msg_warn "Certbot 未安装，请手动申请 SSL 或运行: fusionbox web ssl $domain"
       fi
-      nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+      if ! nginx -t 2>/dev/null; then
+        rm -f "/etc/nginx/sites-available/$domain" "/etc/nginx/sites-enabled/$domain"
+        msg_err "nginx 配置校验失败，已删除 $domain 配置"
+        pause; return 1
+      fi
+      systemctl reload nginx 2>/dev/null
       msg_ok "HTTPS 反向代理已配置: $domain → $backend"
       ;;
     3)
       local domain; domain=$(read_input "请输入域名")
+      if ! _web_validate_domain "$domain"; then
+        msg_err "域名格式不合法: $domain"
+        pause; return 1
+      fi
       local upstream_name="upstream_${domain//./_}"
       msg "请输入后端地址（每行一个，空行结束）:"
       local backends=""
@@ -1322,7 +1485,12 @@ server {
 }
 LBEOF
       ln -sf "/etc/nginx/sites-available/$domain" /etc/nginx/sites-enabled/ 2>/dev/null
-      nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+      if ! nginx -t 2>/dev/null; then
+        rm -f "/etc/nginx/sites-available/$domain" "/etc/nginx/sites-enabled/$domain"
+        msg_err "nginx 配置校验失败，已删除 $domain 配置"
+        pause; return 1
+      fi
+      systemctl reload nginx 2>/dev/null
       msg_ok "负载均衡已配置: $domain ($(($i-1)) 个后端)"
       _log_write "负载均衡已配置: $domain"
       ;;
@@ -1334,10 +1502,25 @@ LBEOF
       ;;
     5)
       read -p "请输入要删除的域名: " domain
+      if ! _web_validate_domain "$domain"; then
+        msg_err "域名格式不合法: $domain"
+        pause; return 1
+      fi
       if [[ -f "/etc/nginx/sites-available/$domain" ]]; then
-        rm -f "/etc/nginx/sites-available/$domain"
-        rm -f "/etc/nginx/sites-enabled/$domain"
-        nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+        if ! confirm "确认删除反向代理站点 $domain？"; then
+          pause; return
+        fi
+        local del_bak; del_bak=$(mktemp)
+        cp "/etc/nginx/sites-available/$domain" "$del_bak"
+        rm -f "/etc/nginx/sites-available/$domain" "/etc/nginx/sites-enabled/$domain"
+        if ! nginx -t 2>/dev/null; then
+          cp "$del_bak" "/etc/nginx/sites-available/$domain"
+          rm -f "$del_bak"
+          msg_err "nginx 配置校验失败，已回滚"
+          pause; return 1
+        fi
+        rm -f "$del_bak"
+        systemctl reload nginx 2>/dev/null
         msg_ok "已删除: $domain"
       else
         msg_err "配置不存在"
@@ -1369,34 +1552,84 @@ web_stream_proxy() {
   local stream_conf="/etc/nginx/stream.d/fusionbox-stream.conf"
   mkdir -p /etc/nginx/stream.d 2>/dev/null
 
+  # stream 块只能放在 nginx 主配置层；Ubuntu/Debian 的 nginx 默认不带 stream 模块，
+  # 必须先确保模块存在（libnginx-mod-stream），否则追加的 stream{} 会让 nginx 起不来。
+  # 注意 --with-stream=dynamic 表示动态模块（可能未加载），不能当作已支持
+  if [[ "$st_choice" =~ ^[1-3]$ ]]; then
+    if ls /etc/nginx/modules-enabled/*stream* >/dev/null 2>&1 \
+       || ls /usr/lib/nginx/modules/ngx_stream_module.so >/dev/null 2>&1 \
+       || nginx -V 2>&1 | tr ' ' '\n' | grep -qx -- '--with-stream'; then
+      : # 模块已就绪（动态已装或静态编译）
+    else
+      msg_info "正在安装 nginx stream 模块 (libnginx-mod-stream)..."
+      _install_pkg libnginx-mod-stream 2>/dev/null || _install_pkg nginx-mod-stream 2>/dev/null || {
+        msg_err "无法安装 stream 模块，L4 转发不可用"
+        pause; return 1
+      }
+    fi
+  fi
+
   # Ensure stream block exists in nginx.conf
   if ! grep -q "stream {" /etc/nginx/nginx.conf 2>/dev/null; then
+    cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.fb-bak-$(date +%s)" 2>/dev/null
     echo -e "\nstream {\n    include /etc/nginx/stream.d/*.conf;\n}" >> /etc/nginx/nginx.conf
+    if ! nginx -t 2>/dev/null; then
+      # stream 块导致主配置失效：立即还原，绝不能留着坏配置
+      LATEST_BAK=$(ls -t /etc/nginx/nginx.conf.fb-bak-* 2>/dev/null | head -1)
+      [[ -n "$LATEST_BAK" ]] && cp "$LATEST_BAK" /etc/nginx/nginx.conf
+      msg_err "追加 stream 块后 nginx 配置校验失败，已还原 nginx.conf"
+      pause; return 1
+    fi
+    systemctl reload nginx 2>/dev/null
   fi
 
   case "$st_choice" in
     1)
       local listen_port; listen_port=$(read_input "监听端口")
       local target; target=$(read_input "目标地址 (如 192.168.1.100:22)")
+      local st_bak; st_bak=$(mktemp)
+      cp "$stream_conf" "$st_bak" 2>/dev/null
       echo "server { listen $listen_port; proxy_pass $target; }" >> "$stream_conf"
-      nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+      if ! nginx -t 2>/dev/null; then
+        cp "$st_bak" "$stream_conf" 2>/dev/null; rm -f "$st_bak"
+        msg_err "nginx 配置校验失败，已回滚"
+        pause; return 1
+      fi
+      rm -f "$st_bak"
+      systemctl reload nginx 2>/dev/null
       msg_ok "TCP 转发: 0.0.0.0:$listen_port → $target"
       _log_write "Stream TCP: $listen_port → $target"
       ;;
     2)
       local listen_port; listen_port=$(read_input "监听端口")
       local target; target=$(read_input "目标地址")
+      local st_bak; st_bak=$(mktemp)
+      cp "$stream_conf" "$st_bak" 2>/dev/null
       echo "server { listen $listen_port udp; proxy_pass $target; }" >> "$stream_conf"
-      nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+      if ! nginx -t 2>/dev/null; then
+        cp "$st_bak" "$stream_conf" 2>/dev/null; rm -f "$st_bak"
+        msg_err "nginx 配置校验失败，已回滚"
+        pause; return 1
+      fi
+      rm -f "$st_bak"
+      systemctl reload nginx 2>/dev/null
       msg_ok "UDP 转发: 0.0.0.0:$listen_port → $target"
       _log_write "Stream UDP: $listen_port → $target"
       ;;
     3)
       local listen_port; listen_port=$(read_input "监听端口")
       local target; target=$(read_input "目标地址")
+      local st_bak; st_bak=$(mktemp)
+      cp "$stream_conf" "$st_bak" 2>/dev/null
       echo "server { listen $listen_port; proxy_pass $target; }" >> "$stream_conf"
       echo "server { listen $listen_port udp; proxy_pass $target; }" >> "$stream_conf"
-      nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
+      if ! nginx -t 2>/dev/null; then
+        cp "$st_bak" "$stream_conf" 2>/dev/null; rm -f "$st_bak"
+        msg_err "nginx 配置校验失败，已回滚"
+        pause; return 1
+      fi
+      rm -f "$st_bak"
+      systemctl reload nginx 2>/dev/null
       msg_ok "TCP+UDP 转发: 0.0.0.0:$listen_port → $target"
       ;;
     4)
@@ -1411,11 +1644,25 @@ web_stream_proxy() {
       if [[ -f "$stream_conf" ]]; then
         nl -ba "$stream_conf"
         read -p "输入要删除的行号: " del_line
-        if [[ -n "$del_line" ]]; then
-          sed -i "${del_line}d" "$stream_conf"
-          nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null
-          msg_ok "已删除"
+        local total_lines; total_lines=$(wc -l < "$stream_conf")
+        if [[ ! "$del_line" =~ ^[0-9]+$ ]] || [[ "$del_line" -lt 1 || "$del_line" -gt "$total_lines" ]]; then
+          msg_err "行号不合法 (1-$total_lines)"
+          pause; return 1
         fi
+        if ! confirm "确认删除第 $del_line 行？"; then
+          pause; return
+        fi
+        local st_bak; st_bak=$(mktemp)
+        cp "$stream_conf" "$st_bak"
+        sed -i "${del_line}d" "$stream_conf"
+        if ! nginx -t 2>/dev/null; then
+          cp "$st_bak" "$stream_conf"; rm -f "$st_bak"
+          msg_err "nginx 配置校验失败，已回滚"
+          pause; return 1
+        fi
+        rm -f "$st_bak"
+        systemctl reload nginx 2>/dev/null
+        msg_ok "已删除"
       fi
       ;;
   esac
@@ -1491,28 +1738,58 @@ web_site_data() {
         1)
           if ! command -v rclone &>/dev/null; then
             msg_info "正在安装 rclone..."
-            curl -fsSL https://rclone.org/install.sh 2>/dev/null | bash
+            local rc_inst; rc_inst=$(mktemp)
+            if _download "https://rclone.org/install.sh" "$rc_inst"; then
+              bash "$rc_inst" || _install_pkg rclone
+            else
+              _install_pkg rclone
+            fi
+            rm -f "$rc_inst"
           fi
           msg "  请先配置 rclone: fusionbox panels rclone"
           read -p "rclone 远程名称: " rclone_remote
+          if ! [[ "$rclone_remote" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
+            msg_err "远程名称包含非法字符"
+            pause; return 1
+          fi
           read -p "备份保留天数: " keep_days
           keep_days=${keep_days:-7}
+          if ! [[ "$keep_days" =~ ^[0-9]+$ ]]; then
+            msg_err "保留天数必须为数字"
+            pause; return 1
+          fi
           # Add cron job
-          local cron_cmd="0 3 * * * tar czf /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz /var/www/ /opt/docker/ && rclone copy /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz ${rclone_remote}:backups/ && find /tmp -name 'site_backup_*.tar.gz' -mtime +${keep_days} -delete"
+          local cron_cmd="0 3 * * * tar czf /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz /var/www/ /opt/docker/ && rclone copy /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz \"${rclone_remote}:backups/\" && find /tmp -name 'site_backup_*.tar.gz' -mtime +${keep_days} -delete"
           (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
           msg_ok "定时远程备份已配置 (每天 3:00, 保留 ${keep_days} 天)"
           ;;
         2)
           read -p "远程主机 (user@host): " ssh_host
           read -p "远程目录: " ssh_dir
-          local cron_cmd="0 3 * * * tar czf /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz /var/www/ /opt/docker/ && scp /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz ${ssh_host}:${ssh_dir}/"
+          if ! [[ "$ssh_host" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
+            msg_err "远程主机包含非法字符"
+            pause; return 1
+          fi
+          if [[ -n "$ssh_dir" ]] && ! [[ "$ssh_dir" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
+            msg_err "远程目录包含非法字符"
+            pause; return 1
+          fi
+          local cron_cmd="0 3 * * * tar czf /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz /var/www/ /opt/docker/ && scp /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz \"${ssh_host}:${ssh_dir}/\""
           (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
           msg_ok "SCP 定时备份已配置"
           ;;
         3)
           read -p "远程主机 (user@host): " ssh_host
           read -p "远程目录: " ssh_dir
-          local cron_cmd="0 3 * * * rsync -az /var/www/ ${ssh_host}:${ssh_dir}/www/ && rsync -az /opt/docker/ ${ssh_host}:${ssh_dir}/docker/"
+          if ! [[ "$ssh_host" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
+            msg_err "远程主机包含非法字符"
+            pause; return 1
+          fi
+          if [[ -n "$ssh_dir" ]] && ! [[ "$ssh_dir" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
+            msg_err "远程目录包含非法字符"
+            pause; return 1
+          fi
+          local cron_cmd="0 3 * * * rsync -az /var/www/ \"${ssh_host}:${ssh_dir}/www/\" && rsync -az /opt/docker/ \"${ssh_host}:${ssh_dir}/docker/\""
           (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
           msg_ok "rsync 定时同步已配置"
           ;;
@@ -1584,7 +1861,7 @@ web_menu() {
     msg "  ${F_GREEN}13${F_RESET}) 站点数据管理"
     msg "  ${F_GREEN} 0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-9]: " choice
+    read -p "请选择 [0-9]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) web_install_lnmp ;;
       2) web_install_lamp ;;

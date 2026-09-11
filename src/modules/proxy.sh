@@ -35,6 +35,15 @@ P_PROTOCOLS=(
   "SOCKS5"          "socks"   "tcp"
 )
 
+# ---- 随机密钥生成（128-bit hex，可用于 UUID 回退与协议密码） ----
+_proxy_gen_secret() {
+  if command -v openssl &>/dev/null; then
+    openssl rand -hex 16
+  else
+    head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'
+  fi
+}
+
 # ---- 主入口 ----
 proxy_main() {
   local cmd="${1:-menu}"; shift || true
@@ -77,6 +86,7 @@ proxy_install() {
   done
   msg ""
   read -p "请选择 [1-${#P_BACKENDS[@]}]: " be_choice
+  [[ "$be_choice" =~ ^[0-9]+$ ]] || { msg_err "无效选择"; return 1; }
   be_choice=$((be_choice - 1))
 
   if [[ $be_choice -lt 0 || $be_choice -ge ${#P_BACKENDS[@]} ]]; then
@@ -96,8 +106,9 @@ proxy_install() {
     confirm "是否重新安装？" || return
   fi
 
-  # 创建目录
+  # 创建目录（配置目录存放密钥，权限收紧）
   mkdir -p "$P_BIN_DIR" "$P_CONF_DIR" "$P_LOG_DIR"
+  chmod 700 "$P_CONF_DIR"
 
   # 检测架构
   local arch="amd64"
@@ -252,6 +263,7 @@ $all_inbounds
   "outbounds": $all_outbounds
 }
 MEOF
+  chmod 600 "$P_CONF_DIR/config.json"   # 合并后的配置含全部入站密钥
 }
 
 # ---- 安装 systemd 服务 ----
@@ -261,6 +273,8 @@ _proxy_install_service() {
 [Unit]
 Description=FusionBox Proxy Service ($backend)
 After=network.target
+# 每次增删配置都会 restart，连续操作会触发 systemd 默认启动限速（5次/10s）
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -304,6 +318,23 @@ proxy_uninstall() {
   pause
 }
 
+# ---- 后端-协议支持矩阵 ----
+# xray/v2ray 不支持 hysteria2/tuic 入站；sing-box/clash-meta 使用完全不同的
+# 配置格式（本模块生成的是 Xray JSON），当前一律拒绝，避免配置写入后服务起不来
+_proxy_proto_supported() {
+  local backend="$1" ptype="$2"
+  case "$backend" in
+    xray)
+      [[ "$ptype" == "hysteria2" || "$ptype" == "tuic" ]] && return 1
+      return 0 ;;
+    v2ray)
+      [[ "$ptype" == "hysteria2" || "$ptype" == "tuic" || "$ptype" == "trojan" ]] && return 1
+      return 0 ;;
+    *)
+      return 1 ;;
+  esac
+}
+
 # ---- 添加配置 ----
 proxy_add() {
   _require_root
@@ -325,6 +356,7 @@ proxy_add() {
   msg ""
   _proxy_show_protocols
   read -p "请选择协议 [1-${#P_PROTOCOLS[@]}]: " proto_idx
+  [[ "$proto_idx" =~ ^[0-9]+$ ]] || { msg_err "无效选择"; return 1; }
   proto_idx=$((proto_idx - 1))
 
   local p_name="${P_PROTOCOLS[$((proto_idx * 3))]}"
@@ -336,10 +368,22 @@ proxy_add() {
     return 1
   fi
 
+  if ! _proxy_proto_supported "$backend" "$p_type"; then
+    msg_err "当前后端 $backend 不支持 $p_name（该协议请使用支持它的后端，或更换协议）"
+    return 1
+  fi
+
   msg_info "正在添加 $p_name 配置..."
 
   # 生成 UUID 和端口
-  local uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "$(date +%s)-$$-$RANDOM")
+  local uuid
+  uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)
+  if [[ -z "$uuid" ]]; then
+    # /proc 与 uuidgen 均不可用时的回退：16 字节 CSPRNG 构造 v4 格式 UUID
+    local h
+    h="$(_proxy_gen_secret)"
+    uuid="${h:0:8}-${h:8:4}-4${h:13:3}-8${h:17:3}-${h:20:12}"
+  fi
   local port=$(_proxy_gen_port)
 
   # 生成配置文件
@@ -382,7 +426,9 @@ _proxy_gen_port() {
 
 _proxy_generate_config() {
   local p_name="$1" p_type="$2" p_transport="$3" uuid="$4" port="$5" conf_file="$6"
-  local pass=$(date +%s | sha256sum | head -c 32)
+  # 128-bit 随机密钥（旧版用 sha256(date +%s)，熵≈0，可离线爆破）
+  local pass
+  pass="$(_proxy_gen_secret)"
 
   case "$p_type" in
     vless)
@@ -486,6 +532,9 @@ JEOF
 JEOF
       ;;
   esac
+
+  # 配置文件含明文密钥，禁止其他用户读取
+  chmod 600 "$conf_file" 2>/dev/null
 }
 
 # ---- 列出配置 ----
@@ -572,6 +621,7 @@ proxy_service() {
   local action="$1"
   case "$action" in
     start)
+      systemctl reset-failed fusionbox-proxy 2>/dev/null
       systemctl start fusionbox-proxy 2>/dev/null
       if systemctl is-active fusionbox-proxy &>/dev/null; then
         msg_ok "代理服务已启动"
@@ -584,6 +634,7 @@ proxy_service() {
       msg_info "代理服务已停止"
       ;;
     restart)
+      systemctl reset-failed fusionbox-proxy 2>/dev/null
       systemctl restart fusionbox-proxy 2>/dev/null
       sleep 1
       if systemctl is-active fusionbox-proxy &>/dev/null; then
@@ -651,12 +702,17 @@ proxy_bbr() {
     return 1
   fi
 
-  cat >> /etc/sysctl.conf << 'SEOF'
-
-# FusionBox BBR 加速
-net.ipv4.tcp_congestion_control = bbr
-net.core.default_qdisc = fq
-SEOF
+  # 幂等：已配置则原地更新，避免重复追加
+  if grep -q '^net.ipv4.tcp_congestion_control' /etc/sysctl.conf 2>/dev/null; then
+    sed -i 's/^net.ipv4.tcp_congestion_control.*/net.ipv4.tcp_congestion_control = bbr/' /etc/sysctl.conf
+  else
+    echo 'net.ipv4.tcp_congestion_control = bbr' >> /etc/sysctl.conf
+  fi
+  if grep -q '^net.core.default_qdisc' /etc/sysctl.conf 2>/dev/null; then
+    sed -i 's/^net.core.default_qdisc.*/net.core.default_qdisc = fq/' /etc/sysctl.conf
+  else
+    echo 'net.core.default_qdisc = fq' >> /etc/sysctl.conf
+  fi
   sysctl -p 2>/dev/null
   msg_ok "BBR 已启用"
   _log_write "BBR 已启用"
@@ -738,7 +794,7 @@ proxy_menu() {
     msg "  ${F_GREEN}8${F_RESET}) 生成分享链接"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-8]: " choice
+    read -p "请选择 [0-8]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) proxy_install ;;
       2) proxy_add ;;

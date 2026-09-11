@@ -57,9 +57,11 @@ warp_install() {
   if command -v warp-cli &>/dev/null || systemctl is-active warp-svc &>/dev/null; then
     msg_ok "WARP 安装完成"
 
-    # Register
     msg_info "正在注册 WARP..."
-    warp-cli --accept-tos registration new 2>/dev/null
+    if ! warp-cli --accept-tos registration new 2>/dev/null; then
+      # warp-cli 注册失败不再静默（旧版误报"安装完成"）
+      msg_warn "WARP 注册命令未成功（可能已注册或网络异常），请稍后用 'fusionbox warp status' 复查"
+    fi
 
     # Set default mode to proxy
     warp-cli --accept-tos mode proxy 2>/dev/null
@@ -190,9 +192,14 @@ warp_mode() {
 
   case "$mode_choice" in
     1)
-      warp-cli --accept-tos mode warp 2>/dev/null
-      msg_ok "已切换到 WARP 模式（全局代理）"
-      msg_warn "所有流量将经过 Cloudflare WARP"
+      msg_warn "全局模式会将服务器全部流量经 WARP 转发，可能导致当前 SSH 会话中断！"
+      if confirm "确认切换到 WARP 全局模式？"; then
+        warp-cli --accept-tos mode warp 2>/dev/null
+        msg_ok "已切换到 WARP 模式（全局代理）"
+        _log_write "WARP 模式已切换为 warp"
+      else
+        msg_info "已取消"
+      fi
       ;;
     2)
       warp-cli --accept-tos mode proxy 2>/dev/null
@@ -321,7 +328,7 @@ warp_menu() {
     msg "  ${F_GREEN}7${F_RESET}) 代理配置说明"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-7]: " choice
+    read -p "请选择 [0-7]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) warp_install ;;
       2) warp_uninstall ;;

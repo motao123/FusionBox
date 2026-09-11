@@ -33,21 +33,18 @@ network_ip() {
 
   msg ""
   msg "  ${F_BOLD}[详细 IP 信息]${F_RESET}"
-  local ip_info; ip_info=$(curl -s --connect-timeout 5 http://ip-api.com/json/ 2>/dev/null)
+  # ip-api.com 免费接口仅 HTTP 明文，改用 HTTPS 的 ipinfo.io
+  local ip_info; ip_info=$(curl -s --connect-timeout 5 https://ipinfo.io/json 2>/dev/null)
   if [[ -n "$ip_info" ]]; then
-    local country;  country=$(echo "$ip_info" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
-    local region;   region=$(echo "$ip_info" | grep -o '"regionName":"[^"]*"' | cut -d'"' -f4)
-    local city;     city=$(echo "$ip_info" | grep -o '"city":"[^"]*"' | cut -d'"' -f4)
-    local isp;      isp=$(echo "$ip_info" | grep -o '"isp":"[^"]*"' | cut -d'"' -f4)
-    local org;      org=$(echo "$ip_info" | grep -o '"org":"[^"]*"' | cut -d'"' -f4)
-    local as;       as=$(echo "$ip_info" | grep -o '"as":"[^"]*"' | cut -d'"' -f4)
+    local country;  country=$(echo "$ip_info" | grep -o '"country": *"[^"]*"' | cut -d'"' -f4)
+    local region;   region=$(echo "$ip_info" | grep -o '"region": *"[^"]*"' | cut -d'"' -f4)
+    local city;     city=$(echo "$ip_info" | grep -o '"city": *"[^"]*"' | cut -d'"' -f4)
+    local org;      org=$(echo "$ip_info" | grep -o '"org": *"[^"]*"' | cut -d'"' -f4)
 
     msg "    国家: ${country:-N/A}"
     msg "    地区: ${region:-N/A}"
     msg "    城市: ${city:-N/A}"
-    msg "    ISP:  ${isp:-N/A}"
-    msg "    组织: ${org:-N/A}"
-    msg "    AS:   ${as:-N/A}"
+    msg "    ISP/组织: ${org:-N/A}"
   fi
 
   msg ""
@@ -156,8 +153,6 @@ network_speedtest() {
       _download "https://speed.cloudflare.com/__down?bytes=104857600" /tmp/fusion_speedtest &
       local pid=$!
       local last_size=0
-      local speed_samples=()
-      local sample_count=0
 
       while kill -0 "$pid" 2>/dev/null; do
         sleep 1
@@ -165,13 +160,7 @@ network_speedtest() {
         if [[ $elapsed -ge 15 ]]; then
           kill "$pid" 2>/dev/null; break
         fi
-        local cur_size; cur_size=$(stat -c%s /tmp/fusion_speedtest 2>/dev/null || echo 0)
-        if [[ $cur_size -gt $last_size && $sample_count -gt 0 ]]; then
-          local speed_mbps=$(( (cur_size - last_size) * 8 / 1048576 ))
-          speed_samples+=("$speed_mbps")
-        fi
-        last_size=$cur_size
-        sample_count=$((sample_count + 1))
+        last_size=$(stat -c%s /tmp/fusion_speedtest 2>/dev/null || echo 0)
       done
 
       local total_elapsed=$(( $(date +%s) - dl_start ))
@@ -317,6 +306,10 @@ network_port_check() {
     [[ -z "$port" ]] && port="80"
   fi
 
+  # 输入校验：主机/端口直接拼入 /dev/tcp，必须先过滤
+  [[ "$host" =~ ^[a-zA-Z0-9._-]+$ ]] || { msg_err "无效的主机名（仅允许字母数字与 . _ -）"; pause; return 1; }
+  [[ "$port" =~ ^[0-9]+$ && "$port" -ge 1 && "$port" -le 65535 ]] || { msg_err "无效端口（1-65535）"; pause; return 1; }
+
   msg_title "端口检测: $host:$port"
   msg ""
   timeout 5 bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null && \
@@ -357,7 +350,7 @@ network_menu() {
     msg "  ${F_GREEN}8${F_RESET}) 端口检测"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-8]: " choice
+    read -p "请选择 [0-8]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) network_ip ;;
       2) network_streaming ;;

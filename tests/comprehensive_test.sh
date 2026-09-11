@@ -1,7 +1,7 @@
 #!/bin/bash
 # FusionBox Comprehensive Test Suite
 
-cd /root/FusionBox 2>/dev/null || cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/.." || exit 1
 PASS=0; FAIL=0; ERR_LIST=()
 
 test() {
@@ -148,9 +148,22 @@ test "no external project references ($refs found, expect 0)" $([ "$refs" -eq 0 
 
 echo ""
 echo "--- 15. File Integrity ---"
-test "version.txt is 1.0.0" $(grep -q "1.0.0" version.txt; echo $?)
+test "version.txt is valid semver" $(grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' version.txt; echo $?)
 test "fusion.sh is executable" $([ -x fusion.sh ]; echo $?)
 test "install.sh is executable" $([ -x install.sh ]; echo $?)
+
+echo ""
+echo "--- 16. Security Regression ---"
+test "no tr() shadowing in common.sh" $(grep -q "^tr()" src/lib/common.sh && echo 1 || echo 0)
+test "proxy password uses CSPRNG" $(grep -q "_proxy_gen_secret" src/modules/proxy.sh; echo $?)
+test "confirm defaults to deny" $(grep -q '\^\[Yy\]\$' src/lib/common.sh; echo $?)
+test "market loads panels before cross-calls" $(grep -q "_load_module panels" src/modules/market.sh; echo $?)
+test "no plaintext http downloads" $(grep -rn "curl[^|]*http://\|wget[^|]*http://" src/modules/ 2>/dev/null | wc -l | grep -q '^0$'; echo $?)
+test "no hardcoded aria2 secret" $(grep -q 'rpc-secret=fusionbox' src/modules/panels.sh && echo 1 || echo 0)
+test "no fixed RCON password" $(grep -q 'RCON_PASSWORD: "fusionbox"' src/modules/cluster.sh && echo 1 || echo 0)
+test "self_uninstall exists" $(grep -q "^self_uninstall()" fusion.sh; echo $?)
+test "install.sh defines _do_local_install" $(grep -q "^_do_local_install()" install.sh; echo $?)
+test "repo URLs unified" $(grep -rn "github.com/fusionbox/fusionbox" fusion.sh install.sh src/ 2>/dev/null | wc -l | grep -q '^0$'; echo $?)
 
 total_files=$(find . -name "*.sh" -o -name "*.yaml" -o -name "*.yml" -o -name "*.json" -o -name "*.conf" -o -name "*.txt" -o -name "*.md" 2>/dev/null | grep -v ".git/" | wc -l)
 test "minimum 20 source files" $([ "$total_files" -ge 20 ]; echo $?)

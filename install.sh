@@ -38,18 +38,48 @@ msg "  ██╔══╝  ██║   ██║╚════██║██�
 msg "  ██║     ╚██████╔╝███████║██║╚██████╔╝██║ ╚████║██████╔╝╚██████╔╝██╔╝ ██╗"
 msg "  ╚═╝      ╚═════╝ ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝"
 msg "${RESET}"
-msg "  ${GREEN}FusionBox 安装程序 v1.0.0${RESET}"
+FB_VERSION="$(tr -d '[:space:]' < "$(cd "$(dirname "$0")" && pwd)/version.txt" 2>/dev/null)"
+msg "  ${GREEN}FusionBox 安装程序 ${FB_VERSION}${RESET}"
 msg "  ${CYAN}Linux 全能管理工具箱${RESET}"
 msg "  ${YELLOW}一站式 Linux 服务器管理解决方案${RESET}"
 msg ""
 
 msg_info "检测到: $OS ($ARCH)"
 
+# Shared finisher: tighten permissions, create symlink, seed default config
+_finalize_install() {
+  find "$FUSION_BASE" -type d -exec chmod 755 {} +
+  find "$FUSION_BASE" -type f -exec chmod 644 {} +
+  chmod 755 "$FUSION_BASE/fusion.sh" "$FUSION_BASE/install.sh" 2>/dev/null || true
+  ln -sf "$FUSION_BASE/fusion.sh" "$FUSION_BIN"
+
+  mkdir -p "$HOME/.config/fusionbox"
+  [[ ! -f "$HOME/.config/fusionbox/config.yaml" ]] && \
+    cp "$FUSION_BASE/configs/config.yaml" "$HOME/.config/fusionbox/" 2>/dev/null || true
+}
+
+# Offline fallback: install from the directory this script lives in
+_do_local_install() {
+  local src_dir
+  src_dir="$(cd "$(dirname "$0")" && pwd)"
+  if [[ "$src_dir" != "$FUSION_BASE" ]]; then
+    msg_info "本地安装模式: $src_dir -> $FUSION_BASE"
+    rm -rf "$FUSION_BASE"
+    mkdir -p "$FUSION_BASE"
+    cp -rf "$src_dir/"* "$FUSION_BASE/" || { msg_err "复制文件失败"; exit 1; }
+  else
+    msg_info "源目录即安装目录，就地修复权限与软链接"
+  fi
+  _finalize_install
+  msg ""
+  msg_ok "FusionBox 本地安装成功！"
+  msg "  用法: fusionbox   （主菜单）   fusionbox help   （帮助）"
+  exit 0
+}
+
 if ! curl -s --connect-timeout 5 https://github.com > /dev/null 2>&1; then
-  if [[ -f "fusion.sh" ]]; then
-    msg_info "本地安装模式"
+  if [[ -f "$(cd "$(dirname "$0")" && pwd)/fusion.sh" ]]; then
     _do_local_install
-    exit 0
   fi
   msg_err "网络不可用且未找到本地文件"
   exit 1
@@ -66,10 +96,7 @@ for dep in curl tar; do
   }
 done
 
-msg_info "正在安装 FusionBox 到 $FUSION_BASE..."
-rm -rf "$FUSION_BASE"
-mkdir -p "$FUSION_BASE"
-
+# 先下载解压到临时目录，全部成功后才替换现有安装（避免"先删后下"失败导致两空）
 msg_info "正在下载 FusionBox..."
 TMPDIR=$(mktemp -d)
 curl -fsSL "$FUSION_REPO/archive/$FUSION_BRANCH.tar.gz" -o "$TMPDIR/fusionbox.tar.gz" || {
@@ -79,20 +106,24 @@ curl -fsSL "$FUSION_REPO/archive/$FUSION_BRANCH.tar.gz" -o "$TMPDIR/fusionbox.ta
 }
 
 tar xzf "$TMPDIR/fusionbox.tar.gz" -C "$TMPDIR"
-cp -rf "$TMPDIR/fusionbox-$FUSION_BRANCH/"* "$FUSION_BASE/" 2>/dev/null || \
-cp -rf "$TMPDIR/fusionbox-main/"* "$FUSION_BASE/" 2>/dev/null || {
+ls "$TMPDIR/fusionbox-$FUSION_BRANCH/fusion.sh" >/dev/null 2>&1 || \
+ls "$TMPDIR/fusionbox-main/fusion.sh" >/dev/null 2>&1 || {
   msg_err "解压失败"
   rm -rf "$TMPDIR"
   exit 1
 }
 
-chmod -R 755 "$FUSION_BASE"
-chmod +x "$FUSION_BASE/fusion.sh"
-ln -sf "$FUSION_BASE/fusion.sh" "$FUSION_BIN"
+msg_info "正在安装 FusionBox 到 $FUSION_BASE..."
+rm -rf "$FUSION_BASE"
+mkdir -p "$FUSION_BASE"
+cp -rf "$TMPDIR/fusionbox-$FUSION_BRANCH/"* "$FUSION_BASE/" 2>/dev/null || \
+cp -rf "$TMPDIR/fusionbox-main/"* "$FUSION_BASE/" 2>/dev/null || {
+  msg_err "复制文件失败"
+  rm -rf "$TMPDIR"
+  exit 1
+}
 
-mkdir -p "$HOME/.config/fusionbox"
-[[ ! -f "$HOME/.config/fusionbox/config.yaml" ]] && \
-  cp "$FUSION_BASE/configs/config.yaml" "$HOME/.config/fusionbox/" 2>/dev/null || true
+_finalize_install
 
 rm -rf "$TMPDIR"
 

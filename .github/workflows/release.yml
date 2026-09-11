@@ -9,7 +9,25 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bash syntax check
+        run: |
+          set -e
+          for f in fusion.sh install.sh src/init.sh src/lib/common.sh src/modules/*.sh src/i18n/*.sh tests/*.sh; do
+            bash -n "$f"
+          done
+          echo "All syntax checks passed"
+
+      - name: Run basic test suite
+        run: bash tests/test_basic.sh
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

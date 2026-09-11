@@ -148,6 +148,7 @@ services:
     volumes:
       - ./html:/usr/share/nginx/html
 YEOF
+          chmod 600 "$proj_dir/docker-compose.yml"
           mkdir -p "$proj_dir/html"
           echo "由 FusionBox 部署" > "$proj_dir/html/index.html"
           msg_ok "项目 '$project' 已创建于 $proj_dir"
@@ -187,7 +188,7 @@ panels_docker_port_control() {
 
   msg ""
   msg "  1) 开放容器端口到公网"
-  msg "  2) 限制容器仅本地访问"
+  msg "  2) 仅允许本机访问该端口 (其余来源 DROP)"
   msg "  3) 查看容器端口详情"
   msg "  0) 返回"
   read -p "请选择: " pc_choice
@@ -195,20 +196,28 @@ panels_docker_port_control() {
   case "$pc_choice" in
     1)
       read -p "要开放的端口: " port
-      if [[ -n "$port" ]]; then
+      if [[ "$port" =~ ^[0-9]+$ ]] && [[ "$port" -ge 1 && "$port" -le 65535 ]]; then
         iptables -I DOCKER-USER -p tcp --dport "$port" -j ACCEPT 2>/dev/null
         iptables -I DOCKER-USER -p udp --dport "$port" -j ACCEPT 2>/dev/null
         if command -v ufw &>/dev/null; then ufw allow "$port" 2>/dev/null; fi
         msg_ok "端口 $port 已开放"
         _log_write "Docker 端口已开放: $port"
+      else
+        msg_err "端口必须是 1-65535 的数字"
       fi
       ;;
     2)
       read -p "要限制的端口: " port
-      if [[ -n "$port" ]]; then
-        iptables -I DOCKER-USER -p tcp --dport "$port" -j DROP 2>/dev/null
-        iptables -I DOCKER-USER -p udp --dport "$port" -j DROP 2>/dev/null
-        msg_ok "端口 $port 已限制为仅本地"
+      if [[ "$port" =~ ^[0-9]+$ ]] && [[ "$port" -ge 1 && "$port" -le 65535 ]]; then
+        # 先放行本机回环，再丢弃其他来源 (ACCEPT 必须位于 DROP 之前)
+        iptables -C DOCKER-USER -p tcp --dport "$port" -s 127.0.0.1 -j ACCEPT 2>/dev/null || \
+          iptables -I DOCKER-USER -p tcp --dport "$port" -s 127.0.0.1 -j ACCEPT
+        iptables -C DOCKER-USER -p tcp --dport "$port" -j DROP 2>/dev/null || \
+          iptables -I DOCKER-USER 2 -p tcp --dport "$port" -j DROP
+        msg_ok "端口 $port 已限制为仅允许本机访问"
+        _log_write "Docker 端口已限制为仅本机访问: $port"
+      else
+        msg_err "端口必须是 1-65535 的数字"
       fi
       ;;
     3)
@@ -305,12 +314,14 @@ panels_docker_daemon() {
       if [[ -n "$mirror_url" ]]; then
         mkdir -p /etc/docker
         if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
-          python3 -c "
-import json
-with open('$daemon_json') as f: cfg = json.load(f)
-cfg['registry-mirrors'] = ['$mirror_url']
-with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
-" 2>/dev/null
+          FB_DOCKER_JSON="$daemon_json" FB_MIRROR="$mirror_url" python3 -c '
+import json, os
+path = os.environ["FB_DOCKER_JSON"]
+url = os.environ["FB_MIRROR"]
+with open(path) as f: cfg = json.load(f)
+cfg["registry-mirrors"] = [url]
+with open(path, "w") as f: json.dump(cfg, f, indent=2)
+' 2>/dev/null
         else
           echo "{\"registry-mirrors\": [\"$mirror_url\"]}" > "$daemon_json"
         fi
@@ -337,12 +348,14 @@ with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
       read -p "DNS 服务器 (如 8.8.8.8): " dns_server
       if [[ -n "$dns_server" ]]; then
         if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
-          python3 -c "
-import json
-with open('$daemon_json') as f: cfg = json.load(f)
-cfg['dns'] = ['$dns_server']
-with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
-" 2>/dev/null
+          FB_DOCKER_JSON="$daemon_json" FB_DNS="$dns_server" python3 -c '
+import json, os
+path = os.environ["FB_DOCKER_JSON"]
+dns = os.environ["FB_DNS"]
+with open(path) as f: cfg = json.load(f)
+cfg["dns"] = [dns]
+with open(path, "w") as f: json.dump(cfg, f, indent=2)
+' 2>/dev/null
         fi
         systemctl restart docker 2>/dev/null
         msg_ok "DNS 已设为 $dns_server"
@@ -420,7 +433,14 @@ panels_docker_backup() {
         if [[ "$backup_file" == *images*.tar ]]; then
           docker load -i "$backup_dir/$backup_file" 2>/dev/null && msg_ok "镜像已恢复"
         elif [[ "$backup_file" == *.tar.gz ]]; then
-          tar xzf "$backup_dir/$backup_file" -C / && msg_ok "Compose 项目已恢复"
+          msg_info "备份内容预览 (前 20 项):"
+          tar tzf "$backup_dir/$backup_file" 2>/dev/null | head -20
+          read -p "将解压覆盖到 /，输入 YES 确认: " restore_confirm
+          if [[ "$restore_confirm" == "YES" ]]; then
+            tar xzf "$backup_dir/$backup_file" -C / && msg_ok "Compose 项目已恢复"
+          else
+            msg_info "已取消恢复"
+          fi
         else
           read -p "新容器名称: " new_name
           docker import "$backup_dir/$backup_file" "$new_name" 2>/dev/null && msg_ok "已导入: $new_name"
@@ -482,10 +502,16 @@ panels_docker_container_mgmt() {
     7) docker stats --no-stream 2>/dev/null ;;
     8)
       read -p "容器名称: " c
-      msg "  1) 设置自动重启  2) 取消自动重启"
-      read -p "请选择: " r
-      [[ "$r" == "1" ]] && docker update --restart=always "$c" 2>/dev/null && msg_ok "已设置" || \
-        docker update --restart=no "$c" 2>/dev/null && msg_ok "已取消"
+      msg "  可选重启策略: no / on-failure / always / unless-stopped"
+      read -p "请输入重启策略: " r
+      case "$r" in
+        no|on-failure|always|unless-stopped)
+          docker update --restart="$r" "$c" 2>/dev/null && msg_ok "重启策略已设为 $r" || msg_err "设置失败"
+          ;;
+        *)
+          msg_err "无效的重启策略: $r"
+          ;;
+      esac
       ;;
   esac
   pause
@@ -593,7 +619,7 @@ panels_docker_menu() {
     msg "  ${F_GREEN}12${F_RESET}) 卷管理"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-12]: " dk_choice
+    read -p "请选择 [0-12]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$dk_choice" in
       1) panels_docker_install; pause ;;
       2) panels_docker_ps ;;
@@ -618,12 +644,20 @@ panels_bt() {
   msg_title "安装宝塔面板"
   msg ""
   msg_warn "宝塔面板是第三方服务器管理面板。"
+  if [[ -d "/www/server/panel" ]] || command -v bt &>/dev/null; then
+    msg_warn "检测到宝塔面板已安装，跳过重复安装"
+    pause; return
+  fi
   if confirm "确认继续安装？"; then
     case "$F_PKG_MGR" in
       apt|yum)
-        curl -sSO http://download.bt.cn/install/install_panel.sh 2>/dev/null && \
-          bash install_panel.sh 2>/dev/null || \
+        local bt_sh; bt_sh=$(mktemp)
+        if _download "https://download.bt.cn/install/install_panel.sh" "$bt_sh"; then
+          bash "$bt_sh" || msg_err "宝塔面板安装失败"
+        else
           msg_err "宝塔安装脚本下载失败"
+        fi
+        rm -f "$bt_sh"
         ;;
       *)
         msg_err "宝塔面板仅支持 apt/yum 系统"
@@ -637,10 +671,18 @@ panels_bt() {
 panels_aa() {
   _require_root
   msg_title "安装 Aapanel"
+  if [[ -d "/usr/local/aapanel" ]]; then
+    msg_warn "检测到 Aapanel 已安装，跳过重复安装"
+    pause; return
+  fi
   if confirm "确认继续安装？"; then
-    curl -sSO http://www.aapanel.com/script/install_7.0_en.sh 2>/dev/null && \
-      bash install_7.0_en.sh 2>/dev/null || \
+    local aa_sh; aa_sh=$(mktemp)
+    if _download "https://www.aapanel.com/script/install_7.0_en.sh" "$aa_sh"; then
+      bash "$aa_sh" || msg_err "Aapanel 安装失败"
+    else
       msg_err "Aapanel 安装脚本下载失败"
+    fi
+    rm -f "$aa_sh"
   fi
   pause
 }
@@ -650,10 +692,22 @@ panels_xui() {
   _require_root
   msg_title "安装 X-UI 面板"
   msg ""
-  if confirm "将安装 X-UI (xray 面板)，确认继续？"; then
-    bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh) 2>/dev/null || \
-    bash <(curl -Ls https://raw.githubusercontent.com/FranzKafkaYu/x-ui/master/install_en.sh) 2>/dev/null || \
-      msg_err "X-UI 安装失败"
+  if confirm "将执行第三方安装脚本安装 X-UI (xray 面板)，确认继续？"; then
+    local xui_sh; xui_sh=$(mktemp)
+    if _download "https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh" "$xui_sh" && \
+      bash "$xui_sh" 2>/dev/null; then
+      :
+    else
+      rm -f "$xui_sh"
+      xui_sh=$(mktemp)
+      if _download "https://raw.githubusercontent.com/FranzKafkaYu/x-ui/master/install_en.sh" "$xui_sh" && \
+        bash "$xui_sh" 2>/dev/null; then
+        :
+      else
+        msg_err "X-UI 安装失败"
+      fi
+    fi
+    rm -f "$xui_sh"
     _log_write "X-UI 已安装"
   fi
   pause
@@ -668,6 +722,7 @@ panels_aria2() {
     apt|yum|apk)
       _install_pkg aria2
       mkdir -p /etc/aria2
+      local rpc_secret; rpc_secret=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
       cat > /etc/aria2/aria2.conf << AEOF
 dir=/var/ftp
 file-allocation=falloc
@@ -676,10 +731,11 @@ daemon=true
 max-connection-per-server=4
 rpc-listen-all=true
 rpc-allow-origin-all=true
-rpc-secret=fusionbox
+rpc-secret=${rpc_secret}
 AEOF
+      chmod 600 /etc/aria2/aria2.conf
       mkdir -p /var/ftp
-      msg_ok "Aria2 安装完成。RPC 密钥: fusionbox"
+      msg_ok "Aria2 安装完成。RPC 密钥: ${rpc_secret}（请妥善保存）"
       msg_info "配置文件: /etc/aria2/aria2.conf"
       _log_write "Aria2 已安装"
       ;;
@@ -697,8 +753,13 @@ panels_rclone() {
   msg ""
   if ! command -v rclone &>/dev/null; then
     msg_info "正在安装 rclone..."
-    curl -fsSL https://rclone.org/install.sh 2>/dev/null | bash || \
+    local rc_sh; rc_sh=$(mktemp)
+    if _download "https://rclone.org/install.sh" "$rc_sh" && bash "$rc_sh"; then
+      :
+    else
       _install_pkg rclone
+    fi
+    rm -f "$rc_sh"
   fi
 
   if command -v rclone &>/dev/null; then
@@ -803,9 +864,14 @@ panels_nezha() {
   read -p "客户端密钥: " nezha_secret
 
   if [[ -n "$nezha_server" && -n "$nezha_secret" ]]; then
-    curl -sL https://raw.githubusercontent.com/nezhahq/scripts/main/install.sh 2>/dev/null | \
-      bash -s -- -s "$nezha_server" -p "$nezha_secret" 2>/dev/null || \
+    local nz_sh; nz_sh=$(mktemp)
+    if _download "https://raw.githubusercontent.com/nezhahq/scripts/main/install.sh" "$nz_sh" && \
+      bash "$nz_sh" -s "$nezha_server" -p "$nezha_secret" 2>/dev/null; then
+      :
+    else
       msg_err "安装失败"
+    fi
+    rm -f "$nz_sh"
     _log_write "哪吒监控 Agent 已配置"
   fi
   pause
@@ -843,7 +909,7 @@ panels_menu() {
     msg "  8) 安装哪吒监控 Agent"
     msg "  0) 返回主菜单"
     msg ""
-    read -p "请选择 [0-8]: " choice
+    read -p "请选择 [0-8]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) panels_docker;;
       2) panels_bt ;;

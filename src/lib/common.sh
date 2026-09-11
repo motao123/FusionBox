@@ -71,7 +71,9 @@ _init_lang() {
 }
 
 # Print text with color using i18n
-tr() {
+# NOTE: must NOT be named "tr" — that would shadow /usr/bin/tr and silently
+# break every `| tr` pipeline in the project (this bug shipped in v1.1.0)
+_tr() {
   local key="$1"
   local text="${_LANG_DATA[$key]:-$2}"
   echo -e "$text"
@@ -82,35 +84,38 @@ tr() {
 pause() {
   msg ""
   msg "按 Enter 键继续..."
-  read -r
+  read -r || exit 0   # stdin 已关闭（CI/管道）时干净退出，避免菜单死循环
 }
 
 confirm() {
-  local msg_str="${1:-确认执行？} [$F_GREEN Y $F_RESET/n]: "
+  local msg_str="${1:-确认执行？} [$F_GREEN y $F_RESET/N]: "
   msg "$msg_str"
-  read -r ans
-  [[ "$ans" =~ ^[Yy]?$ ]] && return 0 || return 1
+  local ans=""
+  read -r ans || return 1   # EOF/中断一律视为拒绝
+  [[ "$ans" =~ ^[Yy]$ ]] && return 0 || return 1
 }
 
 select_option() {
   local prompt="$1"; shift
   local options=("$@")
   local i=0
-  msg "$prompt"
+  msg "$prompt" >&2
   for opt in "${options[@]}"; do
     i=$((i+1))
-    msg "  $F_GREEN$i$F_RESET) $opt"
+    msg "  $F_GREEN$i$F_RESET) $opt" >&2
   done
-  msg ""
-  read -r choice
+  msg "" >&2
+  local choice=""
+  read -r choice || return 1
   echo "$choice"
 }
 
 read_input() {
   local prompt="$1"
   local default="${2:-}"
-  msg "$prompt: "
-  read -r value
+  msg "$prompt: " >&2
+  local value=""
+  read -r value || return 1
   [[ -z "$value" && -n "$default" ]] && value="$default"
   echo "$value"
 }
@@ -133,7 +138,7 @@ _load_config() {
         val="${val#\"}"; val="${val%\"}"; val="${val#\'}"; val="${val%\'}"
         val="${val%%#*}"
         val="${val#"${val%%[! ]*}"}"; val="${val%"${val##*[! ]}"}"
-        [[ -n "$val" ]] && eval "CONFIG_$key=\"\$val\""
+        [[ -n "$val" ]] && printf -v "CONFIG_$key" '%s' "$val"
       fi
     done < "$FUSION_CONFIG"
   fi
@@ -236,7 +241,7 @@ _install_pkg() {
     yum)  yum install -y "${pkgs[@]}" ;;
     apk)  apk add "${pkgs[@]}" ;;
     zypper) zypper install -y "${pkgs[@]}" ;;
-    *)    msg_err "$(tr MSG_ERROR "未知的包管理器")"; return 1 ;;
+    *)    msg_err "$(_tr MSG_ERROR "未知的包管理器")"; return 1 ;;
   esac
 }
 

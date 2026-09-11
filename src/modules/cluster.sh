@@ -26,6 +26,7 @@ CLUSTER_NODES="$CLUSTER_DIR/nodes.conf"
 _cluster_init() {
   mkdir -p "$CLUSTER_DIR"
   [[ -f "$CLUSTER_NODES" ]] || touch "$CLUSTER_NODES"
+  chmod 600 "$CLUSTER_NODES" 2>/dev/null   # 节点表含服务器地址与端口
 }
 
 cluster_add() {
@@ -39,6 +40,11 @@ cluster_add() {
   read -p "SSH 端口 (默认 22): " ssh_port
   ssh_port=${ssh_port:-22}
 
+  # 输入校验：节点名/地址直接写入配置文件并参与 SSH 调用
+  [[ "$node_name" =~ ^[a-zA-Z0-9_-]+$ ]] || { msg_err "节点名称仅允许字母数字与 _ -"; pause; return 1; }
+  [[ "$ssh_addr" =~ ^[a-zA-Z0-9._@-]+$ ]] || { msg_err "SSH 地址格式无效（应为 user@host）"; pause; return 1; }
+  [[ "$ssh_port" =~ ^[0-9]+$ && "$ssh_port" -ge 1 && "$ssh_port" -le 65535 ]] || { msg_err "无效端口（1-65535）"; pause; return 1; }
+
   if [[ -n "$node_name" && -n "$ssh_addr" ]]; then
     echo "$node_name|$ssh_addr|$ssh_port" >> "$CLUSTER_NODES"
     msg_ok "节点 '$node_name' 已添加"
@@ -46,7 +52,7 @@ cluster_add() {
 
     # Test SSH connection
     msg_info "正在测试 SSH 连接..."
-    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p "$ssh_port" "$ssh_addr" "echo ok" &>/dev/null; then
+    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -p "$ssh_port" "$ssh_addr" "echo ok" &>/dev/null; then
       msg_ok "SSH 连接测试成功"
     else
       msg_warn "SSH 连接测试失败，请检查密钥/密码配置"
@@ -61,7 +67,18 @@ cluster_remove() {
   cluster_list
   read -p "输入要删除的节点名称: " node_name
   if [[ -n "$node_name" ]]; then
-    sed -i "/^${node_name}|/d" "$CLUSTER_NODES"
+    if ! grep -qF "${node_name}|" "$CLUSTER_NODES"; then
+      msg_err "节点 '$node_name' 不存在"
+      pause; return 1
+    fi
+    confirm "确认删除节点 '$node_name'？" || { pause; return; }
+    # 按字面匹配过滤，避免节点名中的正则元字符误删其他行
+    # 注意：过滤掉全部行时 grep 退出码为 1，不能与 mv 做 && 短路
+    local tmpf
+    tmpf=$(mktemp)
+    grep -vF "${node_name}|" "$CLUSTER_NODES" > "$tmpf" || true
+    mv "$tmpf" "$CLUSTER_NODES"
+    chmod 600 "$CLUSTER_NODES" 2>/dev/null
     msg_ok "节点 '$node_name' 已删除"
   fi
   pause
@@ -76,7 +93,7 @@ cluster_list() {
     local i=1
     while IFS='|' read -r name addr port; do
       local status="${F_RED}离线${F_RESET}"
-      if ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -p "$port" "$addr" "echo ok" &>/dev/null; then
+      if ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -p "$port" "$addr" "echo ok" &>/dev/null; then
         status="${F_GREEN}在线${F_RESET}"
       fi
       msg "  $i) $name ($addr:$port) - $status"
@@ -110,12 +127,16 @@ cluster_exec() {
     pause; return
   fi
 
+  confirm "将在以上所有节点执行该命令，确认？" || { pause; return; }
+
   msg ""
   msg_info "正在所有节点执行: $cmd_to_run"
   msg "————————————————————————————————"
   while IFS='|' read -r name addr port; do
     msg "  ${F_CYAN}[$name]${F_RESET}"
-    local result=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -p "$port" "$addr" "$cmd_to_run" 2>&1)
+    # 先声明再赋值，避免 local 吞掉 ssh 的退出码（SC2155）
+    local result
+    result=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$port" "$addr" "$cmd_to_run" 2>&1)
     if [[ $? -eq 0 ]]; then
       echo "$result" | while IFS= read -r line; do
         msg "    $line"
@@ -184,6 +205,10 @@ _deploy_minecraft_java() {
   local app_dir="/opt/games/minecraft-java"
   mkdir -p "$app_dir"
 
+  # RCON 密码随机生成（旧版硬编码 "fusionbox"）
+  local rcon_pass
+  rcon_pass="$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+
   msg_info "正在部署 Minecraft Java 服务端..."
   cat > "$app_dir/docker-compose.yml" << MCEOF
 version: '3.8'
@@ -202,20 +227,25 @@ services:
       MAX_PLAYERS: "20"
       ONLINE_MODE: "false"
       ENABLE_RCON: "true"
-      RCON_PASSWORD: "fusionbox"
+      RCON_PASSWORD: "$rcon_pass"
     volumes:
       - mc_data:/data
 
 volumes:
   mc_data:
 MCEOF
+  chmod 600 "$app_dir/docker-compose.yml"   # compose 文件含 RCON 密码
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
-  msg_ok "Minecraft Java 服务端已部署"
-  msg "  端口: 25565"
-  msg "  RCON 密码: fusionbox"
-  msg "  数据目录: $app_dir"
-  _log_write "Minecraft Java 服务端已部署"
+  if (cd "$app_dir" && docker compose up -d); then
+    msg_ok "Minecraft Java 服务端已部署"
+    msg "  端口: 25565"
+    msg "  RCON 密码: $rcon_pass （请妥善保存，仅此显示一次）"
+    msg "  数据目录: $app_dir"
+    _log_write "Minecraft Java 服务端已部署"
+  else
+    msg_err "部署失败，请执行: cd $app_dir && docker compose logs"
+    pause; return 1
+  fi
   pause
 }
 
@@ -244,10 +274,14 @@ volumes:
   mcbe_data:
 MBEOF
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
-  msg_ok "Minecraft Bedrock 服务端已部署"
-  msg "  端口: 19132/UDP"
-  _log_write "Minecraft Bedrock 服务端已部署"
+  if (cd "$app_dir" && docker compose up -d); then
+    msg_ok "Minecraft Bedrock 服务端已部署"
+    msg "  端口: 19132/UDP"
+    _log_write "Minecraft Bedrock 服务端已部署"
+  else
+    msg_err "部署失败，请执行: cd $app_dir && docker compose logs"
+    pause; return 1
+  fi
   pause
 }
 
@@ -275,10 +309,14 @@ volumes:
   terraria_data:
 TSEOF
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
-  msg_ok "Terraria 服务端已部署"
-  msg "  端口: 7777"
-  _log_write "Terraria 服务端已部署"
+  if (cd "$app_dir" && docker compose up -d); then
+    msg_ok "Terraria 服务端已部署"
+    msg "  端口: 7777"
+    _log_write "Terraria 服务端已部署"
+  else
+    msg_err "部署失败，请执行: cd $app_dir && docker compose logs"
+    pause; return 1
+  fi
   pause
 }
 
@@ -307,10 +345,14 @@ volumes:
   palworld_data:
 PWEOF
 
-  cd "$app_dir" && docker compose up -d 2>/dev/null
-  msg_ok "Palworld (幻兽帕鲁) 服务端已部署"
-  msg "  端口: 8211/UDP, 27015/UDP"
-  _log_write "Palworld 服务端已部署"
+  if (cd "$app_dir" && docker compose up -d); then
+    msg_ok "Palworld (幻兽帕鲁) 服务端已部署"
+    msg "  端口: 8211/UDP, 27015/UDP"
+    _log_write "Palworld 服务端已部署"
+  else
+    msg_err "部署失败，请执行: cd $app_dir && docker compose logs"
+    pause; return 1
+  fi
   pause
 }
 
@@ -370,9 +412,17 @@ OKEOF
       ;;
     4)
       msg_info "正在安装 OCI CLI..."
-      bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" 2>/dev/null
-      msg_ok "OCI CLI 安装完成"
-      msg "  运行 'oci setup' 进行配置"
+      # 下载到临时文件再执行，不再 curl|bash
+      local oci_sh
+      oci_sh=$(mktemp)
+      if curl -fsSL https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o "$oci_sh" \
+         && bash "$oci_sh" --accept-all-defaults; then
+        msg_ok "OCI CLI 安装完成"
+        msg "  运行 'oci setup' 进行配置"
+      else
+        msg_err "OCI CLI 下载或安装失败"
+      fi
+      rm -f "$oci_sh"
       ;;
   esac
   pause
@@ -433,18 +483,27 @@ KEOF
       read -p "快捷名称 (如 klog): " alias_name
       read -p "对应命令 (如 'fusionbox system monitor'): " alias_cmd
       if [[ -n "$alias_name" && -n "$alias_cmd" ]]; then
-        echo "alias $alias_name='$alias_cmd'" >> "$kcmd_file"
-        source "$kcmd_file" 2>/dev/null
-        msg_ok "已添加: $alias_name → $alias_cmd"
+        # 别名会写入被 source 的 shell 文件，必须校验命名合法性
+        if [[ ! "$alias_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+          msg_err "快捷名称仅允许字母/数字/下划线，且以字母开头"
+        else
+          echo "alias $alias_name='$alias_cmd'" >> "$kcmd_file"
+          source "$kcmd_file" 2>/dev/null
+          msg_ok "已添加: $alias_name → $alias_cmd"
+        fi
       fi
       ;;
     2)
       nl -ba "$kcmd_file" | grep "alias"
       read -p "输入要删除的行号: " del_line
       if [[ -n "$del_line" ]]; then
-        sed -i "${del_line}d" "$kcmd_file"
-        source "$kcmd_file" 2>/dev/null
-        msg_ok "已删除"
+        if ! [[ "$del_line" =~ ^[0-9]+$ ]] || [[ "$del_line" -lt 1 || "$del_line" -gt $(wc -l < "$kcmd_file") ]]; then
+          msg_err "无效行号（范围 1-$(wc -l < "$kcmd_file")）"
+        elif confirm "确认删除第 $del_line 行？"; then
+          sed -i "${del_line}d" "$kcmd_file"
+          source "$kcmd_file" 2>/dev/null
+          msg_ok "已删除"
+        fi
       fi
       ;;
     3)
@@ -501,11 +560,11 @@ cluster_menu() {
     msg "  ${F_GREEN}6${F_RESET}) k 命令快捷方式"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-6]: " choice
+    read -p "请选择 [0-6]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1)
         msg "  1) 添加节点  2) 删除节点  3) 列出节点"
-        read -p "请选择: " node_choice
+        read -p "请选择: " node_choice || { msg ""; break; }
         case "$node_choice" in
           1) cluster_add ;;
           2) cluster_remove ;;

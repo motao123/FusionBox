@@ -65,7 +65,6 @@ MARKET_APPS=(
   "docker:cAdvisor:cadvisor:容器资源监控"
 
   "monitor:Netdata:netdata:实时系统监控"
-  "monitor:Glances:glances:系统监控工具"
   "monitor:Bashtop:bashtop:终端资源监控"
   "monitor:Neofetch:neofetch:系统信息显示"
   "monitor:Fastfetch:fastfetch:快速系统信息"
@@ -80,7 +79,6 @@ MARKET_APPS=(
   "utility:Gost:gost:隧道工具"
   "utility:Warp:cloudflare-warp:Cloudflare WARP VPN"
   "utility:7zip:p7zip-full:7z 压缩工具"
-  "utility:Tmux:tmux:终端复用器"
   "utility:JQ:jq:JSON 处理工具"
   "utility:yq:yq:YAML 处理工具"
   "utility:Tree:tree:目录树显示"
@@ -204,6 +202,7 @@ market_install() {
   # Handle special installs
   case "$found" in
     "Docker CE")
+      _load_module panels   # panels 函数未加载时会 command not found
       panels_docker_install
       return
       ;;
@@ -221,10 +220,12 @@ market_install() {
       _install_pkg speedtest-cli 2>/dev/null || pip3 install speedtest-cli 2>/dev/null
       ;;
     "FRP")
+      _load_module panels
       panels_frp
       return
       ;;
     "Rclone")
+      _load_module panels
       panels_rclone
       return
       ;;
@@ -276,12 +277,22 @@ _install_caddy_from_pkg() {
 
 _install_nodejs() {
   msg_info "正在安装 Node.js..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>/dev/null || \
-    curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - 2>/dev/null || \
+  # 下载到临时文件再执行，不再 curl|bash
+  local ns_sh
+  ns_sh=$(mktemp)
+  if _download https://deb.nodesource.com/setup_20.x "$ns_sh" && bash "$ns_sh" && _install_pkg nodejs; then
+    :
+  elif _download https://rpm.nodesource.com/setup_20.x "$ns_sh" && bash "$ns_sh" && _install_pkg nodejs; then
+    :
+  else
     _install_pkg nodejs
+  fi
+  rm -f "$ns_sh"
   if command -v node &>/dev/null; then
     msg_ok "Node.js: $(node --version 2>/dev/null)"
     msg_ok "npm: $(npm --version 2>/dev/null)"
+  else
+    msg_err "Node.js 安装失败"
   fi
   _log_write "Node.js 已安装"
   pause
@@ -305,10 +316,17 @@ _install_go() {
 
 _install_rust() {
   msg_info "正在安装 Rust..."
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 2>/dev/null
-  if [[ -f "$HOME/.cargo/bin/rustc" ]]; then
-    msg_ok "Rust 已安装: $($HOME/.cargo/bin/rustc --version)"
+  # 下载到临时文件再执行，不再 curl|bash
+  local rs_sh
+  rs_sh=$(mktemp)
+  if _download https://sh.rustup.rs "$rs_sh" && sh "$rs_sh" -y --profile minimal; then
+    if [[ -f "$HOME/.cargo/bin/rustc" ]]; then
+      msg_ok "Rust 已安装: $($HOME/.cargo/bin/rustc --version)"
+    fi
+  else
+    msg_err "Rust 安装失败"
   fi
+  rm -f "$rs_sh"
   _log_write "Rust 已安装"
   pause
 }
@@ -503,7 +521,7 @@ market_menu() {
     msg "  ${F_GREEN}5${F_RESET}) 移除应用"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-5]: " choice
+    read -p "请选择 [0-5]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) market_list; pause ;;
       2) market_category; pause ;;

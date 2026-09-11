@@ -84,7 +84,9 @@ system_info() {
 
   # Proxy status
   if [[ -f /etc/fusionbox/proxy/current_backend ]]; then
-    local proxy_be=$(cat /etc/fusionbox/proxy/current_backend)
+    local proxy_be
+    proxy_be=$(cat /etc/fusionbox/proxy/current_backend 2>/dev/null) || true
+    proxy_be=${proxy_be:-未知}
     local proxy_st="已停止"
     systemctl is-active fusionbox-proxy &>/dev/null && proxy_st="运行中"
     msg "  ${F_BOLD}代理:${F_RESET} $proxy_be ($proxy_st)"
@@ -145,7 +147,7 @@ system_bbr() {
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg "————————————————————————————————————————————————————————"
     msg ""
-    read -p "请输入数字: " num
+    read -p "请输入数字: " num || { msg ""; break; }   # stdin 关闭时退出，防死循环
 
     case "$num" in
       1)  _bbr_install_bbr ;;
@@ -224,7 +226,9 @@ net.core.default_qdisc = $qdisc
 net.ipv4.tcp_congestion_control = $algo
 SEOF
   modprobe "tcp_${algo}" 2>/dev/null
-  sysctl -p 2>/dev/null
+  if ! sysctl -p 2>/dev/null; then
+    msg_err "sysctl 配置应用失败，请检查 /etc/sysctl.conf 中的错误项"
+  fi
   local new_cc; new_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
   if [[ "$new_cc" == "$algo" ]]; then
     msg_ok "已启用 ${algo^^} + ${qdisc^^}"
@@ -240,10 +244,23 @@ _bbr_enable_lotserver() {
   _bbr_remove_accel
   _install_pkg ethtool 2>/dev/null
   msg_info "正在安装 Lotserver(锐速)..."
-  bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fei5seven/lotServer/master/lotServerInstall.sh) install 2>/dev/null || {
+  local lot_tmp; lot_tmp=$(mktemp)
+  _download "https://raw.githubusercontent.com/fei5seven/lotServer/master/lotServerInstall.sh" "$lot_tmp" || {
+    rm -f "$lot_tmp"
+    msg_err "Lotserver 安装脚本下载失败"
+    pause; return
+  }
+  msg_warn "即将执行第三方脚本（来源: https://raw.githubusercontent.com/fei5seven/lotServer/master/lotServerInstall.sh）"
+  if ! confirm "确认执行该第三方脚本？"; then
+    rm -f "$lot_tmp"
+    pause; return
+  fi
+  bash "$lot_tmp" install 2>/dev/null || {
+    rm -f "$lot_tmp"
     msg_err "Lotserver 安装失败"
     pause; return
   }
+  rm -f "$lot_tmp"
   sed -i '/advinacc/d' /appex/etc/config 2>/dev/null
   sed -i '/maxmode/d' /appex/etc/config 2>/dev/null
   echo -e 'advinacc="1"\nmaxmode="1"' >> /appex/etc/config 2>/dev/null
@@ -327,7 +344,12 @@ _bbr_install_bbrplus_new() {
   _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || {
     msg_err "下载失败"; rm -rf "$tmpdir"; pause; return
   }
+  msg_warn "即将执行第三方脚本（来源: https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh）"
   msg_warn "即将运行内核安装脚本，选择选项 5 安装 BBRplus 新版内核"
+  if ! confirm "确认执行该第三方脚本？"; then
+    rm -rf "$tmpdir"
+    pause; return
+  fi
   bash "$tmpdir/tcp.sh"
   rm -rf "$tmpdir"
   pause
@@ -344,7 +366,12 @@ _bbr_install_xanmod() {
   _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || {
     msg_err "下载失败"; rm -rf "$tmpdir"; pause; return
   }
+  msg_warn "即将执行第三方脚本（来源: https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh）"
   msg_warn "即将运行内核安装脚本，选择选项 4 安装 xanmod 内核"
+  if ! confirm "确认执行该第三方脚本？"; then
+    rm -rf "$tmpdir"
+    pause; return
+  fi
   bash "$tmpdir/tcp.sh"
   rm -rf "$tmpdir"
   pause
@@ -361,7 +388,12 @@ _bbr_install_cloud() {
   _download "https://raw.githubusercontent.com/cx9208/Linux-NetSpeed/master/tcp.sh" "$tmpdir/tcp.sh" || {
     msg_err "下载失败"; rm -rf "$tmpdir"; pause; return
   }
+  msg_warn "即将执行第三方脚本（来源: https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh）"
   msg_warn "即将运行内核安装脚本，选择选项 8 安装 cloud 内核"
+  if ! confirm "确认执行该第三方脚本？"; then
+    rm -rf "$tmpdir"
+    pause; return
+  fi
   bash "$tmpdir/tcp.sh"
   rm -rf "$tmpdir"
   pause
@@ -822,11 +854,9 @@ system_backup() {
   )
 
   msg_info "正在备份到: $backup_file"
-  local tar_cmd="tar czf"
   local exists=0
   for d in "${dirs_to_backup[@]}"; do
     if [[ -d "$d" ]]; then
-      tar_cmd+=" $d"
       exists=1
     fi
   done
@@ -877,10 +907,20 @@ system_restore() {
   read -p "请选择要恢复的备份: " choice
   local idx=$((choice - 1))
   if [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]]; then
+    local restore_file="${backups[$idx]}"
+    msg_info "备份内容预览（前 30 项）:"
+    tar tzf "$restore_file" 2>/dev/null | head -30
+    msg ""
     if confirm "这将覆盖现有文件，确认继续？"; then
-      tar xzf "${backups[$idx]}" -C /
-      msg_ok "恢复完成"
-      _log_write "系统已从备份恢复: ${backups[$idx]}"
+      local confirm_input=""
+      read -r -p "请输入大写 YES 确认恢复: " confirm_input
+      if [[ "$confirm_input" == "YES" ]]; then
+        tar xzf "$restore_file" -C /
+        msg_ok "恢复完成"
+        _log_write "系统已从备份恢复: $restore_file"
+      else
+        msg_warn "输入不匹配，已取消恢复"
+      fi
     fi
   fi
   pause
@@ -979,6 +1019,11 @@ system_swap() {
 
   case "$sw_choice" in
     1)
+      if [[ -e /swapfile ]] || swapon --show=NAME 2>/dev/null | grep -q "/swapfile"; then
+        msg_warn "Swap 文件已存在"
+        pause
+        return
+      fi
       if confirm "确认创建 2GB Swap 文件？"; then
         dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
         chmod 600 /swapfile
@@ -1078,14 +1123,44 @@ system_security() {
       ;;
     3)
       read -p "请输入新的 SSH 端口: " new_port
-      if [[ -n "$new_port" && "$new_port" =~ ^[0-9]+$ ]]; then
-        sed -i "s/^#\?Port .*/Port $new_port/" /etc/ssh/sshd_config
-        systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
-        msg_ok "SSH 端口已修改为 $new_port"
+      if [[ -z "$new_port" || ! "$new_port" =~ ^[0-9]+$ ]] || [[ "$new_port" -lt 1 || "$new_port" -gt 65535 ]]; then
+        msg_err "端口无效，必须为 1-65535 之间的数字"
+      else
+        local old_port; old_port=$(grep -E "^Port[[:space:]]" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | tail -1)
+        old_port=${old_port:-22}
+        local fw_ok=0
         if command -v ufw &>/dev/null; then
-          ufw allow "$new_port"/tcp
+          if ufw allow "$new_port"/tcp; then
+            ufw allow "$old_port"/tcp 2>/dev/null || true
+            fw_ok=1
+          fi
+        elif command -v firewall-cmd &>/dev/null; then
+          if firewall-cmd --permanent --add-port="$new_port"/tcp 2>/dev/null && firewall-cmd --reload 2>/dev/null; then
+            firewall-cmd --permanent --add-port="$old_port"/tcp 2>/dev/null || true
+            firewall-cmd --reload 2>/dev/null || true
+            fw_ok=1
+          fi
         fi
-        _log_write "SSH 端口已更改为 $new_port"
+        if [[ $fw_ok -eq 0 ]]; then
+          msg_warn "未能自动放行端口 $new_port/tcp，请先在防火墙或云安全组中手动放行"
+          confirm "已完成手动放行，是否继续修改 SSH 端口？" && fw_ok=1
+        fi
+        if [[ $fw_ok -eq 1 ]]; then
+          if grep -q "^#\?Port " /etc/ssh/sshd_config 2>/dev/null; then
+            sed -i "s/^#\?Port .*/Port $new_port/" /etc/ssh/sshd_config
+          else
+            echo "Port $new_port" >> /etc/ssh/sshd_config
+          fi
+          if systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null; then
+            msg_ok "SSH 端口已修改为 $new_port"
+            _log_write "SSH 端口已更改为 $new_port"
+            msg_warn "请先用新端口开新连接测试，确认能登录后再关闭当前会话"
+          else
+            msg_err "sshd 重启失败，请检查 /etc/ssh/sshd_config；防火墙已放行 $new_port 与 $old_port"
+          fi
+        else
+          msg_err "防火墙未放行端口 $new_port，已取消修改 SSH 端口"
+        fi
       fi
       ;;
   esac
@@ -1125,6 +1200,13 @@ system_sshkey() {
     1)
       msg "请粘贴公钥内容（以 ssh-rsa/ssh-ed25519 开头）:"
       read -r pubkey
+      pubkey="${pubkey%$'\r'}"
+      local pubkey_re='^(ssh-(rsa|ed25519|dss)|ecdsa-sha2-[a-z0-9-]+|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh\.com) [A-Za-z0-9+/=]+( .*)?$'
+      if [[ -n "$pubkey" && ! "$pubkey" =~ $pubkey_re ]]; then
+        msg_err "公钥格式无效，已取消添加"
+        pause
+        return 1
+      fi
       if [[ -n "$pubkey" ]]; then
         mkdir -p ~/.ssh
         chmod 700 ~/.ssh
@@ -1157,12 +1239,25 @@ system_sshkey() {
       if [[ -f ~/.ssh/authorized_keys ]]; then
         read -p "输入要删除的密钥行号: " line_num
         if [[ -n "$line_num" ]]; then
+          local ak_total; ak_total=$(wc -l < ~/.ssh/authorized_keys | tr -d ' ')
+          if ! [[ "$line_num" =~ ^[0-9]+$ ]] || [[ "$line_num" -lt 1 || "$line_num" -gt "$ak_total" ]]; then
+            msg_err "无效行号: $line_num（有效范围 1-$ak_total）"
+            pause
+            return 1
+          fi
           sed -i "${line_num}d" ~/.ssh/authorized_keys
           msg_ok "密钥已删除"
         fi
       fi
       ;;
     4)
+      local ak_lines=0
+      [[ -f ~/.ssh/authorized_keys ]] && ak_lines=$(wc -l < ~/.ssh/authorized_keys | tr -d ' ')
+      if [[ "$ak_lines" -eq 0 ]]; then
+        msg_err "~/.ssh/authorized_keys 不存在或为空，禁用密码登录可能导致无法登录"
+        pause
+        return 1
+      fi
       if confirm "确认禁用密码登录？请确保已配置密钥！"; then
         sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
         systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
@@ -1193,8 +1288,12 @@ system_firewall() {
   elif command -v iptables &>/dev/null; then
     fw_type="iptables"
     msg "  ${F_BOLD}防火墙:${F_RESET} iptables"
-    local rule_count=$(iptables -L -n 2>/dev/null | wc -l)
-    msg "  规则数: $rule_count"
+    local rule_count
+    if rule_count=$(iptables -L -n 2>/dev/null | wc -l); then
+      msg "  规则数: $rule_count"
+    else
+      msg "  规则数: 未知"
+    fi
   fi
 
   msg ""
@@ -1300,11 +1399,24 @@ FEOF
       fi
       ;;
     9)
-      if confirm "确认重置防火墙规则？"; then
+      msg_warn "将清空包括 Docker 在内的全部 iptables 规则，容器网络可能中断"
+      local confirm_input=""
+      read -r -p "请输入大写 YES 确认重置防火墙: " confirm_input
+      if [[ "$confirm_input" == "YES" ]]; then
+        local ipt_bak; ipt_bak="/root/iptables-backup-$(date +%Y%m%d%H%M%S).rules"
+        if iptables-save > "$ipt_bak" 2>/dev/null; then
+          msg_ok "当前规则已备份到 $ipt_bak"
+        else
+          rm -f "$ipt_bak"
+          msg_warn "规则备份失败（iptables-save 不可用）"
+        fi
         ufw --force reset 2>/dev/null
         iptables -F 2>/dev/null
         iptables -X 2>/dev/null
         msg_ok "防火墙已重置"
+        _log_write "防火墙已重置（规则备份: $ipt_bak）"
+      else
+        msg_warn "已取消重置防火墙"
       fi
       ;;
   esac
@@ -1348,17 +1460,25 @@ system_cron() {
       read -p "请输入 cron 表达式: " cron_expr
       read -p "请输入要执行的命令: " cron_cmd
       if [[ -n "$cron_expr" && -n "$cron_cmd" ]]; then
-        (crontab -l 2>/dev/null; echo "$cron_expr $cron_cmd") | crontab -
-        msg_ok "定时任务已添加"
-        _log_write "定时任务已添加: $cron_expr $cron_cmd"
+        if crontab -l 2>/dev/null | grep -qF "$cron_expr $cron_cmd"; then
+          msg_warn "该定时任务已存在，跳过添加"
+        else
+          (crontab -l 2>/dev/null; echo "$cron_expr $cron_cmd") | crontab -
+          msg_ok "定时任务已添加"
+          _log_write "定时任务已添加: $cron_expr $cron_cmd"
+        fi
       fi
       ;;
     2)
       crontab -l 2>/dev/null | grep -v "^#" | grep -v "^$" | nl -ba
       read -p "输入要删除的行号: " del_line
       if [[ -n "$del_line" ]]; then
-        crontab -l 2>/dev/null | sed "${del_line}d" | crontab -
-        msg_ok "已删除"
+        if [[ "$del_line" =~ ^[0-9]+$ ]]; then
+          crontab -l 2>/dev/null | sed "${del_line}d" | crontab -
+          msg_ok "已删除"
+        else
+          msg_err "行号必须为数字"
+        fi
       fi
       ;;
     3)
@@ -1366,14 +1486,22 @@ system_cron() {
       ;;
     4)
       local backup_cron="0 3 * * * /bin/bash -c 'source /etc/fusionbox/src/init.sh && system_backup /root/backups'"
-      (crontab -l 2>/dev/null; echo "$backup_cron") | crontab -
-      msg_ok "每天凌晨 3 点自动备份已配置"
-      _log_write "自动备份定时任务已配置"
+      if crontab -l 2>/dev/null | grep -qF "$backup_cron"; then
+        msg_warn "自动备份定时任务已存在，跳过添加"
+      else
+        (crontab -l 2>/dev/null; echo "$backup_cron") | crontab -
+        msg_ok "每天凌晨 3 点自动备份已配置"
+        _log_write "自动备份定时任务已配置"
+      fi
       ;;
     5)
       local clean_cron="0 4 * * 0 journalctl --vacuum-time=7d && rm -rf /tmp/*.tmp"
-      (crontab -l 2>/dev/null; echo "$clean_cron") | crontab -
-      msg_ok "每周日凌晨 4 点自动清理日志已配置"
+      if crontab -l 2>/dev/null | grep -qF "$clean_cron"; then
+        msg_warn "日志清理定时任务已存在，跳过添加"
+      else
+        (crontab -l 2>/dev/null; echo "$clean_cron") | crontab -
+        msg_ok "每周日凌晨 4 点自动清理日志已配置"
+      fi
       ;;
     6)
       systemctl status cron 2>/dev/null || systemctl status crond 2>/dev/null || service cron status 2>/dev/null
@@ -1424,13 +1552,20 @@ system_disk() {
       read -p "请输入要格式化的分区（如 /dev/sdb1）: " part_dev
       if [[ -b "$part_dev" ]]; then
         local fs_type; fs_type=$(select_option "文件系统:" "ext4 (推荐)" "xfs" "btrfs")
-        case "$fs_type" in
-          1) mkfs.ext4 "$part_dev" ;;
-          2) mkfs.xfs "$part_dev" ;;
-          3) mkfs.btrfs "$part_dev" ;;
-          *) mkfs.ext4 "$part_dev" ;;
-        esac
-        msg_ok "格式化完成"
+        msg_warn "即将格式化设备: $part_dev，该设备上的所有数据将被清除"
+        local confirm_input=""
+        read -r -p "请输入大写 YES 确认格式化 $part_dev: " confirm_input
+        if [[ "$confirm_input" == "YES" ]]; then
+          case "$fs_type" in
+            1) mkfs.ext4 "$part_dev" ;;
+            2) mkfs.xfs "$part_dev" ;;
+            3) mkfs.btrfs "$part_dev" ;;
+            *) mkfs.ext4 "$part_dev" ;;
+          esac
+          msg_ok "格式化完成"
+        else
+          msg_warn "已取消格式化"
+        fi
       fi
       ;;
     3)
@@ -1439,8 +1574,13 @@ system_disk() {
       if [[ -b "$part_dev" && -n "$mount_point" ]]; then
         mkdir -p "$mount_point"
         mount "$part_dev" "$mount_point"
-        echo "$part_dev $mount_point auto defaults 0 2" >> /etc/fstab
-        msg_ok "已挂载 $part_dev 到 $mount_point"
+        if grep -qE "^[[:space:]]*${part_dev}([[:space:]]|\$)" /etc/fstab 2>/dev/null || \
+           grep -qE "^[[:space:]]*[^[:space:]]+[[:space:]]+${mount_point}([[:space:]]|\$)" /etc/fstab 2>/dev/null; then
+          msg_warn "/etc/fstab 已存在 $part_dev 或 $mount_point 的挂载条目，跳过写入"
+        else
+          echo "$part_dev $mount_point auto defaults 0 2" >> /etc/fstab
+          msg_ok "已挂载 $part_dev 到 $mount_point"
+        fi
       fi
       ;;
     4)
@@ -1607,7 +1747,7 @@ system_tools_menu() {
     msg "  ${F_GREEN} 9${F_RESET}) Swap 管理"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-9]: " tools_choice
+    read -p "请选择 [0-9]: " tools_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$tools_choice" in
       1) system_sshkey ;;
       2) system_firewall ;;
@@ -1665,7 +1805,7 @@ system_menu() {
     msg "  ${F_GREEN} 9${F_RESET}) 系统工具 (SSH/防火墙/定时任务/磁盘/时区/回收站)"
     msg "  ${F_GREEN} 0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-9]: " choice
+    read -p "请选择 [0-9]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) system_info ;;
       2) system_bbr ;;

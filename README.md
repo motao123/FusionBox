@@ -30,10 +30,11 @@ FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理
 - **支持协议**：VLESS、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5
 - **传输方式**：TCP、WebSocket、gRPC、HTTPUpgrade
 - **配置管理**：自动合并多配置、分享链接生成
+- **协议适配**：配置生成当前针对 Xray/v2ray 内核（Hysteria2/TUIC 需对应内核支持，添加时自动校验拒绝不支持的组合；sing-box/Clash.Meta 可安装，配置生成适配中）
 
 ```bash
 fusionbox proxy install          # 安装代理核心（4选1）
-fusionbox proxy add              # 添加代理配置（15种协议）
+fusionbox proxy add              # 添加代理配置（按后端自动校验协议）
 fusionbox proxy list             # 列出所有配置
 fusionbox proxy start            # 启动代理服务
 fusionbox proxy stop             # 停止代理服务
@@ -285,6 +286,7 @@ fusionbox cluster     # 集群控制
 fusionbox status      # 系统状态概览
 fusionbox version     # 查看版本
 fusionbox update      # 更新 FusionBox
+fusionbox uninstall   # 卸载 FusionBox 本体（不动各模块安装的服务）
 fusionbox help        # 查看帮助
 
 # 模块帮助
@@ -332,6 +334,27 @@ FusionBox/
     ├── test_basic.sh          # 基础测试
     └── comprehensive_test.sh  # 综合测试
 ```
+
+## 安全与健壮性（v1.2.0）
+
+v1.2.0 对全项目做了一轮安全审计与真机功能实测（Ubuntu 24.04 全模块 80+ 项），主要改进：
+
+**安全**
+- 第三方面板/工具安装源全部改为 HTTPS，远程脚本先落地临时文件再执行（不再 `curl | bash`）
+- 代理密码/UUID 改用 CSPRNG 生成（旧版为 `sha256(时间戳)`，熵≈0）；配置文件 `600`、配置目录 `700`
+- Aria2 RPC 密钥随机化（旧版硬编码且公网监听）；Minecraft RCON 密码随机化
+- 危险操作默认拒绝：`confirm` 空输入不再视为同意；系统恢复/防火墙重置/mkfs 需输入大写 `YES`
+- 修复 MySQL 建用户 SQL 注入与密码经进程列表泄露；修复 crontab/iptables/nginx 配置多处注入面
+- SSH 加固顺序修正（先放行防火墙再重启 sshd）；禁用密码登录前强制校验密钥存在
+- 修复自更新链路（函数遮蔽 + 仓库地址不一致）
+
+**健壮性**
+- 安装脚本事务化：下载解压成功后才替换现有安装；补上缺失的离线本地安装分支
+- 修复软链接安装后命令不可用的问题（`$0` 路径解析）
+- 修复 Web L4 转发在原生 Ubuntu 上必然失败的问题（自动安装 nginx stream 模块，失败回滚主配置）
+- 应用部署/代理服务失败不再谎报成功；Docker Compose 部署失败返回错误
+- 全部交互菜单在 stdin 关闭（CI/管道）时安全退出，不再死循环
+- 新增 `fusionbox uninstall` 完整卸载；版本号统一从 version.txt 读取
 
 ## 开源协议
 

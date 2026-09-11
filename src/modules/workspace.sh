@@ -42,7 +42,9 @@ workspace_screen() {
       screen -ls 2>/dev/null
       read -p "会话名称: " session_name
       if [[ -n "$session_name" ]]; then
-        screen -S "$session_name" -X quit 2>/dev/null && msg_ok "已终止: $session_name"
+        if confirm "确认终止会话 '$session_name'？其中的进程将全部退出"; then
+          screen -S "$session_name" -X quit 2>/dev/null && msg_ok "已终止: $session_name" || msg_err "终止失败"
+        fi
       fi
       ;;
     *)
@@ -72,7 +74,7 @@ workspace_screen_menu() {
     msg "  4) 进入会话"
     msg "  5) 终止会话"
     msg "  0) 返回"
-    read -p "请选择: " choice
+    read -p "请选择: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) _install_pkg screen; pause ;;
       2) workspace_screen create; pause ;;
@@ -112,7 +114,9 @@ workspace_tmux() {
       tmux ls 2>/dev/null
       read -p "会话名称: " session_name
       if [[ -n "$session_name" ]]; then
-        tmux kill-session -t "$session_name" 2>/dev/null && msg_ok "已终止: $session_name"
+        if confirm "确认终止会话 '$session_name'？其中的进程将全部退出"; then
+          tmux kill-session -t "$session_name" 2>/dev/null && msg_ok "已终止: $session_name" || msg_err "终止失败"
+        fi
       fi
       ;;
     *)
@@ -141,7 +145,7 @@ workspace_tmux_menu() {
     msg "  4) 进入会话"
     msg "  5) 终止会话"
     msg "  0) 返回"
-    read -p "请选择: " choice
+    read -p "请选择: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) _install_pkg tmux; pause ;;
       2) workspace_tmux create; pause ;;
@@ -201,7 +205,7 @@ workspace_menu() {
     msg "  ${F_GREEN}3${F_RESET}) 列出所有后台会话"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-3]: " choice
+    read -p "请选择 [0-3]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) workspace_screen_menu ;;
       2) workspace_tmux_menu ;;

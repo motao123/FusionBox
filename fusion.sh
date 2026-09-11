@@ -1,10 +1,22 @@
 #!/bin/bash
 # FusionBox - Ultimate Linux Management Script
-# Repository: https://github.com/fusionbox/fusionbox
+# Repository: https://github.com/motao123/FusionBox
 
-[[ $EUID -ne 0 ]] && echo "需要 root 权限" && exit 1
+# Read-only commands may run without root; everything else (incl. menus) needs root
+case "$1" in
+  help|h|version|v) ;;
+  *) [[ $EUID -ne 0 ]] && echo "需要 root 权限" && exit 1 ;;
+esac
 
-export FUSION_BASE="$(cd "$(dirname "$0")" && pwd)"
+# Resolve script path through symlinks (install.sh links /usr/local/bin/fusionbox
+# to /etc/fusionbox/fusion.sh; using $0 directly would break the install layout)
+_source_path="${BASH_SOURCE[0]}"
+while [[ -L "$_source_path" ]]; do
+  _link_dir="$(cd "$(dirname "$_source_path")" && pwd)"
+  _source_path="$(readlink "$_source_path")"
+  [[ $_source_path != /* ]] && _source_path="$_link_dir/$_source_path"
+done
+export FUSION_BASE="$(cd "$(dirname "$_source_path")" && pwd)"
 export FUSION_SRC="$FUSION_BASE/src"
 
 . "$FUSION_SRC/init.sh"
@@ -73,7 +85,10 @@ route() {
       self_update
       ;;
     help|h)
-      show_help
+      show_help "$@"
+      ;;
+    uninstall)
+      self_uninstall
       ;;
     # k command shortcut - pass to system
     k)
@@ -142,21 +157,27 @@ show_status() {
 }
 
 # ---- Self Update ----
+# NOTE: keep the repo URL in sync with install.sh (single source of truth)
+FUSION_REPO="https://github.com/motao123/FusionBox"
+
 self_update() {
   msg_info "正在检查更新..."
-  _download "https://raw.githubusercontent.com/fusionbox/fusionbox/main/version.txt" /tmp/fusionbox_ver
+  _download "https://raw.githubusercontent.com/motao123/FusionBox/main/version.txt" /tmp/fusionbox_ver
   if [[ -f /tmp/fusionbox_ver ]]; then
-    local remote_ver=$(cat /tmp/fusionbox_ver | tr -d ' \n')
-    if [[ "$remote_ver" != "$FUSION_VER" && -n "$remote_ver" ]]; then
+    local remote_ver
+    remote_ver="$(tr -d '[:space:]' < /tmp/fusionbox_ver)"
+    rm -f /tmp/fusionbox_ver
+    if [[ "$remote_ver" != "$FUSION_VER" && "$remote_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       msg_info "发现新版本 $remote_ver，正在更新..."
-      local tmpdir=$(mktemp -d)
-      _download "https://github.com/fusionbox/fusionbox/archive/main.tar.gz" "$tmpdir/fusionbox.tar.gz"
-      if [[ -f "$tmpdir/fusionbox.tar.gz" ]]; then
-        tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir"
+      local tmpdir
+      tmpdir="$(mktemp -d)"
+      if _download "$FUSION_REPO/archive/main.tar.gz" "$tmpdir/fusionbox.tar.gz" \
+         && tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir" \
+         && [[ -f "$tmpdir/fusionbox-main/fusion.sh" ]]; then
         cp -rf "$tmpdir/fusionbox-main/"* "$FUSION_BASE/"
-        msg_ok "更新完成"
+        msg_ok "更新完成，重新运行 fusionbox 生效"
       else
-        msg_err "下载失败"
+        msg_err "下载或解压失败，已取消更新"
       fi
       rm -rf "$tmpdir"
     else
@@ -165,6 +186,24 @@ self_update() {
   else
     msg_warn "无法检查更新（离线）"
   fi
+}
+
+# ---- Self Uninstall ----
+self_uninstall() {
+  msg_warn "将删除 FusionBox 本体：$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "$FUSION_BASE")")、/usr/local/bin/fusionbox、$FUSION_CONFIG_DIR（配置与日志）"
+  msg_warn "各模块安装的服务（代理、面板、Docker 等）不会被卸载，请先在对应模块内清理"
+  confirm "确认卸载 FusionBox 本体？" || { msg_info "已取消"; return 1; }
+  rm -rf "$FUSION_BASE"
+  rm -f /usr/local/bin/fusionbox
+  rm -rf "$FUSION_CONFIG_DIR"
+  # 清理 k 命令别名注入
+  local rc
+  for rc in /root/.bashrc "$HOME/.bashrc"; do
+    if [[ -f "$rc" ]] && grep -q "fusionbox/kcmd/aliases.sh" "$rc"; then
+      sed -i '/fusionbox\/kcmd\/aliases\.sh/d' "$rc"
+    fi
+  done
+  msg_ok "FusionBox 本体已卸载"
 }
 
 # ---- Help ----
@@ -188,6 +227,7 @@ show_help() {
   msg "  ${F_BOLD}命令:${F_RESET}"
   msg "  ${F_GREEN}status${F_RESET}            系统状态概览"
   msg "  ${F_GREEN}update${F_RESET}            更新 FusionBox"
+  msg "  ${F_GREEN}uninstall${F_RESET}         卸载 FusionBox 本体"
   msg "  ${F_GREEN}version${F_RESET}           显示版本"
   msg "  ${F_GREEN}help${F_RESET}              显示帮助"
   msg ""
@@ -214,6 +254,7 @@ show_help() {
 
 # ---- Main Menu ----
 main_menu() {
+  _require_root
   while true; do
     _print_banner
 
@@ -233,7 +274,7 @@ main_menu() {
     msg "  ${F_GREEN} 0${F_RESET}) 退出"
     msg ""
 
-    read -p "请选择 [0-11]: " main_choice
+    read -p "请选择 [0-11]: " main_choice || { msg ""; return; }   # stdin 关闭时退出，防死循环
 
     case "$main_choice" in
       1) route proxy ;;
