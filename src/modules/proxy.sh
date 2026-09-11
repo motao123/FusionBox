@@ -406,6 +406,12 @@ _proxy_proto_supported() {
 # ---- 添加配置 ----
 proxy_add() {
   _require_root
+  # 只装了 233boy sing-box 时（自有目录不存在）也要正确引导
+  if [[ ! -d "$P_BASE_DIR" ]] && _singbox_233_installed; then
+    msg_info "检测到 233boy/sing-box 实例（由其自有服务管理）"
+    msg_info "请使用: fusionbox proxy sb add   （或进入 fusionbox proxy sb 主菜单）"
+    return 1
+  fi
   if [[ ! -d "$P_BASE_DIR" ]]; then
     msg_err "请先安装代理核心：fusionbox proxy install"
     return 1
@@ -733,25 +739,28 @@ proxy_status() {
   local backend=""
   [[ -f "$P_BASE_DIR/current_backend" ]] && backend=$(cat "$P_BASE_DIR/current_backend")
 
-  if [[ -z "$backend" ]]; then
+  # 无自有后端且无 233boy 实例才是真正的"未安装"
+  if [[ -z "$backend" ]] && ! _singbox_233_installed; then
     msg "  ${F_BOLD}状态:${F_RESET} ${F_RED}未安装${F_RESET}"
     msg ""
     return
   fi
 
-  local ver=$($P_BIN_DIR/$backend version 2>/dev/null | head -1)
-  msg "  ${F_BOLD}后端:${F_RESET} $backend ($ver)"
+  if [[ -n "$backend" ]]; then
+    local ver=$($P_BIN_DIR/$backend version 2>/dev/null | head -1)
+    msg "  ${F_BOLD}后端:${F_RESET} $backend ($ver)"
 
-  if systemctl is-active fusionbox-proxy &>/dev/null; then
-    msg "  ${F_BOLD}状态:${F_RESET} ${F_GREEN}运行中${F_RESET}"
-    local pid=$(systemctl show fusionbox-proxy --property=MainPID --value 2>/dev/null)
-    msg "  ${F_BOLD}PID:${F_RESET} $pid"
-  else
-    msg "  ${F_BOLD}状态:${F_RESET} ${F_YELLOW}已停止${F_RESET}"
+    if systemctl is-active fusionbox-proxy &>/dev/null; then
+      msg "  ${F_BOLD}状态:${F_RESET} ${F_GREEN}运行中${F_RESET}"
+      local pid=$(systemctl show fusionbox-proxy --property=MainPID --value 2>/dev/null)
+      msg "  ${F_BOLD}PID:${F_RESET} $pid"
+    else
+      msg "  ${F_BOLD}状态:${F_RESET} ${F_YELLOW}已停止${F_RESET}"
+    fi
+
+    local count=$(find "$P_CONF_DIR" -name "*.json" 2>/dev/null | wc -l)
+    msg "  ${F_BOLD}配置:${F_RESET} $count 个"
   fi
-
-  local count=$(find "$P_CONF_DIR" -name "*.json" 2>/dev/null | wc -l)
-  msg "  ${F_BOLD}配置:${F_RESET} $count 个"
 
   # 233boy/sing-box 实例（独立于 FusionBox 自有后端）
   if _singbox_233_installed; then
