@@ -32,6 +32,7 @@ system_main() {
     notify)           system_notify "$@" ;;
     netopt)           system_netopt "$@" ;;
     fail2ban|f2b)     system_fail2ban "$@" ;;
+    env)              system_env "$@" ;;
     settings)         system_settings_menu ;;
     tools)            system_tools_menu ;;
     menu|main)        system_menu ;;
@@ -3678,9 +3679,10 @@ system_settings_menu() {
     msg "  ${F_GREEN} 7${F_RESET}) 流量阈值保护"
     msg "  ${F_GREEN} 8${F_RESET}) Telegram 告警"
     msg "  ${F_GREEN} 9${F_RESET}) 网络优化分级"
+    msg "  ${F_GREEN}10${F_RESET}) 环境变量管理"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-9]: " set_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-10]: " set_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$set_choice" in
       1) system_dns ;;
       2) system_hostname ;;
@@ -3691,6 +3693,7 @@ system_settings_menu() {
       7) system_traffic_guard ;;
       8) system_notify ;;
       9) system_netopt ;;
+      10) system_env ;;
       0) break ;;
       *) ;;
     esac
@@ -3846,6 +3849,131 @@ system_fail2ban() {
   esac
 }
 
+# ---- 环境变量管理 (G09)：查看/编辑/语法检查，允许清单内文件 ----
+
+_env_candidate_files() {
+  printf '%s\n' /etc/profile /etc/bash.bashrc /etc/environment
+  for f in /etc/profile.d/*.sh; do [[ -f "$f" ]] && printf '%s\n' "$f"; done
+  for f in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do [[ -e "$f" ]] && printf '%s\n' "$f"; done
+}
+
+_env_is_shell_file() {
+  case "$1" in
+    /etc/environment) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+_env_in_allowlist() {
+  local f="$1" c
+  [[ -e "$f" ]] || return 1
+  c=$(readlink -f "$f" 2>/dev/null) || return 1
+  local cand
+  while IFS= read -r cand; do
+    [[ -e "$cand" ]] || continue
+    [[ "$(readlink -f "$cand" 2>/dev/null)" == "$c" ]] && return 0
+  done < <(_env_candidate_files)
+  return 1
+}
+
+_env_backup() {
+  local f="$1" bdir="${FUSION_CONFIG_DIR:-${HOME:-/root}/.config/fusionbox}/backups/env"
+  mkdir -p "$bdir" && chmod 700 "$bdir"
+  cp -a "$f" "$bdir/$(basename "$f").$(date +%Y%m%d-%H%M%S).bak" || return 1
+  printf '%s' "$bdir/$(basename "$f").$(date +%Y%m%d-%H%M%S).bak"
+}
+
+_env_list() {
+  msg "  ${F_BOLD}环境变量相关文件:${F_RESET}"
+  local f line_st
+  while IFS= read -r f; do
+    [[ -e "$f" ]] || continue
+    if _env_is_shell_file "$f" && bash -n "$f" 2>/dev/null; then
+      line_st="${F_GREEN}语法 OK${F_RESET}"
+    elif ! _env_is_shell_file "$f"; then
+      line_st="非 shell 文件"
+    else
+      line_st="${F_RED}语法错误${F_RESET}"
+    fi
+    # shellcheck disable=SC2086
+    msg "  $f ($(wc -l < "$f" 2>/dev/null || echo '?') 行, $line_st)"
+  done < <(_env_candidate_files)
+  msg ""
+  msg "  修改后需重新登录或执行 source 生效；FusionBox 只管理以上清单内的文件"
+}
+
+_env_show() {
+  local f="${1:-}"
+  _env_in_allowlist "$f" || { msg_err "文件不在允许清单内（用 system env list 查看）"; return 1; }
+  msg "  ${F_BOLD}$f:${F_RESET}"
+  cat -n "$f"
+}
+
+_env_check() {
+  local bad=0 f
+  while IFS= read -r f; do
+    [[ -e "$f" ]] || continue
+    _env_is_shell_file "$f" || continue
+    if bash -n "$f" 2>/dev/null; then
+      msg_ok "  $f 语法 OK"
+    else
+      msg_err "  $f 语法错误（bash -n 失败）："
+      bash -n "$f" 2>&1 | head -3 | sed 's/^/    /'
+      bad=1
+    fi
+  done < <(_env_candidate_files)
+  return $bad
+}
+
+_env_edit() {
+  local f="${1:-}"
+  _env_in_allowlist "$f" || { msg_err "文件不在允许清单内（用 system env list 查看）"; return 1; }
+  [[ -f "$f" && ! -L "$f" ]] || { msg_err "仅支持编辑清单内的普通文件"; return 1; }
+  local backup
+  backup=$(_env_backup "$f") || { msg_err "备份失败，已取消编辑"; return 1; }
+  msg_info "已备份到 $backup"
+  "${EDITOR:-vi}" "$f" || { msg_warn "编辑器异常退出；原文件未由 FusionBox 改动"; return 1; }
+  if _env_is_shell_file "$f" && ! bash -n "$f" 2>/dev/null; then
+    msg_err "编辑后存在 shell 语法错误（bash -n 失败）"
+    if confirm "从编辑前备份恢复 $f？"; then
+      cp -a "$backup" "$f" && msg_ok "已恢复" || msg_err "恢复失败；备份仍在 $backup"
+    else
+      msg_warn "保留修改；语法错误可能导致登录 shell 异常，可用 system env check 复查"
+    fi
+  else
+    msg_ok "已保存；新登录会话生效，或手动 source $f"
+    _log_write "环境变量文件已编辑: $f (备份 $backup)"
+  fi
+}
+
+system_env() {
+  _require_root
+  local cmd="${1:-menu}"
+  case "$cmd" in
+    list)  _env_list ;;
+    show)  shift; _env_show "$@" ;;
+    check) _env_check ;;
+    edit)  shift; _env_edit "$@" ;;
+    menu)  shift || true
+      msg_title "环境变量管理"
+      msg ""
+      _env_list
+      msg "  1) 语法检查全部文件"
+      msg "  2) 查看指定文件"
+      msg "  3) 编辑指定文件（自动备份+语法校验）"
+      msg "  0) 返回"
+      read -p "请选择: " env_choice || { msg ""; return; }
+      case "$env_choice" in
+        1) _env_check && pause ;;
+        2) env_f=$(read_input "文件路径（清单内）") && _env_show "$env_f" && pause ;;
+        3) env_f=$(read_input "文件路径（清单内）") && _env_edit "$env_f" && pause ;;
+        0) return ;;
+        *) ;;
+      esac ;;
+    *) msg_err "未知子命令: $cmd（可用: list/show/check/edit）"; return 1 ;;
+  esac
+}
+
 # ---- Help ----
 system_help() {
   msg_title "系统管理 帮助"
@@ -3877,6 +4005,7 @@ system_help() {
   msg "  fusionbox system notify         Telegram 资源告警"
   msg "  fusionbox system netopt         网络优化分级 (按网卡速率)"
   msg "  fusionbox system fail2ban       Fail2Ban 面板 (状态/解封/日志/参数/卸载)"
+  msg "  fusionbox system env            环境变量管理 (list/show/check/edit)"
   msg "  fusionbox system settings       系统设置子菜单"
   msg "  fusionbox system tools          系统工具子菜单"
   msg ""

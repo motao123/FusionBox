@@ -536,6 +536,97 @@ network_bench() {
   esac
 }
 
+# ---- 网卡管理 (G10)：列表/详情/启停 ----
+
+_nic_check_name() {
+  [[ "$1" =~ ^[a-zA-Z0-9._-]{1,15}$ ]] || { msg_err "网卡名无效: $1"; return 1; }
+  ip link show dev "$1" &>/dev/null || { msg_err "网卡不存在: $1"; return 1; }
+}
+
+_nic_default_iface() {
+  ip route show default 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="dev"){print $(i+1); exit}}'
+}
+
+_nic_list() {
+  msg "  ${F_BOLD}网卡与地址 (ip -br addr):${F_RESET}"
+  ip -br addr 2>/dev/null || ip addr show
+  msg ""
+  msg "  ${F_BOLD}默认路由网卡:${F_RESET} $(_nic_default_iface)"
+  msg "  启停网卡前请注意：停用承载 SSH 连接的网卡会立即断开你的会话"
+}
+
+_nic_info() {
+  local dev="${1:-}"
+  _nic_check_name "$dev" || return 1
+  msg "  ${F_BOLD}地址 (${dev}):${F_RESET}"
+  ip addr show dev "$dev"
+  msg ""
+  msg "  ${F_BOLD}计数器 (${dev}):${F_RESET}"
+  ip -s link show dev "$dev"
+  if command -v ethtool &>/dev/null; then
+    msg ""
+    msg "  ${F_BOLD}链路与驱动 (${dev}):${F_RESET}"
+    ethtool "$dev" 2>/dev/null | grep -E "Speed|Duplex|Link detected" | sed 's/^/  /'
+    ethtool -i "$dev" 2>/dev/null | grep -E "^(driver|version|bus-info)" | sed 's/^/  /'
+  else
+    msg ""
+    msg_info "未安装 ethtool，跳过链路/驱动详情"
+  fi
+}
+
+_nic_toggle() {
+  local action="$1" dev="${2:-}"
+  _nic_check_name "$dev" || return 1
+  local def_if; def_if=$(_nic_default_iface)
+  if [[ "$action" == "down" && "$dev" == "$def_if" ]]; then
+    msg_warn "$dev 承载默认路由。停用它很可能立即切断你的 SSH 会话与本机外网连接"
+    confirm "我了解风险，确认停用 $dev？" || { msg_info "已取消"; return 1; }
+  fi
+  if ! ip link set dev "$dev" "$action"; then
+    msg_err "ip link set dev $dev $action 失败"
+    return 1
+  fi
+  local st; st=$(cat "/sys/class/net/$dev/operstate" 2>/dev/null || echo unknown)
+  msg_ok "$dev 已 $action (operstate: $st)"
+  _log_write "网卡 $dev 已 $action"
+}
+
+_nic_menu() {
+  while true; do
+    clear
+    _print_banner
+    msg_title "网卡管理"
+    msg ""
+    _nic_list
+    msg ""
+    msg "  1) 网卡详情（地址/计数器/ethtool）"
+    msg "  2) 启用网卡 (up)"
+    msg "  3) 停用网卡 (down)"
+    msg "  0) 返回"
+    read -p "请选择: " nic_choice || { msg ""; return; }
+    case "$nic_choice" in
+      1) nic_d=$(read_input "网卡名（如 eth0/ens3）") && _nic_info "$nic_d" && pause ;;
+      2) nic_d=$(read_input "要启用的网卡名") && _nic_toggle up "$nic_d" && pause ;;
+      3) nic_d=$(read_input "要停用的网卡名") && _nic_toggle down "$nic_d" && pause ;;
+      0) return ;;
+      *) ;;
+    esac
+  done
+}
+
+network_nic() {
+  _require_root
+  local cmd="${1:-menu}"
+  case "$cmd" in
+    list)  _nic_list ;;
+    info)  shift; _nic_info "$@" ;;
+    up)    shift; _nic_toggle up "$@" ;;
+    down)  shift; _nic_toggle down "$@" ;;
+    menu|"") _nic_menu ;;
+    *)     msg_err "未知子命令: $cmd（可用: list/info/up/down）"; return 1 ;;
+  esac
+}
+
 # ---- Help ----
 network_help() {
   msg_title "网络工具 帮助"
@@ -553,6 +644,8 @@ network_help() {
   msg "  fusionbox network bench list       列出全部评测项"
   msg "  fusionbox network bench <序号|名称>  运行指定评测项"
   msg "  fusionbox network bench all        依次运行全部轻量评测项"
+  msg ""
+  msg "  fusionbox network nic          网卡管理 (list/info/up/down)"
   msg ""
   msg "  评测项分综合评测 / 网络测试 / 解锁检测 / IP 质量四类，"
   msg "  运行前会显示来源 URL 并二次确认，脚本仅在临时文件中执行。"
@@ -575,9 +668,10 @@ network_menu() {
     msg "  ${F_GREEN}7${F_RESET}) MTR 报告"
     msg "  ${F_GREEN}8${F_RESET}) 端口检测"
     msg "  ${F_GREEN}9${F_RESET}) VPS 评测矩阵"
+    msg "  ${F_GREEN}10${F_RESET}) 网卡管理"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-9]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-10]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) network_ip ;;
       2) network_streaming ;;
@@ -588,6 +682,7 @@ network_menu() {
       7) network_mtr ;;
       8) network_port_check ;;
       9) network_bench ;;
+      10) network_nic ;;
       0) break ;;
     esac
   done
