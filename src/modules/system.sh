@@ -1242,7 +1242,7 @@ _fb_hardening_verify_key_login() {
   systemctl is-active sshd.service &>/dev/null || systemctl is-active ssh.service &>/dev/null || return 2
   port=$(grep -E "^Port[[:space:]]" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | tail -1)
   port=${port:-22}
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
       -o ConnectTimeout=5 -o IdentitiesOnly=yes -i "$keyfile" -p "$port" \
       "${user}@127.0.0.1" "true" &>/dev/null
 }
