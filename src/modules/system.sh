@@ -896,10 +896,10 @@ system_restore() {
   local idx=$((choice - 1))
   if [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]]; then
     local restore_file="${backups[$idx]}"
-    msg_info "备份内容预览（前 30 项）:"
-    tar tzf "$restore_file" 2>/dev/null | head -30
+    msg_info "校验备份与恢复范围:"
+    python3 "$FUSION_SRC/lib/archive.py" verify system "$restore_file" || return 1
     msg ""
-    if confirm "这将覆盖现有文件，确认继续？"; then
+    if confirm "确认已停止写入服务？将替换清单目录并保留旧目录"; then
       local confirm_input=""
       read -r -p "请输入大写 YES 确认恢复: " confirm_input
       if [[ "$confirm_input" == "YES" ]]; then

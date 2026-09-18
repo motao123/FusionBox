@@ -4,6 +4,21 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.4.4 备份保留与校验恢复
+
+网站数据菜单 → 每日配置任务新增立即快照、登记归档列表、保留数量预览/确认执行和校验恢复。默认不删除，cron 也不自动清理。只有本版本任务成功写入 `inventory.json` 的归档才受保留策略管理；删除前检查所有登记归档 SHA-256、范围和压缩完整性，至少保留最新 1 份。未知文件、旧版本归档和手动备份不自动认领、不按通配符删除。中断可能留下未登记归档或失效记录，需人工检查；校验失败会阻止后续清理。
+
+```bash
+python3 /etc/fusionbox/src/lib/backup_jobs.py retention demo --keep 7                 # 仅预览
+python3 /etc/fusionbox/src/lib/backup_jobs.py retention demo --keep 7 --enable-delete # 本次执行
+python3 /etc/fusionbox/src/lib/backup_jobs.py restore demo --archive <登记文件名> --ack-stopped-writers
+python3 /etc/fusionbox/src/lib/archive.py verify web <归档路径>                      # 只读校验
+```
+
+恢复前必须停止配置/数据写入，校验 gzip 尾部和全部文件后才开始暂存；替换清单目录、保留旧目录，不自动重载服务。任务运行、保留和恢复共用 Linux flock。SHA-256 用于本地完整性检查，不是数字签名；恢复不保证断电原子性。
+
+Linux 验证：42 项基础检查 + 84 项行为测试全通过、零跳过；新增 6 项覆盖保留预览/删除、未知文件保留、损坏阻断、链接拒绝、确认恢复和登记失败。真实隔离 Docker 卷离线往返另通过内容、权限、恢复副本 3 项断言并清理夹具。该测试只验证文件归档原语，不是完整 Compose/数据库备份认证。Docker 菜单明确 export 不含卷/运行配置，禁用旧 Compose 全目录打包与向 `/` 解压入口。受管 Compose 项目登记、卷/运行元数据、一致停写与失败重启、远端迁移仍待实现；ACME/CF/TG 无真实凭据，未验证。
+
 ## v1.4.3 每日配置备份任务
 
 网站数据菜单选项 3 提供创建、列表/状态、删除自有任务与旧 cron 检测。仅备份 `/etc/nginx`、`/etc/caddy` 到本地 `/var/lib/fusionbox/backup-jobs/<id>/`，使用带 `config` 清单范围的归档；不含站点/数据库/容器数据、不传输远端、不停止服务。必须明确确认计划时段没有配置写入者；含链接或特殊文件时拒绝发布。任务使用 Linux flock、私有权限、原子状态和完整归档发布，失败没有可用的半成品。删除任务保留归档，不自动清理磁盘。

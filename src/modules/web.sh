@@ -1947,10 +1947,11 @@ web_stream_proxy() {
 # ---- 站点数据管理 ----
 _web_backup_jobs() {
   command -v python3 >/dev/null || { msg_err "配置备份需要 Python 3 标准库，请先安装 python3"; return 1; }
-  local helper="$FUSION_SRC/lib/backup_jobs.py" action job hour minute
+  local helper="$FUSION_SRC/lib/backup_jobs.py" action job hour minute keep archive_name
   msg_warn "仅本地 nginx/caddy 配置归档，不含网站、数据库、证书或容器数据；拒绝链接。"
   msg_warn "计划时段必须没有配置写入者；不会停止任何服务。归档不自动清理，请监控磁盘。"
   msg "1) 创建每日任务  2) 列表/状态  3) 删除自有任务  4) 检测旧任务（不修改）"
+  msg "5) 保留策略预览/执行（仅登记归档）  6) 校验并恢复配置  7) 立即快照"
   read -r -p "请选择: " action || return 1
   case "$action" in
     1)
@@ -1964,6 +1965,25 @@ _web_backup_jobs() {
     2) python3 "$helper" list ;;
     3) read -r -p "删除任务 ID（保留归档）: " job; python3 "$helper" remove "$job" ;;
     4) python3 "$helper" legacy ;;
+    5)
+      read -r -p "任务 ID: " job
+      read -r -p "保留最新数量（至少 1）: " keep
+      python3 "$helper" retention "$job" --keep "$keep" || return 1
+      if confirm "执行以上保留策略删除？默认仅预览"; then
+        python3 "$helper" retention "$job" --keep "$keep" --enable-delete || return 1
+      fi
+      ;;
+    6)
+      read -r -p "任务 ID: " job
+      read -r -p "登记归档文件名（列表/状态中查看）: " archive_name
+      confirm "确认已停止配置写入；将替换清单目录，保留旧目录，不重载服务？" || return 1
+      python3 "$helper" restore "$job" --archive "$archive_name" --ack-stopped-writers || return 1
+      ;;
+    7)
+      read -r -p "任务 ID: " job
+      confirm "确认当前配置没有写入者？" || return 1
+      python3 "$helper" run "$job" || return 1
+      ;;
     *) return 0 ;;
   esac
 }
@@ -2017,7 +2037,7 @@ web_site_data() {
         [[ "$choice" =~ ^[1-9][0-9]{0,5}$ ]] || return 1
         local idx=$((choice-1))
         if [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]]; then
-          if confirm "确认恢复？这将覆盖现有数据！"; then
+          if confirm "确认已停止所有写入服务？校验后替换整个清单目录并保留旧目录"; then
             python3 "$FUSION_SRC/lib/archive.py" restore web "${backups[$idx]}" || return 1
             msg_ok "恢复完成"
           fi
@@ -2027,78 +2047,10 @@ web_site_data() {
     3)
       _web_backup_jobs
       return $?
-      msg "  ${F_BOLD}远程备份配置${F_RESET}"
-      msg "  1) Rclone (S3/WebDAV/FTP)"
-      msg "  2) SCP (SSH 远程)"
-      msg "  3) rsync"
-      read -p "请选择: " remote_type
-      case "$remote_type" in
-        1)
-          if ! command -v rclone &>/dev/null; then
-            msg_info "正在安装 rclone..."
-            local rc_inst; rc_inst=$(mktemp)
-            if _download "https://rclone.org/install.sh" "$rc_inst"; then
-              bash "$rc_inst" || _install_pkg rclone
-            else
-              _install_pkg rclone
-            fi
-            rm -f "$rc_inst"
-          fi
-          msg "  请先配置 rclone: fusionbox panels rclone"
-          read -p "rclone 远程名称: " rclone_remote
-          if ! [[ "$rclone_remote" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
-            msg_err "远程名称包含非法字符"
-            pause; return 1
-          fi
-          read -p "备份保留天数: " keep_days
-          keep_days=${keep_days:-7}
-          if ! [[ "$keep_days" =~ ^[0-9]+$ ]]; then
-            msg_err "保留天数必须为数字"
-            pause; return 1
-          fi
-          # Add cron job
-          local cron_cmd="0 3 * * * tar czf /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz /var/www/ /opt/docker/ && rclone copy /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz \"${rclone_remote}:backups/\" && find /tmp -name 'site_backup_*.tar.gz' -mtime +${keep_days} -delete"
-          (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
-          msg_ok "定时远程备份已配置 (每天 3:00, 保留 ${keep_days} 天)"
-          ;;
-        2)
-          read -p "远程主机 (user@host): " ssh_host
-          read -p "远程目录: " ssh_dir
-          if ! [[ "$ssh_host" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
-            msg_err "远程主机包含非法字符"
-            pause; return 1
-          fi
-          if [[ -n "$ssh_dir" ]] && ! [[ "$ssh_dir" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
-            msg_err "远程目录包含非法字符"
-            pause; return 1
-          fi
-          local cron_cmd="0 3 * * * tar czf /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz /var/www/ /opt/docker/ && scp /tmp/site_backup_\$(date +\%Y\%m\%d).tar.gz \"${ssh_host}:${ssh_dir}/\""
-          (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
-          msg_ok "SCP 定时备份已配置"
-          ;;
-        3)
-          read -p "远程主机 (user@host): " ssh_host
-          read -p "远程目录: " ssh_dir
-          if ! [[ "$ssh_host" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
-            msg_err "远程主机包含非法字符"
-            pause; return 1
-          fi
-          if [[ -n "$ssh_dir" ]] && ! [[ "$ssh_dir" =~ ^[A-Za-z0-9_@.:/-]+$ ]]; then
-            msg_err "远程目录包含非法字符"
-            pause; return 1
-          fi
-          local cron_cmd="0 3 * * * rsync -az /var/www/ \"${ssh_host}:${ssh_dir}/www/\" && rsync -az /opt/docker/ \"${ssh_host}:${ssh_dir}/docker/\""
-          (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
-          msg_ok "rsync 定时同步已配置"
-          ;;
-      esac
-      _log_write "定时远程备份已配置"
       ;;
     4)
-      read -p "保留最近几天的备份？(默认 7): " keep_days
-      keep_days=${keep_days:-7}
-      find /root/site_backups/ -name "site_data_*.tar.gz" -mtime "+$keep_days" -delete 2>/dev/null
-      msg_ok "已清理 ${keep_days} 天前的备份"
+      msg_warn "旧手动归档没有归属登记，保留原文件；配置任务可使用保留策略预览。"
+      _web_backup_jobs || return 1
       ;;
   esac
   pause

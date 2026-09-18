@@ -711,12 +711,13 @@ panels_docker_backup() {
 
   msg_title "Docker 备份/迁移/恢复"
   msg ""
-  msg "  1) 备份所有容器"
-  msg "  2) 备份指定容器"
+  msg "  1) 导出所有容器文件系统（不含卷/运行配置）"
+  msg "  2) 导出指定容器文件系统（不含卷/运行配置）"
   msg "  3) 备份所有镜像"
-  msg "  4) 备份 Compose 项目"
-  msg "  5) 恢复容器/镜像"
-  msg "  6) 容器迁移到远程服务器"
+  msg "  4) Compose 完整备份状态"
+  msg "  5) 导入文件系统镜像/加载镜像"
+  msg "  6) 传输容器文件系统（不是完整迁移）"
+  msg_warn "docker export 不包含卷、挂载数据、网络或运行配置，不能用于完整应用恢复。"
   msg "  0) 返回"
   read -p "请选择: " dbk_choice
 
@@ -748,9 +749,8 @@ panels_docker_backup() {
       msg_ok "所有镜像已备份: $img_file ($(du -h "$img_file" | cut -f1))"
       ;;
     4)
-      local compose_backup="$backup_dir/compose_${date_str}.tar.gz"
-      tar czf "$compose_backup" /opt/docker/ 2>/dev/null
-      msg_ok "Compose 项目已备份: $compose_backup"
+      msg_warn "完整 Compose 备份尚待项目登记、卷与运行元数据支持；不会打包整个 /opt/docker 冒充完整备份。"
+      return 1
       ;;
     5)
       ls -lh "$backup_dir"/*.tar "$backup_dir"/*.tar.gz 2>/dev/null
@@ -759,14 +759,8 @@ panels_docker_backup() {
         if [[ "$backup_file" == *images*.tar ]]; then
           docker load -i "$backup_dir/$backup_file" 2>/dev/null && msg_ok "镜像已恢复"
         elif [[ "$backup_file" == *.tar.gz ]]; then
-          msg_info "备份内容预览 (前 20 项):"
-          tar tzf "$backup_dir/$backup_file" 2>/dev/null | head -20
-          read -p "将解压覆盖到 /，输入 YES 确认: " restore_confirm
-          if [[ "$restore_confirm" == "YES" ]]; then
-            tar xzf "$backup_dir/$backup_file" -C / && msg_ok "Compose 项目已恢复"
-          else
-            msg_info "已取消恢复"
-          fi
+          msg_err "旧 Compose 归档没有安全清单/卷元数据；拒绝向 / 解压，请在隔离目录人工审查。"
+          return 1
         else
           read -p "新容器名称: " new_name
           docker import "$backup_dir/$backup_file" "$new_name" 2>/dev/null && msg_ok "已导入: $new_name"

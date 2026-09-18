@@ -1,5 +1,8 @@
 """Owned daily configuration snapshots only; never stop services or edit user cron."""
 import argparse
+import contextlib
+import hashlib
+import stat
 import datetime
 import json
 import os
@@ -74,26 +77,101 @@ def create(root, job, hour, minute, accepted):
         raise
 
 
-def run(root, job):
+@contextlib.contextmanager
+def locked(root, job):
     import fcntl
     conf, cron, state = paths(root, job)
     load(conf)
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(state, 0o700)
-    with (state / 'run.lock').open('a') as lock:
+    fd = os.open(state / 'run.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'a') as lock:
+        if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
+            raise ValueError('Invalid job lock')
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ValueError('Job already running')
+        yield state
+
+
+def digest(path):
+    value = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            value.update(block)
+    return value.hexdigest()
+
+
+def inventory(state):
+    path = state / 'inventory.json'
+    if path.is_symlink():
+        raise ValueError('Refusing symlink inventory')
+    data = json.loads(path.read_text()) if path.exists() else {'owner': OWNER, 'archives': {}}
+    if data.get('owner') != OWNER or not isinstance(data.get('archives'), dict):
+        raise ValueError('Unknown archive inventory')
+    return data
+
+
+def owned(state, name, record):
+    if not re.fullmatch(r'config-\d{8}T\d{6}\.\d{6}Z\.tar\.gz', name):
+        raise ValueError('Invalid owned archive name')
+    path = state / name
+    if path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1:
+        raise ValueError('Missing or linked owned archive')
+    if digest(path) != record['sha256']:
+        raise ValueError('Owned archive checksum mismatch')
+    archive.verify(path, 'config')
+    return path
+
+
+def run(root, job):
+    with locked(root, job) as state:
+        data = inventory(state)
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
         target = state / ('config-' + stamp + '.tar.gz')
         try:
             archive.create(target, 'config', root)
+            data['archives'][target.name] = {'sha256': digest(target), 'time': stamp}
+            atomic(state / 'inventory.json', json.dumps(data) + '\n')
         except BaseException:
             atomic(state / 'status.json', json.dumps({'success': False, 'time': stamp, 'reason': 'snapshot failed; inspect source paths/permissions'}) + '\n')
             raise
         atomic(state / 'status.json', json.dumps({'success': True, 'time': stamp, 'archive': target.name}) + '\n')
         print(target)
+
+
+def retention(root, job, keep, enable=False):
+    """Explicit keep-count policy; only this invocation applies deletion, never cron."""
+    if keep < 1:
+        raise ValueError('Keep count must be at least one')
+    with locked(root, job) as state:
+        data = inventory(state)
+        names = sorted(data['archives'], reverse=True)
+        # Validate retained archives too: never delete the last usable copy.
+        for name in names:
+            owned(state, name, data['archives'][name])
+        candidates = names[keep:]
+        for name in candidates:
+            print(('DELETE ' if enable else 'WOULD DELETE ') + name)
+        if enable:
+            for name in candidates:
+                owned(state, name, data['archives'][name]).unlink()
+                del data['archives'][name]
+                atomic(state / 'inventory.json', json.dumps(data) + '\n')
+        print(f'Keep newest {keep}; {len(candidates)} candidates; ' + ('applied' if enable else 'preview only'))
+
+
+def recover(root, job, name, accepted=False):
+    if not accepted:
+        raise ValueError('Explicit stopped-writers acknowledgement required')
+    with locked(root, job) as state:
+        data = inventory(state)
+        if name not in data['archives']:
+            raise ValueError('Archive is not registered to this job')
+        source = owned(state, name, data['archives'][name])
+        archive.restore(source, 'config', root)
+        print('Restore verified and activated; previous directories retained; services not reloaded')
 
 
 def remove(root, job):
@@ -114,6 +192,8 @@ def listing(root):
         status = state / 'status.json'
         if status.is_file():
             print(status.read_text().strip())
+        for name in sorted(inventory(state)['archives']):
+            print('Registered archive:', name)
 
 
 def legacy(root):
@@ -136,17 +216,25 @@ def legacy(root):
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description='Daily local nginx/caddy configuration snapshots. No remote transfer, data backup or service stops. Config writers must be idle; links/special files are refused.')
-    parser.add_argument('action', choices=('create', 'list', 'remove', 'run', 'legacy'))
+    parser.add_argument('action', choices=('create', 'list', 'remove', 'run', 'legacy', 'retention', 'restore'))
     parser.add_argument('job', nargs='?')
     parser.add_argument('--hour', type=int, default=3)
     parser.add_argument('--minute', type=int, default=0)
     parser.add_argument('--ack-stable-config', action='store_true')
+    parser.add_argument('--keep', type=int, default=7, help='Keep newest N registered snapshots; minimum 1')
+    parser.add_argument('--enable-delete', action='store_true', help='Apply this retention run; default is preview')
+    parser.add_argument('--archive', help='Registered archive basename for restore')
+    parser.add_argument('--ack-stopped-writers', action='store_true')
     args = parser.parse_args()
     root = Path('/')
     if args.action in ('list', 'legacy'):
         globals()[{'list': 'listing', 'legacy': 'legacy'}[args.action]](root)
     elif args.action == 'create':
         create(root, args.job or '', args.hour, args.minute, args.ack_stable_config)
+    elif args.action == 'retention':
+        retention(root, args.job or '', args.keep, args.enable_delete)
+    elif args.action == 'restore':
+        recover(root, args.job or '', args.archive, args.ack_stopped_writers)
     else:
         globals()[args.action](root, args.job or '')
 

@@ -82,6 +82,86 @@ class Jobs(unittest.TestCase):
                 jobs.run(self.root, 'demo')
         self.assertFalse(list(self.state.glob('*.tar.gz')))
 
+    @unittest.skipIf(os.name == 'nt', 'flock requires Linux')
+    def test_retention_preview_apply_and_unknown_preserved(self):
+        for _ in range(3):
+            jobs.run(self.root, 'demo')
+        names = sorted(jobs.inventory(self.state)['archives'])
+        unknown = self.state / 'config-20000101T000000.000000Z.tar.gz'
+        unknown.write_text('user archive')
+        jobs.retention(self.root, 'demo', 1)
+        self.assertTrue(all((self.state / n).exists() for n in names))
+        jobs.retention(self.root, 'demo', 1, True)
+        self.assertEqual(list(jobs.inventory(self.state)['archives']), names[-1:])
+        self.assertTrue(unknown.exists())
+        self.assertFalse((self.state / names[0]).exists())
+
+    @unittest.skipIf(os.name == 'nt', 'flock requires Linux')
+    def test_retention_corruption_blocks_all_deletion(self):
+        for _ in range(2):
+            jobs.run(self.root, 'demo')
+        names = sorted(jobs.inventory(self.state)['archives'])
+        (self.state / names[-1]).write_bytes(b'corrupt')
+        with self.assertRaisesRegex(ValueError, 'checksum'):
+            jobs.retention(self.root, 'demo', 1, True)
+        self.assertTrue((self.state / names[0]).exists())
+        with self.assertRaises(ValueError):
+            jobs.retention(self.root, 'demo', 0, True)
+
+    @unittest.skipIf(os.name == 'nt', 'flock requires Linux')
+    def test_owned_restore_ack_and_roundtrip(self):
+        jobs.run(self.root, 'demo')
+        name = next(iter(jobs.inventory(self.state)['archives']))
+        target = self.root / 'etc/nginx/nginx.conf'
+        target.write_text('changed')
+        with self.assertRaises(ValueError):
+            jobs.recover(self.root, 'demo', name)
+        self.assertEqual(target.read_text(), 'changed')
+        jobs.recover(self.root, 'demo', name, True)
+        self.assertEqual(target.read_text(), 'fixture')
+        self.assertEqual(next((self.root / 'etc').glob('.fusionbox-restore-*/previous/nginx.conf')).read_text(), 'changed')
+        with self.assertRaises(ValueError):
+            jobs.recover(self.root, 'demo', '../unknown', True)
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX links')
+    def test_linked_archive_and_lock_refused(self):
+        jobs.run(self.root, 'demo')
+        name = next(iter(jobs.inventory(self.state)['archives']))
+        os.link(self.state / name, self.root / 'linked')
+        with self.assertRaisesRegex(ValueError, 'linked'):
+            jobs.retention(self.root, 'demo', 1, True)
+        (self.state / 'run.lock').unlink()
+        (self.state / 'run.lock').symlink_to(self.root / 'untouched')
+        with self.assertRaises(OSError):
+            jobs.run(self.root, 'demo')
+        self.assertFalse((self.root / 'untouched').exists())
+
+    def test_gzip_trailer_corruption_no_restore_mutation(self):
+        target = self.root / 'etc/nginx/nginx.conf'
+        source = self.root / 'snapshot.tar.gz'
+        jobs.archive.create(source, 'config', self.root)
+        damaged = bytearray(source.read_bytes())
+        damaged[-8] ^= 1
+        source.write_bytes(damaged)
+        target.write_text('live')
+        with self.assertRaises(OSError):
+            jobs.archive.restore(source, 'config', self.root)
+        self.assertEqual(target.read_text(), 'live')
+        self.assertFalse(list((self.root / 'etc').glob('.fusionbox-restore-*')))
+
+    @unittest.skipIf(os.name == 'nt', 'flock requires Linux')
+    def test_inventory_publication_failure_leaves_unowned_archive(self):
+        original = jobs.atomic
+        def fail(path, *args):
+            if path.name == 'inventory.json':
+                raise OSError('injected inventory failure')
+            return original(path, *args)
+        with patch.object(jobs, 'atomic', side_effect=fail):
+            with self.assertRaises(OSError):
+                jobs.run(self.root, 'demo')
+        jobs.retention(self.root, 'demo', 1, True)
+        self.assertEqual(len(list(self.state.glob('*.tar.gz'))), 1)
+
     def test_legacy_report_redacts_and_never_rewrites(self):
         self.cron.parent.mkdir(parents=True)
         text = '0 3 * * * root tar czf /tmp/site_backup_x.tar.gz /var/www; scp token-secret\n'

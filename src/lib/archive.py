@@ -76,7 +76,24 @@ def create(destination, scope, root):
         os.unlink(temporary)
 
 
+def verify(source, scope):
+    """Read every payload and the gzip trailer before any destination mutation."""
+    import gzip
+    with gzip.open(source, 'rb') as stream:
+        while stream.read(1024 * 1024):
+            pass
+    with tarfile.open(source, 'r:gz') as archive:
+        roots = validate(archive, scope)
+        for member in archive.getmembers():
+            if member.isfile():
+                with archive.extractfile(member) as stream:
+                    while stream.read(1024 * 1024):
+                        pass
+    return roots
+
+
 def restore(source, scope, root):
+    verify(source, scope)
     # No extractall: only checked directories and regular files are materialized.
     with tarfile.open(source, 'r:gz') as archive:
         roots = validate(archive, scope)
@@ -139,6 +156,8 @@ def main():
     root = Path(sys.argv[4]) if len(sys.argv) > 4 else Path('/')
     if action == 'create':
         create(filename, scope, root)
+    elif action == 'verify':
+        print('Verified scope roots:', ', '.join(verify(filename, scope)))
     elif action == 'restore':
         restore(filename, scope, root)
     else:
