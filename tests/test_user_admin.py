@@ -285,11 +285,10 @@ system_users add 'Deploy1' || exit 9'''
         self.assertFalse((self.root / 'invoked').exists())
 
     def test_hardening_verify_gates_without_local_sshd(self):
-        body = '''ssh() { :; }
+        body = '''ssh() { [[ "$1" == -n ]]; }
 systemctl() { return 1; }
 _fb_hardening_verify_key_login deploy1 /tmp/k; echo "rc=$?"
 systemctl() { return 0; }
-ssh() { [[ "$1" == -o ]]; }
 _fb_hardening_verify_key_login deploy1 /tmp/k; echo "rc=$?"'''
         out = self.run_shell('system', body)
         self.assertIn('rc=2', out)
