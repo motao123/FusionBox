@@ -4,7 +4,29 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
-## v1.10.0 集群节点安全导入/导出
+## v1.11.0 校验归档 SSH 异地传输
+
+新增 `fusionbox cluster archive push|pull|status`，集群菜单选项 9 提供参数帮助。复用严格校验的节点清单；仅支持现有 `archive.py` / `backup_jobs.py` 生成的 `config/system/web` 清单归档。Compose 专用归档、旧无清单 tar、应用重建和跨主机恢复不在本批范围。
+
+```bash
+# 先由目标 SSH 用户创建专用、私有、已确认归属的目录（0700）。
+# key 与已通过独立渠道核对的 known_hosts 必须操作者拥有、0600/0400。
+# 将 ARCHIVE_SHA256 设置为可信来源的完整归档 SHA-256；push 前可用 sha256sum 计算。
+fusionbox cluster archive push backup-node config.tar.gz \
+  --file /root/config.tar.gz --scope config --sha256 "$ARCHIVE_SHA256" \
+  --remote-root /srv/fusionbox-archives --key /root/.ssh/backup_ed25519 \
+  --known-hosts /root/.ssh/backup_known_hosts --confirm-owned-store
+# pull 使用同样参数，将 --file 改为本地目标；其父目录须已存在、归本人所有且 0700。
+# status 使用同样参数但不需要 --file；检查远端文件权限和预期 SHA-256。
+```
+
+仅使用显式密钥、BatchMode 与严格 known-host 校验，禁用密码/交互认证、SSH agent、用户 SSH config、转发与自动信任新主机。两端需 Linux/Python 3，客户端需 OpenSSH；不自动安装、不保存密码、不迁移密钥、不修改 SSH 服务。连接超时 10 秒，传输 `--timeout` 默认 300 秒、允许 1–3600 秒；失败返回非零，手动重试。远端路径只接受规范绝对路径的字母/数字/下划线/点/横线，文件名必须为简单 `.tar.gz` basename。
+
+私有临时文件接收完成、SHA-256 一致后才原子发布；使用 no-clobber hard-link publication 避免 rename 覆盖并发目标，随后移除临时名。已有同哈希私有普通文件允许幂等重试，不同内容、软链接、额外硬链接、特殊文件或不安全目录拒绝。push 先冻结并完整校验本地归档；pull 在本地再次检查 SHA-256、清单范围与压缩完整性，从不自动解压。源文件始终保留，临时失败清理；断电/强杀可能留下私有 `.transfer-*`，须人工审查。操作期间须暂停同账户外部写入者；存储目录应专用于归档。无自动调度、保留删除或旧 cron 迁移。
+
+SHA-256 证明与可信预期字节一致，**不是归档作者签名或真实性证明**；SSH host key 认证连接端点。请独立保管可信摘要与 host key。验证目标：Linux 42 基础 + 165 行为测试，真实隔离 SSH 21 检查，Compose 13、市场 20、TLS 34。SSH 使用单台服务器临时 sshd、loopback 高端口、独立配置/密钥/authorized_keys，结束清理；不是两主机灾难恢复演练。公共 ACME、Cloudflare、Telegram 仍待真实凭据验证。
+
+## v1.10.0 集群节点安全导入/导出（历史）
 
 ```bash
 fusionbox cluster export /root/nodes.json

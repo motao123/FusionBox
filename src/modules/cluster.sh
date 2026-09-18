@@ -8,6 +8,7 @@ cluster_main() {
     add)              cluster_add "$@" ;;
     remove|rm)        cluster_remove "$@" ;;
     import|export)    cluster_transfer "$cmd" "$@" ;;
+    archive)          cluster_archive "$@" ;;
     list|ls)          cluster_list "$@" ;;
     exec|run)         cluster_exec "$@" ;;
     task|tasks)       cluster_task "$@" ;;
@@ -38,6 +39,11 @@ _cluster_init() {
 cluster_transfer() {
   _require_root
   _cluster_nodes "$@"
+}
+
+cluster_archive() {
+  _require_root
+  python3 "$FUSION_SRC/lib/archive_transfer.py" "$@" --directory "$CLUSTER_DIR"
 }
 
 cluster_add() {
@@ -1002,6 +1008,7 @@ cluster_help() {
   msg "  fusionbox cluster list           列出集群节点"
   msg "  fusionbox cluster exec <cmd>     批量执行命令"
   msg "  fusionbox cluster task           预置批量任务（状态/更新/清理/BBR 等）"
+  msg "  fusionbox cluster archive --help  校验归档 push/pull/status（密钥、严格 known_hosts）"
   msg "  fusionbox cluster sync           同步文件到集群"
   msg ""
   msg "  ${F_BOLD}[游戏服务端]${F_RESET}"
@@ -1036,9 +1043,10 @@ cluster_menu() {
     msg "  ${F_GREEN}6${F_RESET}) k 命令快捷方式"
     msg "  ${F_GREEN}7${F_RESET}) 预置批量任务"
     msg "  ${F_GREEN}8${F_RESET}) 管理已部署游戏服务端"
+    msg "  ${F_GREEN}9${F_RESET}) 校验归档传输命令帮助（push/pull/status）"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-8]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-9]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1)
         msg "  1) 添加节点  2) 删除节点  3) 列出节点  4) 导出  5) 导入"
@@ -1065,6 +1073,7 @@ cluster_menu() {
       6) cluster_kcmd ;;
       7) cluster_task ;;
       8) cluster_game_manage ;;
+      9) cluster_archive --help; pause ;;
       0) break ;;
     esac
   done
