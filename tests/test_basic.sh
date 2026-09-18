@@ -3,6 +3,7 @@
 # Run: bash tests/test_basic.sh
 
 FUSION_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$FUSION_DIR" || exit 1
 PASS=0
 FAIL=0
 
@@ -72,6 +73,13 @@ test "en.sh has MSG_WELCOME" $(grep -q "MSG_WELCOME=" "$FUSION_DIR/src/i18n/en.s
 test "zh_CN.sh has MSG_WELCOME" $(grep -q "MSG_WELCOME=" "$FUSION_DIR/src/i18n/zh_CN.sh"; echo $?)
 test "en.sh has MOD_PROXY" $(grep -q "MOD_PROXY=" "$FUSION_DIR/src/i18n/en.sh"; echo $?)
 test "zh_CN.sh has MOD_PROXY" $(grep -q "MOD_PROXY=" "$FUSION_DIR/src/i18n/zh_CN.sh"; echo $?)
+
+# Test 6: Reference policy (anti-plagiarism, attribution-aware)
+# Runs in CI so unauthorized project references can never ship again.
+echo ""
+echo "--- Reference Policy ---"
+bash "$FUSION_DIR/tests/reference_policy.sh"
+test "external reference policy" $?
 
 # Summary
 echo ""

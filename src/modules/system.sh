@@ -22,6 +22,15 @@ system_main() {
     disk)             system_disk "$@" ;;
     timezone|tz)      system_timezone "$@" ;;
     trash)            system_trash "$@" ;;
+    dns)              system_dns "$@" ;;
+    hostname)         system_hostname "$@" ;;
+    hosts)            system_hosts "$@" ;;
+    mirror)           system_mirror "$@" ;;
+    log)              system_log "$@" ;;
+    traffic-guard)    system_traffic_guard "$@" ;;
+    notify)           system_notify "$@" ;;
+    netopt)           system_netopt "$@" ;;
+    settings)         system_settings_menu ;;
     tools)            system_tools_menu ;;
     menu|main)        system_menu ;;
     help|h)           system_help ;;
@@ -1012,7 +1021,7 @@ system_swap() {
   free -h | awk '/Swap:/{printf "    %s %s %s\n", $2, $3, $4}'
 
   msg ""
-  msg "  1) 创建 Swap 文件 (2GB)"
+  msg "  1) 创建 Swap 文件 (自定义大小)"
   msg "  2) 删除所有 Swap"
   msg "  0) 返回"
   read -p "请选择: " sw_choice
@@ -1020,19 +1029,58 @@ system_swap() {
   case "$sw_choice" in
     1)
       if [[ -e /swapfile ]] || swapon --show=NAME 2>/dev/null | grep -q "/swapfile"; then
-        msg_warn "Swap 文件已存在"
+        msg_warn "Swap 文件已存在 (/swapfile)，请先删除后再创建"
         pause
         return
       fi
-      if confirm "确认创建 2GB Swap 文件？"; then
-        dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
+
+      read -p "请输入 Swap 大小（默认 2048，支持 2048 / 2G / 512M）: " sw_size
+      sw_size="${sw_size// /}"
+      sw_size="${sw_size:-2048}"
+      if [[ ! "$sw_size" =~ ^[0-9]+[GgMm]?$ ]]; then
+        msg_err "大小格式无效: $sw_size（示例: 2048 / 2G / 512M）"
+        pause
+        return
+      fi
+
+      local sw_mb
+      case "$sw_size" in
+        *[Gg]) sw_mb=$(( ${sw_size%[Gg]} * 1024 )) ;;
+        *[Mm]) sw_mb=$(( ${sw_size%[Mm]} )) ;;
+        *)     sw_mb=$(( sw_size )) ;;
+      esac
+      if [[ $sw_mb -lt 16 || $sw_mb -gt 1048576 ]]; then
+        msg_err "Swap 大小必须在 16MB - 1TB 之间，当前: ${sw_mb}MB"
+        pause
+        return
+      fi
+
+      local avail_mb; avail_mb=$(df -m / 2>/dev/null | awk 'NR==2{print $4}')
+      if [[ "$avail_mb" =~ ^[0-9]+$ ]] && [[ $((avail_mb - sw_mb)) -lt 256 ]]; then
+        msg_warn "根分区可用空间仅 ${avail_mb}MB，可能不足以创建 ${sw_mb}MB 的 Swap"
+        confirm "仍要继续？" || { pause; return; }
+      fi
+
+      if confirm "确认创建 ${sw_mb}MB (${sw_size}) Swap 文件？"; then
+        msg_info "正在创建 /swapfile (${sw_mb}MB)..."
+        if ! fallocate -l "${sw_mb}M" /swapfile 2>/dev/null; then
+          msg_warn "fallocate 不可用，改用 dd 创建（较慢）"
+          if ! dd if=/dev/zero of=/swapfile bs=1M count="$sw_mb" status=progress; then
+            rm -f /swapfile
+            msg_err "Swap 文件创建失败（空间不足？）"
+            pause
+            return
+          fi
+        fi
         chmod 600 /swapfile
-        mkswap /swapfile
-        swapon /swapfile
-        grep -q "/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
-        msg_ok "Swap 已创建 (2GB)"
-        free -h | grep Swap
-        _log_write "2GB Swap 已创建"
+        if mkswap /swapfile >/dev/null 2>&1 && swapon /swapfile 2>/dev/null; then
+          grep -q "/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
+          msg_ok "Swap 已创建 (${sw_mb}MB)"
+          free -h | grep -i swap
+          _log_write "${sw_mb}MB Swap 已创建"
+        else
+          msg_err "mkswap 或 swapon 失败，请检查内核是否支持 Swap"
+        fi
       fi
       ;;
     2)
@@ -1729,6 +1777,1714 @@ system_trash() {
   pause
 }
 
+# ==== 系统设置（DNS/主机名/hosts/源/日志/流量/告警/网络优化） ====
+
+# ---- 通用：文件备份 ----
+# 用法: _fb_backup_file <源文件> <备份路径>
+_fb_backup_file() {
+  local src="$1" dst="$2"
+  [[ -f "$src" ]] || return 1
+  mkdir -p "$(dirname "$dst")" 2>/dev/null
+  cp -Lp "$src" "$dst" 2>/dev/null || cp -p "$src" "$dst" 2>/dev/null || return 1
+  return 0
+}
+
+# ---- DNS 优化 ----
+_system_dns_lock_status() {
+  if command -v lsattr &>/dev/null && lsattr /etc/resolv.conf 2>/dev/null | awk '{print $1}' | grep -q 'i'; then
+    echo "已锁定 (chattr +i)"
+  else
+    echo "未锁定"
+  fi
+}
+
+# 用法: _system_dns_apply <标签> <DNS1> [DNS2...]
+_system_dns_apply() {
+  if [[ -L /etc/resolv.conf ]] || systemctl is-active systemd-resolved >/dev/null 2>&1; then
+    msg_err "DNS 由链接或 systemd-resolved 管理，请使用 resolvectl 或网络管理器配置"; return 1
+  fi
+  local label="$1"; shift
+  local -a servers=("$@")
+  local s
+
+  if [[ ${#servers[@]} -eq 0 ]]; then
+    msg_err "未提供 DNS 服务器地址"
+    return 1
+  fi
+  for s in "${servers[@]}"; do
+    if [[ ! "$s" =~ ^[0-9a-fA-F:.]+$ ]]; then
+      msg_err "无效的 DNS 地址: $s"
+      return 1
+    fi
+  done
+
+  msg ""
+  msg_info "即将写入以下 DNS ($label):"
+  for s in "${servers[@]}"; do msg "    nameserver $s"; done
+
+  if systemctl is-active systemd-resolved &>/dev/null; then
+    msg_warn "检测到 systemd-resolved 正在运行，/etc/resolv.conf 可能被其自动覆盖"
+    msg_warn "如需长期生效，可同时使用菜单中的锁定功能，或改用 resolvectl 配置"
+  fi
+  if [[ -L /etc/resolv.conf ]]; then
+    msg_warn "/etc/resolv.conf 当前是符号链接，写入时会替换为普通文件（原内容已备份）"
+  fi
+
+  confirm "确认修改 DNS？" || return 1
+
+  local bak="/etc/resolv.conf.fb-bak-$(date +%s)"
+  if [[ -e /etc/resolv.conf ]]; then
+    if ! _fb_backup_file /etc/resolv.conf "$bak"; then
+      msg_err "备份 /etc/resolv.conf 失败，已取消修改"
+      return 1
+    fi
+    msg_ok "已备份原配置: $bak"
+  fi
+
+  chattr -i /etc/resolv.conf 2>/dev/null || true
+  [[ -L /etc/resolv.conf ]] && rm -f /etc/resolv.conf
+
+  {
+    echo "# FusionBox DNS 配置 ($label) - $(date '+%Y-%m-%d %H:%M:%S')"
+    for s in "${servers[@]}"; do echo "nameserver $s"; done
+  } > /etc/resolv.conf 2>/dev/null
+
+  if [[ -s /etc/resolv.conf ]]; then
+    chmod 644 /etc/resolv.conf 2>/dev/null
+    msg_ok "DNS 已更新 ($label)"
+    msg "  当前配置:"
+    grep -E "^nameserver" /etc/resolv.conf 2>/dev/null | while IFS= read -r s; do msg "    $s"; done
+    _log_write "DNS 已更新为 $label"
+  else
+    msg_err "写入 /etc/resolv.conf 失败"
+    if [[ -f "$bak" ]]; then
+      cp -Lp "$bak" /etc/resolv.conf 2>/dev/null && msg_warn "已从备份回滚: $bak"
+    fi
+    return 1
+  fi
+  return 0
+}
+
+_system_dns_restore() {
+  if [[ -L /etc/resolv.conf ]] || systemctl is-active systemd-resolved >/dev/null 2>&1; then
+    msg_err "保留受管理的 DNS 配置，拒绝覆盖"; return 1
+  fi
+  local -a baks=()
+  local f
+  while IFS= read -r f; do baks+=("$f"); done < <(ls -1t /etc/resolv.conf.fb-bak-* 2>/dev/null)
+
+  if [[ ${#baks[@]} -eq 0 ]]; then
+    msg_warn "没有找到备份文件 (/etc/resolv.conf.fb-bak-*)"
+    return 1
+  fi
+
+  msg ""
+  msg_info "可用备份:"
+  local i=1
+  for f in "${baks[@]}"; do
+    msg "  ${F_GREEN}$i${F_RESET}) $(basename "$f")"
+    i=$((i + 1))
+  done
+
+  local sel; sel=$(read_input "选择要恢复的备份编号" "1") || return 1
+  [[ "$sel" =~ ^[0-9]+$ ]] || { msg_err "编号必须为数字"; return 1; }
+  local idx=$((sel - 1))
+  if [[ $idx -lt 0 || $idx -ge ${#baks[@]} ]]; then
+    msg_err "编号超出范围 (1-${#baks[@]})"
+    return 1
+  fi
+
+  confirm "确认用 $(basename "${baks[$idx]}") 覆盖当前 /etc/resolv.conf？" || return 1
+  chattr -i /etc/resolv.conf 2>/dev/null || true
+  [[ -L /etc/resolv.conf ]] && rm -f /etc/resolv.conf
+
+  if _fb_backup_file "${baks[$idx]}" /etc/resolv.conf; then
+    chmod 644 /etc/resolv.conf 2>/dev/null
+    msg_ok "已恢复: ${baks[$idx]}"
+    grep -E "^nameserver" /etc/resolv.conf 2>/dev/null | while IFS= read -r f; do msg "    $f"; done
+    _log_write "resolv.conf 已从备份恢复"
+  else
+    msg_err "恢复失败"
+    return 1
+  fi
+}
+
+system_dns() {
+  _require_root
+  while true; do
+    clear
+    _print_banner
+    msg_title "DNS 优化"
+    msg ""
+    msg "  ${F_BOLD}当前 DNS (/etc/resolv.conf):${F_RESET}"
+    if [[ -f /etc/resolv.conf ]] && grep -qE "^[[:space:]]*nameserver" /etc/resolv.conf 2>/dev/null; then
+      grep -E "^[[:space:]]*nameserver" /etc/resolv.conf 2>/dev/null | while IFS= read -r line; do msg "    $line"; done
+    else
+      msg "    (无 nameserver 配置)"
+    fi
+    msg "  ${F_BOLD}文件状态:${F_RESET} $(_system_dns_lock_status)"
+    if systemctl is-active systemd-resolved &>/dev/null; then
+      msg "  ${F_YELLOW}提示: systemd-resolved 运行中，修改可能被覆盖${F_RESET}"
+    fi
+    msg ""
+    msg "  ${F_GREEN} 1${F_RESET}) 国内 DNS 预设 (阿里 / 腾讯 / 114DNS)"
+    msg "  ${F_GREEN} 2${F_RESET}) 国际 DNS 预设 (Cloudflare / Google / Quad9)"
+    msg "  ${F_GREEN} 3${F_RESET}) 自定义 DNS (每行一个)"
+    msg "  ${F_GREEN} 4${F_RESET}) 锁定 /etc/resolv.conf (chattr +i)"
+    msg "  ${F_GREEN} 5${F_RESET}) 解锁 /etc/resolv.conf (chattr -i)"
+    msg "  ${F_GREEN} 6${F_RESET}) 恢复上次备份"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-6]: " dns_choice || { msg ""; break; }
+
+    case "$dns_choice" in
+      1)
+        msg ""
+        msg "  国内 DNS 预设:"
+        msg "    1) 阿里 DNS    223.5.5.5 / 223.6.6.6"
+        msg "    2) 腾讯 DNS    119.29.29.29"
+        msg "    3) 114DNS      114.114.114.114"
+        local cn_sel=""; cn_sel=$(read_input "请选择" "1")
+        case "$cn_sel" in
+          2) _system_dns_apply "腾讯 DNS" 119.29.29.29 ;;
+          3) _system_dns_apply "114DNS" 114.114.114.114 ;;
+          *) _system_dns_apply "阿里 DNS" 223.5.5.5 223.6.6.6 ;;
+        esac
+        pause ;;
+      2)
+        msg ""
+        msg "  国际 DNS 预设:"
+        msg "    1) Cloudflare  1.1.1.1 / 1.0.0.1"
+        msg "    2) Google      8.8.8.8 / 8.8.4.4"
+        msg "    3) Quad9       9.9.9.9"
+        local intl_sel=""; intl_sel=$(read_input "请选择" "1")
+        case "$intl_sel" in
+          2) _system_dns_apply "Google DNS" 8.8.8.8 8.8.4.4 ;;
+          3) _system_dns_apply "Quad9" 9.9.9.9 ;;
+          *) _system_dns_apply "Cloudflare" 1.1.1.1 1.0.0.1 ;;
+        esac
+        pause ;;
+      3)
+        msg ""
+        msg_info "请依次输入 DNS 地址，每行一个，直接回车结束（最多 4 个）"
+        local -a custom_dns=()
+        while [[ ${#custom_dns[@]} -lt 4 ]]; do
+          local one_dns=""; one_dns=$(read_input "DNS 服务器 (回车结束)" "") || break
+          [[ -z "$one_dns" ]] && break
+          if [[ ! "$one_dns" =~ ^[0-9a-fA-F:.]+$ ]]; then
+            msg_err "无效地址: $one_dns（仅允许 IP 字符）"
+            continue
+          fi
+          custom_dns+=("$one_dns")
+        done
+        if [[ ${#custom_dns[@]} -eq 0 ]]; then
+          msg_warn "未输入任何地址，已取消"
+        else
+          _system_dns_apply "自定义" "${custom_dns[@]}"
+        fi
+        pause ;;
+      4)
+        if ! command -v chattr &>/dev/null; then
+          msg_err "系统未安装 chattr（e2fsprogs），无法锁定"
+        elif chattr +i /etc/resolv.conf 2>/dev/null; then
+          msg_ok "/etc/resolv.conf 已锁定，修改前需先解锁"
+          _log_write "resolv.conf 已锁定 (chattr +i)"
+        else
+          msg_err "锁定失败（文件系统可能不支持 immutable 属性）"
+        fi
+        pause ;;
+      5)
+        if chattr -i /etc/resolv.conf 2>/dev/null; then
+          msg_ok "/etc/resolv.conf 已解锁"
+          _log_write "resolv.conf 已解锁 (chattr -i)"
+        else
+          msg_err "解锁失败（可能本就未锁定，或文件系统不支持）"
+        fi
+        pause ;;
+      6)
+        _system_dns_restore
+        pause ;;
+      0) break ;;
+      *) ;;
+    esac
+  done
+}
+
+# ---- 修改主机名 ----
+system_hostname() {
+  _require_root
+  msg_title "修改主机名"
+  msg ""
+
+  local cur; cur=$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null)
+  msg "  ${F_BOLD}当前主机名:${F_RESET} ${cur:-未知}"
+  msg ""
+
+  local newname; newname=$(read_input "请输入新的主机名" "") || { pause; return 1; }
+  newname="${newname// /}"
+  if [[ -z "$newname" ]]; then
+    msg_err "主机名不能为空"
+    pause; return 1
+  fi
+  if [[ ! "$newname" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]{0,62}$ ]]; then
+    msg_err "主机名格式无效：仅允许字母/数字/点/连字符，需以字母或数字开头，最长 63 字符"
+    pause; return 1
+  fi
+  if [[ "$newname" == "$cur" ]]; then
+    msg_warn "新主机名与当前相同，无需修改"
+    pause; return 0
+  fi
+  if ! confirm "确认将主机名从 '$cur' 修改为 '$newname'？"; then
+    pause; return 1
+  fi
+
+  local set_ok=0
+  if command -v hostnamectl &>/dev/null && hostnamectl set-hostname "$newname" 2>/dev/null; then
+    set_ok=1
+    msg_ok "已通过 hostnamectl 设置主机名"
+  else
+    _fb_backup_file /etc/hostname "/etc/hostname.fb-bak-$(date +%s)" >/dev/null 2>&1
+    if echo "$newname" > /etc/hostname 2>/dev/null; then
+      set_ok=1
+      msg_ok "已写入 /etc/hostname（未检测到可用的 hostnamectl）"
+    fi
+  fi
+  if [[ $set_ok -eq 0 ]]; then
+    msg_err "主机名设置失败"
+    pause; return 1
+  fi
+
+  # 同步 /etc/hosts 中的 127.0.1.1 记录
+  if [[ -f /etc/hosts ]]; then
+    _fb_backup_file /etc/hosts "/etc/hosts.fb-bak-$(date +%s)" >/dev/null 2>&1
+    if grep -qE "^127\.0\.1\.1([[:space:]]|$)" /etc/hosts 2>/dev/null; then
+      sed -i -E "s|^127\.0\.1\.1([[:space:]]).*|127.0.1.1\t$newname|" /etc/hosts
+      msg_info "已更新 /etc/hosts 中的 127.0.1.1 记录"
+    else
+      echo -e "127.0.1.1\t$newname" >> /etc/hosts
+      msg_info "已向 /etc/hosts 追加 127.0.1.1 记录"
+    fi
+  fi
+
+  msg ""
+  msg "  ${F_BOLD}当前主机名:${F_RESET} $(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null)"
+  msg "  ${F_BOLD}/etc/hostname:${F_RESET} $(cat /etc/hostname 2>/dev/null)"
+  msg_tip "部分服务需重新登录或重启后才会显示新主机名"
+  _log_write "主机名已修改为 $newname"
+  pause
+}
+
+# ---- hosts 解析管理 ----
+# 输出 "行号: 内容"，仅非注释、非空行
+_system_hosts_entries() {
+  awk 'NF && $1 !~ /^#/ {print NR": "$0}' /etc/hosts 2>/dev/null
+}
+
+_system_hosts_show() {
+  msg "  ${F_BOLD}当前 hosts 记录:${F_RESET}"
+  local -a entries=()
+  local line
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    entries+=("$line")
+  done < <(_system_hosts_entries)
+  if [[ ${#entries[@]} -eq 0 ]]; then
+    msg "    暂无解析记录"
+    return 0
+  fi
+  local i=1
+  for line in "${entries[@]}"; do
+    msg "  ${F_GREEN}$i${F_RESET}) ${line#*: }"
+    i=$((i + 1))
+  done
+}
+
+_system_hosts_add() {
+  local ip host
+  ip=$(read_input "请输入 IP 地址（如 1.2.3.4）" "") || return 1
+  if [[ ! "$ip" =~ ^[0-9a-fA-F:.]+$ ]]; then
+    msg_err "IP 地址格式无效: $ip"
+    return 1
+  fi
+  host=$(read_input "请输入主机名（如 example.com）" "") || return 1
+  if [[ ! "$host" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]{0,62}$ ]]; then
+    msg_err "主机名格式无效: $host"
+    return 1
+  fi
+  if [[ -f /etc/hosts ]] && awk -v ip="$ip" -v h="$host" \
+      'NF && $1 !~ /^#/ && $1==ip {for(i=2;i<=NF;i++) if($i==h) f=1} END{exit !f}' /etc/hosts; then
+    msg_warn "记录已存在: $ip $host，跳过添加"
+    return 1
+  fi
+
+  confirm "确认添加记录 '$ip $host' 到 /etc/hosts？" || return 1
+  _fb_backup_file /etc/hosts "/etc/hosts.fb-bak-$(date +%s)" >/dev/null 2>&1
+  if echo -e "$ip\t$host" >> /etc/hosts 2>/dev/null; then
+    msg_ok "已添加: $ip $host"
+    _log_write "/etc/hosts 已添加: $ip $host"
+  else
+    msg_err "写入 /etc/hosts 失败"
+    return 1
+  fi
+  return 0
+}
+
+_system_hosts_delete() {
+  local -a entries=()
+  local line
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    entries+=("$line")
+  done < <(_system_hosts_entries)
+
+  if [[ ${#entries[@]} -eq 0 ]]; then
+    msg_warn "没有可删除的解析记录"
+    return 1
+  fi
+
+  msg "  ${F_BOLD}请选择要删除的记录:${F_RESET}"
+  local i=1
+  for line in "${entries[@]}"; do
+    msg "  ${F_GREEN}$i${F_RESET}) ${line#*: }"
+    i=$((i + 1))
+  done
+
+  local sel; sel=$(read_input "输入序号（0 取消）" "0") || return 1
+  [[ "$sel" =~ ^[0-9]+$ ]] || { msg_err "序号必须为数字"; return 1; }
+  [[ "$sel" -eq 0 ]] && return 1
+  if [[ "$sel" -lt 1 || "$sel" -gt ${#entries[@]} ]]; then
+    msg_err "序号超出范围 (1-${#entries[@]})"
+    return 1
+  fi
+
+  local target="${entries[$((sel - 1))]}"
+  local lineno="${target%%:*}"
+  local content="${target#*: }"
+
+  confirm "确认删除记录 '$content'？" || return 1
+  _fb_backup_file /etc/hosts "/etc/hosts.fb-bak-$(date +%s)" >/dev/null 2>&1
+  if sed -i "${lineno}d" /etc/hosts 2>/dev/null; then
+    msg_ok "已删除: $content"
+    _log_write "/etc/hosts 已删除记录: $content"
+  else
+    msg_err "删除失败"
+    return 1
+  fi
+  return 0
+}
+
+system_hosts() {
+  _require_root
+  while true; do
+    clear
+    _print_banner
+    msg_title "hosts 解析管理"
+    msg ""
+    _system_hosts_show
+    msg ""
+    msg "  ${F_GREEN} 1${F_RESET}) 添加解析记录"
+    msg "  ${F_GREEN} 2${F_RESET}) 删除解析记录（按序号）"
+    msg "  ${F_GREEN} 3${F_RESET}) 刷新显示"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-3]: " hosts_choice || { msg ""; break; }
+    case "$hosts_choice" in
+      1) _system_hosts_add; pause ;;
+      2) _system_hosts_delete; pause ;;
+      3) ;;
+      0) break ;;
+      *) ;;
+    esac
+  done
+}
+
+# ---- 系统更新源切换 ----
+_system_mirror_detect() {
+  if command -v apt-get &>/dev/null; then
+    echo "apt"
+  elif command -v dnf &>/dev/null || command -v yum &>/dev/null; then
+    echo "yum"
+  else
+    echo "none"
+  fi
+}
+
+# 用法: _system_mirror_restore_dir <备份目录>
+_system_mirror_restore_dir() {
+  local dir="$1"
+  if [[ ! -f "$dir/files.manifest" ]]; then
+    msg_warn "备份目录缺少 manifest: $dir"
+    return 1
+  fi
+  local flat orig rc=0
+  while IFS=$'\t' read -r flat orig; do
+    [[ -z "$flat" || -z "$orig" ]] && continue
+    [[ -f "$dir/$flat" ]] || continue
+    if ! cp -Lp "$dir/$flat" "$orig" 2>/dev/null; then
+      msg_err "回滚失败: $orig"
+      rc=1
+    fi
+  done < "$dir/files.manifest"
+  return $rc
+}
+
+# 用法: _system_mirror_apply_apt <镜像域名> <名称>
+_system_mirror_apply_apt() {
+  local host="$1" label="$2"
+  local -a files=()
+  local f
+
+  [[ -f /etc/apt/sources.list ]] && files+=("/etc/apt/sources.list")
+  if [[ -d /etc/apt/sources.list.d ]]; then
+    for f in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+      [[ -f "$f" ]] && files+=("$f")
+    done
+  fi
+  if [[ ${#files[@]} -eq 0 ]]; then
+    msg_warn "未找到 APT 源文件"
+    return 1
+  fi
+
+  local matched=0
+  for f in "${files[@]}"; do
+    if grep -qE "archive\.ubuntu\.com|security\.ubuntu\.com|deb\.debian\.org|security\.debian\.org" "$f" 2>/dev/null; then
+      matched=1
+    fi
+  done
+  if [[ $matched -eq 0 ]]; then
+    msg_warn "源文件中未找到官方域名（archive.ubuntu.com / deb.debian.org 等）"
+    msg "  可能已切换过镜像，或使用了第三方源；可先用「显示当前源」确认"
+    return 1
+  fi
+
+  msg ""
+  msg_info "以下文件中的官方域名将被替换为 $host:"
+  for f in "${files[@]}"; do msg "    $f"; done
+  msg_warn "仅为域名替换，发行版路径保持不变（Ubuntu 24.04 的 .sources 同样处理）"
+  confirm "确认切换到 $label？" || return 1
+
+  local bak_dir="/etc/fusionbox/mirror-bak-$(date +%s)"
+  mkdir -p "$bak_dir" || { msg_err "无法创建备份目录 $bak_dir"; return 1; }
+  : > "$bak_dir/files.manifest"
+  for f in "${files[@]}"; do
+    local flat="${f//\//_}"
+    if ! cp -Lp "$f" "$bak_dir/$flat" 2>/dev/null; then
+      msg_err "备份 $f 失败，已取消操作"
+      return 1
+    fi
+    printf '%s\t%s\n' "$flat" "$f" >> "$bak_dir/files.manifest"
+  done
+  msg_ok "已备份到 $bak_dir"
+
+  for f in "${files[@]}"; do
+    sed -i -E "s/archive\.ubuntu\.com/$host/g; s/security\.ubuntu\.com/$host/g; s/deb\.debian\.org/$host/g; s/security\.debian\.org/$host/g" "$f" 2>/dev/null
+  done
+
+  msg_info "正在执行 apt-get update 验证..."
+  local out
+  if out=$(apt-get update -y 2>&1); then
+    msg_ok "更新源已切换为 $label ($host)，验证通过"
+    _log_write "APT 源已切换为 $label ($host)"
+  else
+    msg_err "apt-get update 失败，正在从备份回滚..."
+    echo "$out" | tail -8 | sed 's/^/    /'
+    if _system_mirror_restore_dir "$bak_dir"; then
+      msg_warn "已从备份回滚 ($bak_dir)"
+      _log_write "APT 源切换失败，已回滚 ($label)"
+    else
+      msg_err "回滚不完整，请手动检查，备份目录: $bak_dir"
+    fi
+  fi
+  return 0
+}
+
+# 用法: _system_mirror_apply_yum <镜像域名> <名称>
+_system_mirror_apply_yum() {
+  local host="$1" label="$2"
+  local -a files=()
+  local f
+
+  for f in /etc/yum.repos.d/*.repo /etc/yum.conf; do
+    [[ -f "$f" ]] && files+=("$f")
+  done
+  if [[ ${#files[@]} -eq 0 ]]; then
+    msg_warn "未找到 yum/dnf 源文件"
+    return 1
+  fi
+
+  local matched=0
+  for f in "${files[@]}"; do
+    if grep -qE "mirror(list)?\.centos\.org|mirrors\.centos\.org" "$f" 2>/dev/null; then
+      matched=1
+    fi
+  done
+  if [[ $matched -eq 0 ]]; then
+    msg_warn "未找到 mirror.centos.org / mirrorlist.centos.org 等官方域名"
+    return 1
+  fi
+
+  msg ""
+  msg_info "以下文件中的官方域名将被替换为 $host:"
+  for f in "${files[@]}"; do msg "    $f"; done
+  msg_warn "mirrorlist 形式的条目替换后可能仍需手动调整为 baseurl"
+  confirm "确认切换到 $label？" || return 1
+
+  local bak_dir="/etc/fusionbox/mirror-bak-$(date +%s)"
+  mkdir -p "$bak_dir" || { msg_err "无法创建备份目录 $bak_dir"; return 1; }
+  : > "$bak_dir/files.manifest"
+  for f in "${files[@]}"; do
+    local flat="${f//\//_}"
+    if ! cp -Lp "$f" "$bak_dir/$flat" 2>/dev/null; then
+      msg_err "备份 $f 失败，已取消操作"
+      return 1
+    fi
+    printf '%s\t%s\n' "$flat" "$f" >> "$bak_dir/files.manifest"
+  done
+  msg_ok "已备份到 $bak_dir"
+
+  for f in "${files[@]}"; do
+    sed -i -E "s/mirrorlist\.centos\.org/$host/g; s/mirror\.centos\.org/$host/g; s/mirrors\.centos\.org/$host/g" "$f" 2>/dev/null
+  done
+
+  msg_info "正在执行 makecache 验证..."
+  local out rc=0
+  if command -v dnf &>/dev/null; then
+    out=$(dnf makecache -y 2>&1) || rc=1
+  else
+    out=$(yum makecache -y 2>&1) || rc=1
+  fi
+  if [[ $rc -eq 0 ]]; then
+    msg_ok "更新源已切换为 $label ($host)，验证通过"
+    _log_write "YUM 源已切换为 $label ($host)"
+  else
+    msg_err "makecache 失败，正在从备份回滚..."
+    echo "$out" | tail -8 | sed 's/^/    /'
+    if _system_mirror_restore_dir "$bak_dir"; then
+      msg_warn "已从备份回滚 ($bak_dir)"
+      _log_write "YUM 源切换失败，已回滚 ($label)"
+    else
+      msg_err "回滚不完整，请手动检查，备份目录: $bak_dir"
+    fi
+  fi
+  return 0
+}
+
+_system_mirror_restore() {
+  local -a dirs=()
+  local d
+  while IFS= read -r d; do dirs+=("$d"); done < <(ls -1dt /etc/fusionbox/mirror-bak-* 2>/dev/null)
+
+  if [[ ${#dirs[@]} -eq 0 ]]; then
+    msg_warn "没有找到备份目录 (/etc/fusionbox/mirror-bak-*)"
+    return 1
+  fi
+
+  msg "  ${F_BOLD}可用备份:${F_RESET}"
+  local i=1
+  for d in "${dirs[@]}"; do
+    msg "  ${F_GREEN}$i${F_RESET}) $d"
+    i=$((i + 1))
+  done
+
+  local sel; sel=$(read_input "选择要恢复的备份编号" "1") || return 1
+  [[ "$sel" =~ ^[0-9]+$ ]] || { msg_err "编号必须为数字"; return 1; }
+  local idx=$((sel - 1))
+  if [[ $idx -lt 0 || $idx -ge ${#dirs[@]} ]]; then
+    msg_err "编号超出范围 (1-${#dirs[@]})"
+    return 1
+  fi
+
+  confirm "确认从 ${dirs[$idx]} 恢复更新源？" || return 1
+  if _system_mirror_restore_dir "${dirs[$idx]}"; then
+    msg_ok "更新源已恢复，正在刷新源索引..."
+    case "$(_system_mirror_detect)" in
+      apt)
+        if apt-get update -y >/dev/null 2>&1; then
+          msg_ok "apt-get update 完成"
+        else
+          msg_warn "apt-get update 失败，请检查源配置"
+        fi
+        ;;
+      yum)
+        if command -v dnf &>/dev/null; then
+          dnf makecache -y >/dev/null 2>&1 || msg_warn "makecache 失败，请检查源配置"
+        else
+          yum makecache -y >/dev/null 2>&1 || msg_warn "makecache 失败，请检查源配置"
+        fi
+        ;;
+    esac
+    _log_write "更新源已从备份恢复: ${dirs[$idx]}"
+  else
+    msg_err "恢复失败，请检查备份目录: ${dirs[$idx]}"
+  fi
+  return 0
+}
+
+_system_mirror_show() {
+  local f
+  case "$(_system_mirror_detect)" in
+    apt)
+      for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+        [[ -f "$f" ]] || continue
+        msg "  ${F_BOLD}[$f]${F_RESET}"
+        grep -vE "^[[:space:]]*(#|$)" "$f" 2>/dev/null | head -12 | sed 's/^/    /'
+      done
+      ;;
+    yum)
+      for f in /etc/yum.repos.d/*.repo /etc/yum.conf; do
+        [[ -f "$f" ]] || continue
+        msg "  ${F_BOLD}[$f]${F_RESET}"
+        grep -iE "^(baseurl|mirrorlist|name)=" "$f" 2>/dev/null | head -12 | sed 's/^/    /'
+      done
+      ;;
+    *)
+      msg_warn "当前系统不受支持"
+      ;;
+  esac
+}
+
+system_mirror() {
+  _require_root
+  local kind; kind=$(_system_mirror_detect)
+  if [[ "$kind" == "none" ]]; then
+    msg_warn "当前系统不支持自动切换更新源（未检测到 apt/dnf/yum）"
+    pause
+    return 1
+  fi
+
+  while true; do
+    clear
+    _print_banner
+    msg_title "系统更新源切换"
+    msg ""
+    msg "  ${F_BOLD}包管理器:${F_RESET} $kind"
+    msg "  ${F_BOLD}备份目录:${F_RESET} /etc/fusionbox/mirror-bak-<时间戳>/"
+    msg ""
+    if [[ "$kind" == "apt" ]]; then
+      msg "  ${F_GREEN} 1${F_RESET}) 阿里云    mirrors.aliyun.com"
+      msg "  ${F_GREEN} 2${F_RESET}) 清华大学  mirrors.tuna.tsinghua.edu.cn"
+      msg "  ${F_GREEN} 3${F_RESET}) 中科大    mirrors.ustc.edu.cn"
+      msg "  ${F_GREEN} 4${F_RESET}) 华为云    mirrors.huaweicloud.com"
+    else
+      msg "  ${F_GREEN} 1${F_RESET}) 阿里云    mirrors.aliyun.com"
+      msg "  ${F_GREEN} 2${F_RESET}) 清华大学  mirrors.tuna.tsinghua.edu.cn"
+      msg "  ${F_YELLOW} 3/4${F_RESET}) 仅 Debian/Ubuntu 可用（yum/dnf 只支持阿里云与清华）"
+    fi
+    msg "  ${F_GREEN} 5${F_RESET}) 恢复上次备份"
+    msg "  ${F_GREEN} 6${F_RESET}) 显示当前源"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-6]: " mirror_choice || { msg ""; break; }
+
+    case "$mirror_choice" in
+      1)
+        if [[ "$kind" == "apt" ]]; then
+          _system_mirror_apply_apt "mirrors.aliyun.com" "阿里云"
+        else
+          _system_mirror_apply_yum "mirrors.aliyun.com" "阿里云"
+        fi
+        pause ;;
+      2)
+        if [[ "$kind" == "apt" ]]; then
+          _system_mirror_apply_apt "mirrors.tuna.tsinghua.edu.cn" "清华大学"
+        else
+          _system_mirror_apply_yum "mirrors.tuna.tsinghua.edu.cn" "清华大学"
+        fi
+        pause ;;
+      3)
+        if [[ "$kind" == "apt" ]]; then
+          _system_mirror_apply_apt "mirrors.ustc.edu.cn" "中科大"
+        else
+          msg_warn "yum/dnf 仅支持阿里云与清华源"
+        fi
+        pause ;;
+      4)
+        if [[ "$kind" == "apt" ]]; then
+          _system_mirror_apply_apt "mirrors.huaweicloud.com" "华为云"
+        else
+          msg_warn "yum/dnf 仅支持阿里云与清华源"
+        fi
+        pause ;;
+      5) _system_mirror_restore; pause ;;
+      6) _system_mirror_show; pause ;;
+      0) break ;;
+      *) ;;
+    esac
+  done
+}
+
+# ---- 系统日志管理 ----
+_system_log_clean() {
+  msg ""
+  msg "  ${F_BOLD}当前日志占用:${F_RESET}"
+  if command -v journalctl &>/dev/null; then
+    journalctl --disk-usage 2>/dev/null | sed 's/^/    /' || msg "    (无法获取)"
+  else
+    du -sh /var/log 2>/dev/null | awk '{print "    /var/log: " $1}'
+  fi
+  msg ""
+  msg "  1) 清理到 100M"
+  msg "  2) 清理到 500M"
+  msg "  3) 清理到 1G"
+  msg "  4) 只保留最近 7 天"
+  msg "  0) 取消"
+  local sel; sel=$(read_input "请选择" "0") || return 1
+
+  local arg=""
+  case "$sel" in
+    1) arg="--vacuum-size=100M" ;;
+    2) arg="--vacuum-size=500M" ;;
+    3) arg="--vacuum-size=1G" ;;
+    4) arg="--vacuum-time=7d" ;;
+    *) return 0 ;;
+  esac
+
+  if ! command -v journalctl &>/dev/null; then
+    msg_warn "当前系统不支持 journalctl，无法自动清理"
+    return 1
+  fi
+  confirm "确认执行日志清理 ($arg)？" || return 1
+  if journalctl "$arg" 2>/dev/null; then
+    msg_ok "日志清理完成"
+    journalctl --disk-usage 2>/dev/null | sed 's/^/    /'
+    _log_write "系统日志已清理 ($arg)"
+  else
+    msg_err "日志清理失败（可能需要 systemd-journald 权限）"
+    return 1
+  fi
+  return 0
+}
+
+system_log() {
+  _require_root
+  local has_journal=0
+  command -v journalctl &>/dev/null && has_journal=1
+
+  while true; do
+    clear
+    _print_banner
+    msg_title "系统日志管理"
+    msg ""
+    if [[ $has_journal -eq 1 ]]; then
+      msg "  ${F_BOLD}日志组件:${F_RESET} journalctl 可用"
+    else
+      msg "  ${F_BOLD}日志组件:${F_RESET} ${F_YELLOW}未检测到 journalctl，将回退到日志文件${F_RESET}"
+    fi
+    msg ""
+    msg "  ${F_GREEN} 1${F_RESET}) 最近错误 (优先级 3 及以上)"
+    msg "  ${F_GREEN} 2${F_RESET}) 查看指定服务日志"
+    msg "  ${F_GREEN} 3${F_RESET}) SSH 登录 / 失败记录"
+    msg "  ${F_GREEN} 4${F_RESET}) 内核日志 (dmesg)"
+    msg "  ${F_GREEN} 5${F_RESET}) 日志占用与清理"
+    msg "  ${F_GREEN} 6${F_RESET}) 实时跟踪日志"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-6]: " log_choice || { msg ""; break; }
+
+    case "$log_choice" in
+      1)
+        msg ""
+        msg "  ${F_BOLD}[最近错误]${F_RESET}"
+        if [[ $has_journal -eq 1 ]]; then
+          journalctl -p 3 -n 50 --no-pager 2>/dev/null || msg_warn "读取 journalctl 失败"
+        else
+          tail -n 50 /var/log/messages 2>/dev/null || tail -n 50 /var/log/syslog 2>/dev/null || msg_warn "未找到系统日志文件"
+        fi
+        pause ;;
+      2)
+        local unit; unit=$(read_input "请输入服务名（如 nginx、sshd）" "") || { pause; continue; }
+        if [[ ! "$unit" =~ ^[a-zA-Z0-9@._:-]+$ ]]; then
+          msg_err "服务名格式无效: $unit"
+        elif [[ $has_journal -eq 1 ]]; then
+          msg ""
+          journalctl -u "$unit" -n 100 --no-pager 2>/dev/null || msg_warn "未找到 $unit 的日志"
+        else
+          msg_warn "当前系统不支持 journalctl，请手动查看 /var/log/ 下对应文件"
+        fi
+        pause ;;
+      3)
+        msg ""
+        msg "  ${F_BOLD}[SSH 登录成功 / 失败]${F_RESET}"
+        if [[ $has_journal -eq 1 ]]; then
+          journalctl -u ssh -u sshd -n 100 --no-pager 2>/dev/null | grep -E "Accepted|Failed|Invalid user" | tail -20
+        fi
+        local lf
+        for lf in /var/log/auth.log /var/log/secure; do
+          if [[ -f "$lf" ]]; then
+            msg "  ${F_BOLD}[$lf]${F_RESET}"
+            grep -E "Accepted|Failed|Invalid user" "$lf" 2>/dev/null | tail -20 | sed 's/^/    /'
+          fi
+        done
+        msg_tip "如无输出，说明近期没有登录记录或日志已轮转"
+        pause ;;
+      4)
+        msg ""
+        msg "  ${F_BOLD}[内核日志 (最近 40 行)]${F_RESET}"
+        if command -v dmesg &>/dev/null; then
+          dmesg 2>/dev/null | tail -40 || msg_warn "dmesg 读取失败（可能受 kernel.dmesg_restrict 限制）"
+        elif [[ -f /var/log/dmesg ]]; then
+          tail -40 /var/log/dmesg 2>/dev/null
+        else
+          msg_warn "系统未提供 dmesg"
+        fi
+        pause ;;
+      5)
+        _system_log_clean
+        pause ;;
+      6)
+        if [[ $has_journal -eq 1 ]]; then
+          msg_warn "进入实时日志跟踪，按 Ctrl+C 退出"
+          msg ""
+          journalctl -f
+        else
+          msg_warn "进入实时日志跟踪，按 Ctrl+C 退出"
+          msg ""
+          tail -f /var/log/messages 2>/dev/null || tail -f /var/log/syslog 2>/dev/null || msg_warn "无可用日志文件"
+        fi
+        pause ;;
+      0) break ;;
+      *) ;;
+    esac
+  done
+}
+
+# ---- 流量阈值保护 ----
+_traffic_guard_conf_get() {
+  local key="$1"
+  [[ -f /etc/fusionbox/traffic-guard.conf ]] || return 1
+  sed -n "s/^[[:space:]]*${key}=//p" /etc/fusionbox/traffic-guard.conf | tail -1 | tr -d '"' | tr -d "'" | tr -d '\r'
+}
+
+# 用法: _traffic_guard_conf_write <IFACE> <LIMIT_GB> <ACTION> <CHECK_INTERVAL_MIN>
+_traffic_guard_conf_write() {
+  local iface="$1" limit="$2" action="$3" interval="$4"
+  mkdir -p /etc/fusionbox
+  cat > /etc/fusionbox/traffic-guard.conf << TEOF
+# FusionBox 流量阈值保护配置（含策略，权限 600）
+# IFACE: 监控网卡；auto = 汇总除 lo/docker*/veth*/br-* 以外的全部网卡
+IFACE=$iface
+# LIMIT_GB: 自然月流量上限（GB），超过后按 ACTION 处理
+LIMIT_GB=$limit
+# ACTION: warn 仅告警 / shutdown 超限后 5 分钟关机
+ACTION=$action
+# CHECK_INTERVAL_MIN: 检查间隔（分钟），与 cron 每 5 分钟执行配合节流
+CHECK_INTERVAL_MIN=$interval
+TEOF
+  chmod 600 /etc/fusionbox/traffic-guard.conf
+}
+
+_traffic_guard_install_bin() {
+  mkdir -p /usr/local/bin /etc/fusionbox /var/lib/fusionbox /var/log
+
+  cat > /usr/local/bin/fusionbox-traffic-guard << 'TGEOF'
+#!/bin/bash
+# FusionBox 流量阈值保护脚本（由 fusionbox system traffic-guard 安装）
+# 配置: /etc/fusionbox/traffic-guard.conf
+# 状态: /var/lib/fusionbox/traffic-guard.state
+# 日志: /var/log/fusionbox-traffic-guard.log
+
+CONF="/etc/fusionbox/traffic-guard.conf"
+STATE_DIR="/var/lib/fusionbox"
+STATE="$STATE_DIR/traffic-guard.state"
+FLAG="$STATE_DIR/traffic-guard.shutdown"
+LOG="/var/log/fusionbox-traffic-guard.log"
+NOTIFY_CONF="/etc/fusionbox/notify.conf"
+
+umask 077
+exec 9>"${CONF}.lock"
+flock -n 9 || exit 0
+[[ -f "$CONF" ]] || exit 0
+. "$CONF" 2>/dev/null || exit 0
+
+IFACE="${IFACE:-auto}"
+LIMIT_GB="${LIMIT_GB:-1000}"
+ACTION="${ACTION:-warn}"
+CHECK_INTERVAL_MIN="${CHECK_INTERVAL_MIN:-5}"
+[[ "$CHECK_INTERVAL_MIN" =~ ^[0-9]+$ ]] || CHECK_INTERVAL_MIN=5
+[[ "$CHECK_INTERVAL_MIN" -lt 1 ]] && CHECK_INTERVAL_MIN=1
+
+mkdir -p "$STATE_DIR" 2>/dev/null
+touch "$LOG" 2>/dev/null
+
+log_line() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG" 2>/dev/null; }
+
+# 日志超过 1MB 时裁剪，避免长期运行占满磁盘
+log_size=$(stat -c%s "$LOG" 2>/dev/null || echo 0)
+if [[ "$log_size" =~ ^[0-9]+$ ]] && [[ "$log_size" -gt 1048576 ]]; then
+  tail -n 500 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG" 2>/dev/null
+fi
+
+# 读取网卡累计字节（字节数）
+if [[ "$IFACE" == "auto" ]]; then
+  cur=$(awk '{gsub(":","",$1); if ($1=="lo" || $1 ~ /^docker/ || $1 ~ /^veth/ || $1 ~ /^br-/) next; rx+=$2; tx+=$10} END{printf "%.0f %.0f", rx, tx}' /proc/net/dev 2>/dev/null)
+else
+  cur=$(awk -v i="$IFACE" '{gsub(":","",$1); if ($1==i) printf "%.0f %.0f", $2, $10}' /proc/net/dev 2>/dev/null)
+fi
+cur_rx=$(echo "$cur" | awk '{print $1+0}')
+cur_tx=$(echo "$cur" | awk '{print $2+0}')
+
+MONTH=""; LAST_RUN=0; BASE_RX=0; BASE_TX=0; TOTAL=0
+[[ -f "$STATE" ]] && . "$STATE" 2>/dev/null
+
+now=$(date +%s)
+this_month=$(date '+%Y-%m')
+
+# 节流：按 CHECK_INTERVAL_MIN 控制实际检查频率
+if [[ "$MONTH" == "$this_month" && "$LAST_RUN" =~ ^[0-9]+$ ]]; then
+  if [[ $((now - LAST_RUN)) -lt $((CHECK_INTERVAL_MIN * 60)) ]]; then
+    exit 0
+  fi
+fi
+
+if [[ "$MONTH" != "$this_month" ]]; then
+  # 自然月重置（首次运行也走此分支建立基线）
+  MONTH="$this_month"; TOTAL=0; BASE_RX="$cur_rx"; BASE_TX="$cur_tx"
+  rm -f "$FLAG" 2>/dev/null
+elif [[ ! "$BASE_RX" =~ ^[0-9]+$ || ! "$BASE_TX" =~ ^[0-9]+$ ]]; then
+  BASE_RX="$cur_rx"; BASE_TX="$cur_tx"
+elif [[ $cur_rx -lt $BASE_RX || $cur_tx -lt $BASE_TX ]]; then
+  # 计数器回绕或重启
+  TOTAL=$(( TOTAL + cur_rx + cur_tx ))
+  BASE_RX="$cur_rx"; BASE_TX="$cur_tx"
+else
+  TOTAL=$(( TOTAL + cur_rx - BASE_RX + cur_tx - BASE_TX ))
+  BASE_RX="$cur_rx"; BASE_TX="$cur_tx"
+fi
+
+{
+  echo "MONTH=$MONTH"
+  echo "LAST_RUN=$now"
+  echo "BASE_RX=$BASE_RX"
+  echo "BASE_TX=$BASE_TX"
+  echo "TOTAL=$TOTAL"
+} > "$STATE" 2>/dev/null
+chmod 600 "$STATE" 2>/dev/null
+
+limit_bytes=$(awk -v g="$LIMIT_GB" 'BEGIN{printf "%.0f", g*1073741824}' 2>/dev/null)
+limit_bytes=${limit_bytes:-0}
+used_gb=$(awk -v b="$TOTAL" 'BEGIN{printf "%.2f", b/1073741824}' 2>/dev/null)
+used_gb=${used_gb:-0}
+
+if [[ "$limit_bytes" =~ ^[0-9]+$ ]] && [[ "$limit_bytes" -gt 0 ]] && \
+   [[ "$TOTAL" -ge "$limit_bytes" ]] && [[ ! -f "$FLAG" ]]; then
+  : > "$FLAG" 2>/dev/null
+  chmod 600 "$FLAG" 2>/dev/null
+
+  note="[FusionBox] 流量告警：本月已用 ${used_gb} GB，超过阈值 ${LIMIT_GB} GB（网卡: $IFACE，动作: $ACTION）"
+  log_line "$note"
+
+  # Telegram 通知（若已配置 /etc/fusionbox/notify.conf）
+  if [[ -f "$NOTIFY_CONF" ]]; then
+    t=$(grep -m1 '^TG_BOT_TOKEN=' "$NOTIFY_CONF" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
+    c=$(grep -m1 '^TG_CHAT_ID=' "$NOTIFY_CONF" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
+    if [[ -n "$t" && -n "$c" ]]; then
+      curl -s --max-time 10 "https://api.telegram.org/bot${t}/sendMessage" \
+        --data-urlencode "chat_id=${c}" --data-urlencode "text=${note}" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if [[ "$ACTION" == "shutdown" ]]; then
+    echo "$note" | wall 2>/dev/null || true
+    shutdown -h +5 "FusionBox: 流量超过阈值 ${LIMIT_GB} GB" 2>/dev/null || \
+      /sbin/shutdown -h +5 "FusionBox: 流量超过阈值 ${LIMIT_GB} GB" 2>/dev/null || true
+  fi
+fi
+TGEOF
+  chmod 755 /usr/local/bin/fusionbox-traffic-guard
+
+  cat > /etc/cron.d/fusionbox-traffic-guard << 'TCEOF'
+# FusionBox 流量阈值保护（每 5 分钟检查一次）
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+*/5 * * * * root /usr/local/bin/fusionbox-traffic-guard >/dev/null 2>&1
+TCEOF
+  chmod 644 /etc/cron.d/fusionbox-traffic-guard
+}
+
+_traffic_guard_status() {
+  msg ""
+  local iface limit action interval
+  iface=$(_traffic_guard_conf_get IFACE); iface=${iface:-auto}
+  limit=$(_traffic_guard_conf_get LIMIT_GB); limit=${limit:-1000}
+  action=$(_traffic_guard_conf_get ACTION); action=${action:-warn}
+  interval=$(_traffic_guard_conf_get CHECK_INTERVAL_MIN); interval=${interval:-5}
+
+  msg "  ${F_BOLD}配置:${F_RESET} IFACE=$iface  LIMIT_GB=$limit  ACTION=$action  INTERVAL=${interval}min"
+
+  local cur
+  if [[ "$iface" == "auto" ]]; then
+    cur=$(awk '{gsub(":","",$1); if ($1=="lo" || $1 ~ /^docker/ || $1 ~ /^veth/ || $1 ~ /^br-/) next; rx+=$2; tx+=$10} END{printf "%.0f %.0f", rx, tx}' /proc/net/dev 2>/dev/null)
+  else
+    cur=$(awk -v i="$iface" '{gsub(":","",$1); if ($1==i) printf "%.0f %.0f", $2, $10}' /proc/net/dev 2>/dev/null)
+  fi
+  local now_rx now_tx
+  now_rx=$(echo "$cur" | awk '{print $1+0}')
+  now_tx=$(echo "$cur" | awk '{print $2+0}')
+  msg "  ${F_BOLD}网卡累计:${F_RESET} RX $(awk -v b="$now_rx" 'BEGIN{printf "%.2f", b/1073741824}') GB / TX $(awk -v b="$now_tx" 'BEGIN{printf "%.2f", b/1073741824}') GB"
+
+  if [[ -f /var/lib/fusionbox/traffic-guard.state ]]; then
+    local MONTH="" TOTAL=0 BASE_RX=0 BASE_TX=0 LAST_RUN=0
+    . /var/lib/fusionbox/traffic-guard.state 2>/dev/null
+    local used_gb; used_gb=$(awk -v b="${TOTAL:-0}" 'BEGIN{printf "%.3f", b/1073741824}')
+    msg "  ${F_BOLD}本月已用:${F_RESET} ${used_gb} GB / ${limit} GB（统计月: ${MONTH:-未知}）"
+    local pct=0
+    if [[ "$limit" =~ ^[0-9]+$ ]] && [[ "$limit" -gt 0 ]]; then
+      pct=$(awk -v u="$used_gb" -v l="$limit" 'BEGIN{printf "%d", (u*100)/l}')
+    fi
+    msg "  ${F_BOLD}使用比例:${F_RESET} ${pct}%"
+  else
+    msg "  ${F_BOLD}本月已用:${F_RESET} 暂无统计数据（脚本首次运行后建立基线）"
+  fi
+
+  if [[ -f /var/lib/fusionbox/traffic-guard.shutdown ]]; then
+    msg "  ${F_YELLOW}已触发过超限处理（本月内不再重复触发）${F_RESET}"
+  fi
+  msg "  ${F_BOLD}cron:${F_RESET} $([[ -f /etc/cron.d/fusionbox-traffic-guard ]] && echo "已安装 (每 5 分钟)" || echo "未安装")"
+  msg "  ${F_BOLD}日志:${F_RESET} /var/log/fusionbox-traffic-guard.log"
+  if [[ -f /var/log/fusionbox-traffic-guard.log ]]; then
+    tail -n 5 /var/log/fusionbox-traffic-guard.log 2>/dev/null | sed 's/^/    /'
+  fi
+}
+
+system_traffic_guard() {
+  _require_root
+  local bin="/usr/local/bin/fusionbox-traffic-guard"
+  local cron_file="/etc/cron.d/fusionbox-traffic-guard"
+  local conf="/etc/fusionbox/traffic-guard.conf"
+
+  while true; do
+    clear
+    _print_banner
+    msg_title "流量阈值保护"
+    msg ""
+    if [[ -x "$bin" && -f "$cron_file" ]]; then
+      msg "  ${F_BOLD}状态:${F_RESET} ${F_GREEN}已安装${F_RESET}"
+      msg "  ${F_BOLD}网卡:${F_RESET} $(_traffic_guard_conf_get IFACE)"
+      msg "  ${F_BOLD}阈值:${F_RESET} $(_traffic_guard_conf_get LIMIT_GB) GB"
+      msg "  ${F_BOLD}动作:${F_RESET} $(_traffic_guard_conf_get ACTION)"
+    else
+      msg "  ${F_BOLD}状态:${F_RESET} ${F_YELLOW}未安装${F_RESET}"
+      msg_warn "安装后每 5 分钟检查一次，天然月周期统计流量"
+    fi
+    msg ""
+    msg "  ${F_GREEN} 1${F_RESET}) 安装 / 更新流量保护"
+    msg "  ${F_GREEN} 2${F_RESET}) 查看状态（当前用量 / 阈值）"
+    msg "  ${F_GREEN} 3${F_RESET}) 修改阈值 / 动作"
+    msg "  ${F_GREEN} 4${F_RESET}) 卸载"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-4]: " tg_choice || { msg ""; break; }
+
+    case "$tg_choice" in
+      1)
+        msg ""
+        local iface limit action interval act_sel
+        iface=$(_traffic_guard_conf_get IFACE); iface=${iface:-auto}
+        limit=$(_traffic_guard_conf_get LIMIT_GB); limit=${limit:-1000}
+        action=$(_traffic_guard_conf_get ACTION); action=${action:-warn}
+        interval=$(_traffic_guard_conf_get CHECK_INTERVAL_MIN); interval=${interval:-5}
+
+        msg_tip "IFACE=auto 表示汇总除 lo/docker*/veth*/br-* 以外的全部网卡"
+        iface=$(read_input "监控网卡 (auto 或具体网卡名)" "$iface") || { pause; continue; }
+        if [[ "$iface" != "auto" && ! "$iface" =~ ^[a-zA-Z0-9._:-]+$ ]]; then
+          msg_err "网卡名格式无效: $iface"
+          pause; continue
+        fi
+        limit=$(read_input "流量上限 (GB/月)" "$limit") || { pause; continue; }
+        if [[ ! "$limit" =~ ^[0-9]+$ ]] || [[ "$limit" -lt 1 ]]; then
+          msg_err "流量上限必须为正整数（GB）"
+          pause; continue
+        fi
+        interval=$(read_input "检查间隔 (分钟)" "$interval") || { pause; continue; }
+        if [[ ! "$interval" =~ ^[0-9]+$ ]] || [[ "$interval" -lt 1 ]]; then
+          interval=5
+          msg_warn "间隔无效，已使用默认值 5 分钟"
+        fi
+
+        msg ""
+        msg "  超限动作: 1) warn 仅告警 (默认)  2) shutdown 超限后 5 分钟关机"
+        act_sel=$(read_input "请选择动作" "1") || { pause; continue; }
+        if [[ "$act_sel" == "2" ]]; then
+          msg_warn "shutdown 模式会在流量超限后 5 分钟自动关机，可能中断线上业务"
+          if confirm "确认启用 shutdown 模式？" && confirm "再次确认：超限后自动执行关机？"; then
+            action="shutdown"
+          else
+            msg_info "已保持 warn 模式"
+            action="warn"
+          fi
+        else
+          action="warn"
+        fi
+
+        _traffic_guard_conf_write "$iface" "$limit" "$action" "$interval"
+        msg_ok "配置已写入 $conf (权限 600)"
+        _traffic_guard_install_bin
+        msg_ok "已安装 /usr/local/bin/fusionbox-traffic-guard"
+        msg_ok "已安装 cron: $cron_file (每 5 分钟)"
+        if [[ "$action" == "shutdown" ]]; then
+          msg_warn "当前为 shutdown 模式，流量超限后将自动关机"
+        else
+          msg_ok "当前为 warn 模式，超限仅记录日志与告警"
+        fi
+        _log_write "流量阈值保护已安装 (IFACE=$iface, LIMIT=${limit}GB, ACTION=$action)"
+        pause ;;
+      2)
+        _traffic_guard_status
+        pause ;;
+      3)
+        if [[ ! -f "$conf" ]]; then
+          msg_warn "尚未配置，请先执行「安装 / 更新流量保护」"
+          pause; continue
+        fi
+        msg ""
+        local n_limit n_action n_interval n_act
+        n_limit=$(_traffic_guard_conf_get LIMIT_GB); n_limit=${n_limit:-1000}
+        n_limit=$(read_input "新的流量上限 (GB/月)" "$n_limit") || { pause; continue; }
+        if [[ ! "$n_limit" =~ ^[0-9]+$ ]] || [[ "$n_limit" -lt 1 ]]; then
+          msg_err "流量上限必须为正整数（GB）"
+          pause; continue
+        fi
+        n_interval=$(_traffic_guard_conf_get CHECK_INTERVAL_MIN); n_interval=${n_interval:-5}
+        n_interval=$(read_input "检查间隔 (分钟)" "$n_interval") || { pause; continue; }
+        [[ "$n_interval" =~ ^[0-9]+$ ]] && [[ "$n_interval" -ge 1 ]] || n_interval=5
+
+        msg "  超限动作: 1) warn 仅告警  2) shutdown 超限后关机"
+        n_act=$(read_input "请选择动作" "1") || { pause; continue; }
+        n_action=$(_traffic_guard_conf_get ACTION); n_action=${n_action:-warn}
+        if [[ "$n_act" == "2" ]]; then
+          msg_warn "shutdown 模式会在流量超限后 5 分钟自动关机"
+          if confirm "确认启用 shutdown 模式？" && confirm "再次确认：超限后自动执行关机？"; then
+            n_action="shutdown"
+          else
+            n_action="warn"
+            msg_info "已保持 warn 模式"
+          fi
+        elif [[ "$n_act" == "1" ]]; then
+          n_action="warn"
+        fi
+
+        local cur_iface; cur_iface=$(_traffic_guard_conf_get IFACE); cur_iface=${cur_iface:-auto}
+        _traffic_guard_conf_write "$cur_iface" "$n_limit" "$n_action" "$n_interval"
+        # 阈值变化后允许本周期内重新触发
+        rm -f /var/lib/fusionbox/traffic-guard.shutdown 2>/dev/null
+        msg_ok "已更新配置: LIMIT_GB=$n_limit ACTION=$n_action INTERVAL=${n_interval}min"
+        _log_write "流量阈值已更新 (LIMIT=${n_limit}GB, ACTION=$n_action)"
+        pause ;;
+      4)
+        if ! confirm "确认卸载流量阈值保护？"; then
+          pause; continue
+        fi
+        rm -f "$bin" "$cron_file" /var/lib/fusionbox/traffic-guard.state /var/lib/fusionbox/traffic-guard.shutdown
+        if confirm "是否同时删除配置文件 $conf？"; then
+          rm -f "$conf"
+          msg_ok "已卸载并删除配置"
+        else
+          msg_ok "已卸载，配置保留"
+        fi
+        _log_write "流量阈值保护已卸载"
+        pause ;;
+      0) break ;;
+      *) ;;
+    esac
+  done
+}
+
+# ---- Telegram 告警 ----
+_notify_conf_get() {
+  local key="$1"
+  local conf="/etc/fusionbox/notify.conf"
+  [[ -f "$conf" ]] || return 1
+  sed -n "s/^[[:space:]]*${key}=//p" "$conf" | tail -1 | tr -d '"' | tr -d "'" | tr -d '\r'
+}
+
+# 用法: _notify_conf_write <token> <chat_id> <cpu> <mem> <disk> <cooldown>
+_notify_conf_write() {
+  local token="$1" chat="$2" acpu="$3" amem="$4" adisk="$5" cool="$6"
+  umask 077
+  mkdir -p /etc/fusionbox
+  cat > /etc/fusionbox/notify.conf << NEOF
+# FusionBox Telegram 告警配置（含凭据，权限 600）
+TG_BOT_TOKEN=$token
+TG_CHAT_ID=$chat
+# 告警阈值（百分比）
+ALERT_CPU=$acpu
+ALERT_MEM=$amem
+ALERT_DISK=$adisk
+# 冷却时间（分钟），同一告警在冷却期内只发送一次
+COOLDOWN_MIN=$cool
+NEOF
+  chmod 600 /etc/fusionbox/notify.conf
+}
+
+# 用法: _notify_send "消息文本"（不会打印 token）
+_notify_send() {
+  local text="$1"
+  local token chat
+  token=$(_notify_conf_get TG_BOT_TOKEN)
+  chat=$(_notify_conf_get TG_CHAT_ID)
+
+  if [[ -z "$token" || -z "$chat" ]]; then
+    msg_warn "未配置 Telegram Bot Token 或 Chat ID，请先执行: fusionbox system notify"
+    return 1
+  fi
+
+  local resp
+  resp=$(curl -s --max-time 10 "https://api.telegram.org/bot${token}/sendMessage" \
+    --data-urlencode "chat_id=${chat}" \
+    --data-urlencode "text=${text}" 2>/dev/null)
+
+  if [[ "$resp" == *'"ok":true'* ]]; then
+    return 0
+  fi
+  msg_err "Telegram 消息发送失败（请检查 Token / Chat ID 与网络连通性）"
+  return 1
+}
+
+_notify_install_check() {
+  mkdir -p /usr/local/bin /etc/fusionbox /var/lib/fusionbox /var/log
+
+  cat > /usr/local/bin/fusionbox-notify-check << 'NEOF'
+#!/bin/bash
+# FusionBox 资源告警检查（由 fusionbox system notify 安装）
+# 配置: /etc/fusionbox/notify.conf  状态: /var/lib/fusionbox/notify.state
+# 日志: /var/log/fusionbox-notify.log
+
+CONF="/etc/fusionbox/notify.conf"
+STATE_DIR="/var/lib/fusionbox"
+STATE="$STATE_DIR/notify.state"
+LOG="/var/log/fusionbox-notify.log"
+
+umask 077
+exec 9>"${CONF}.lock"
+flock -n 9 || exit 0
+[[ -f "$CONF" ]] || exit 0
+. "$CONF" 2>/dev/null || exit 0
+
+TG_BOT_TOKEN="${TG_BOT_TOKEN:-}"
+TG_CHAT_ID="${TG_CHAT_ID:-}"
+ALERT_CPU="${ALERT_CPU:-90}"
+ALERT_MEM="${ALERT_MEM:-90}"
+ALERT_DISK="${ALERT_DISK:-90}"
+COOLDOWN_MIN="${COOLDOWN_MIN:-30}"
+[[ "$COOLDOWN_MIN" =~ ^[0-9]+$ ]] || COOLDOWN_MIN=30
+[[ -n "$TG_BOT_TOKEN" && -n "$TG_CHAT_ID" ]] || exit 0
+
+mkdir -p "$STATE_DIR" 2>/dev/null
+touch "$LOG" 2>/dev/null
+
+log_line() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG" 2>/dev/null; }
+
+# CPU 使用率（1 秒采样差值）
+read -r t1 i1 < <(awk '/^cpu /{print $2+$3+$4+$5+$6+$7+$8, $5+$6}' /proc/stat 2>/dev/null)
+sleep 1
+read -r t2 i2 < <(awk '/^cpu /{print $2+$3+$4+$5+$6+$7+$8, $5+$6}' /proc/stat 2>/dev/null)
+cpu=0
+dt=$(( ${t2:-0} - ${t1:-0} ))
+di=$(( ${i2:-0} - ${i1:-0} ))
+if [[ $dt -gt 0 ]]; then cpu=$(( (100 * (dt - di)) / dt )); fi
+
+mem=$(awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{if(t>0) printf "%d", (t-a)*100/t; else print 0}' /proc/meminfo 2>/dev/null)
+mem=${mem:-0}
+disk=$(df -P / 2>/dev/null | awk 'NR==2{gsub("%","",$5); print $5+0}')
+disk=${disk:-0}
+host=$(hostname 2>/dev/null || echo "unknown")
+
+alert=""
+if [[ "$cpu" =~ ^[0-9]+$ ]] && [[ "$cpu" -ge "$ALERT_CPU" ]]; then alert="${alert}CPU ${cpu}% "; fi
+if [[ "$mem" =~ ^[0-9]+$ ]] && [[ "$mem" -ge "$ALERT_MEM" ]]; then alert="${alert}内存 ${mem}% "; fi
+if [[ "$disk" =~ ^[0-9]+$ ]] && [[ "$disk" -ge "$ALERT_DISK" ]]; then alert="${alert}磁盘 ${disk}% "; fi
+[[ -z "$alert" ]] && exit 0
+
+LAST_ALERT=0
+[[ -f "$STATE" ]] && . "$STATE" 2>/dev/null
+now=$(date +%s)
+[[ "$LAST_ALERT" =~ ^[0-9]+$ ]] || LAST_ALERT=0
+if [[ $((now - LAST_ALERT)) -lt $((COOLDOWN_MIN * 60)) ]]; then exit 0; fi
+
+
+note="[FusionBox] $host 资源告警：$alert（阈值 CPU ${ALERT_CPU}% / 内存 ${ALERT_MEM}% / 磁盘 ${ALERT_DISK}%）"
+log_line "$note"
+resp=$(curl -fsS --max-time 10 "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+  --data-urlencode "chat_id=${TG_CHAT_ID}" \
+  --data-urlencode "text=${note}" 2>/dev/null) || exit 1
+[[ "$resp" == *'"ok":true'* ]] || exit 1
+echo "LAST_ALERT=$now" > "$STATE"
+chmod 600 "$STATE"
+NEOF
+  chmod 755 /usr/local/bin/fusionbox-notify-check
+
+  cat > /etc/cron.d/fusionbox-notify << 'NCEOF'
+# FusionBox 资源告警（每 5 分钟检查 CPU/内存/磁盘）
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+*/5 * * * * root /usr/local/bin/fusionbox-notify-check >/dev/null 2>&1
+NCEOF
+  chmod 644 /etc/cron.d/fusionbox-notify
+}
+
+_notify_status() {
+  msg ""
+  if [[ -f /etc/fusionbox/notify.conf ]]; then
+    msg "  ${F_BOLD}配置文件:${F_RESET} 存在 (权限 $(stat -c%a /etc/fusionbox/notify.conf 2>/dev/null))"
+  else
+    msg "  ${F_BOLD}配置文件:${F_RESET} 不存在"
+  fi
+  msg "  ${F_BOLD}告警脚本:${F_RESET} $([[ -x /usr/local/bin/fusionbox-notify-check ]] && echo "已安装" || echo "未安装")"
+  msg "  ${F_BOLD}cron 任务:${F_RESET} $([[ -f /etc/cron.d/fusionbox-notify ]] && echo "已安装 (每 5 分钟)" || echo "未安装")"
+  msg "  ${F_BOLD}阈值:${F_RESET} CPU $(_notify_conf_get ALERT_CPU)% / 内存 $(_notify_conf_get ALERT_MEM)% / 磁盘 $(_notify_conf_get ALERT_DISK)%"
+  msg "  ${F_BOLD}冷却:${F_RESET} $(_notify_conf_get COOLDOWN_MIN) 分钟"
+
+  msg "  ${F_BOLD}最近告警:${F_RESET}"
+  if [[ -f /var/lib/fusionbox/notify.state ]]; then
+    local LAST_ALERT=0
+    . /var/lib/fusionbox/notify.state 2>/dev/null
+    if [[ "${LAST_ALERT:-0}" =~ ^[0-9]+$ ]] && [[ "${LAST_ALERT:-0}" -gt 0 ]]; then
+      msg "    $(date -d "@$LAST_ALERT" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "时间戳 $LAST_ALERT")"
+    else
+      msg "    暂无告警记录"
+    fi
+  else
+    msg "    暂无告警记录"
+  fi
+
+  msg "  ${F_BOLD}最近日志:${F_RESET}"
+  if [[ -f /var/log/fusionbox-notify.log ]]; then
+    tail -n 10 /var/log/fusionbox-notify.log 2>/dev/null | sed 's/^/    /'
+  else
+    msg "    暂无日志"
+  fi
+}
+
+system_notify() {
+  _require_root
+  while true; do
+    clear
+    _print_banner
+    msg_title "Telegram 告警"
+    msg ""
+    local token chat
+    token=$(_notify_conf_get TG_BOT_TOKEN)
+    chat=$(_notify_conf_get TG_CHAT_ID)
+    if [[ -n "$token" && -n "$chat" ]]; then
+      msg "  ${F_BOLD}状态:${F_RESET} ${F_GREEN}已配置${F_RESET}"
+      msg "  ${F_BOLD}Token:${F_RESET} 已配置 (****${token: -4})"
+      msg "  ${F_BOLD}Chat ID:${F_RESET} $chat"
+      msg "  ${F_BOLD}阈值:${F_RESET} CPU $(_notify_conf_get ALERT_CPU)% / 内存 $(_notify_conf_get ALERT_MEM)% / 磁盘 $(_notify_conf_get ALERT_DISK)%"
+    else
+      msg "  ${F_BOLD}状态:${F_RESET} ${F_YELLOW}未配置${F_RESET}"
+      msg_warn "请先选择 1 配置 Bot Token 与 Chat ID"
+    fi
+    msg "  ${F_BOLD}资源告警:${F_RESET} $([[ -f /etc/cron.d/fusionbox-notify ]] && echo "已安装 (每 5 分钟)" || echo "未安装")"
+    msg ""
+    msg "  ${F_GREEN} 1${F_RESET}) 配置 Token / Chat ID"
+    msg "  ${F_GREEN} 2${F_RESET}) 发送测试消息"
+    msg "  ${F_GREEN} 3${F_RESET}) 安装资源告警 (CPU/内存/磁盘)"
+    msg "  ${F_GREEN} 4${F_RESET}) 查看状态 / 日志"
+    msg "  ${F_GREEN} 5${F_RESET}) 卸载"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-5]: " notify_choice || { msg ""; break; }
+
+    case "$notify_choice" in
+      1)
+        msg ""
+        msg_tip "Token 获取: Telegram 找 @BotFather 创建机器人"
+        msg_tip "Chat ID 获取: 向机器人发消息后访问 getUpdates，或使用 @userinfobot"
+        local new_token new_chat
+        new_token=$(read_input "请输入 Bot Token" "") || { pause; continue; }
+        if [[ ! "$new_token" =~ ^[0-9]{6,}:[A-Za-z0-9_-]{30,}$ ]]; then
+          msg_err "Token 格式无效（形如 123456789:AA****）"
+          pause; continue
+        fi
+        new_chat=$(read_input "请输入 Chat ID（群组为负数）" "") || { pause; continue; }
+        if [[ ! "$new_chat" =~ ^-?[0-9]+$ ]]; then
+          msg_err "Chat ID 格式无效（应为数字）"
+          pause; continue
+        fi
+
+        local acpu amem adisk cool
+        acpu=$(_notify_conf_get ALERT_CPU); acpu=${acpu:-90}
+        amem=$(_notify_conf_get ALERT_MEM); amem=${amem:-90}
+        adisk=$(_notify_conf_get ALERT_DISK); adisk=${adisk:-90}
+        cool=$(_notify_conf_get COOLDOWN_MIN); cool=${cool:-30}
+
+        if confirm "是否修改告警阈值？"; then
+          acpu=$(read_input "CPU 阈值 %" "$acpu")
+          amem=$(read_input "内存阈值 %" "$amem")
+          adisk=$(read_input "磁盘阈值 %" "$adisk")
+          cool=$(read_input "冷却时间（分钟）" "$cool")
+        fi
+        [[ "$acpu" =~ ^[0-9]+$ ]] && [[ "$acpu" -ge 1 && "$acpu" -le 100 ]] || acpu=90
+        [[ "$amem" =~ ^[0-9]+$ ]] && [[ "$amem" -ge 1 && "$amem" -le 100 ]] || amem=90
+        [[ "$adisk" =~ ^[0-9]+$ ]] && [[ "$adisk" -ge 1 && "$adisk" -le 100 ]] || adisk=90
+        [[ "$cool" =~ ^[0-9]+$ ]] && [[ "$cool" -ge 1 ]] || cool=30
+
+        _notify_conf_write "$new_token" "$new_chat" "$acpu" "$amem" "$adisk" "$cool"
+        msg_ok "配置已保存: /etc/fusionbox/notify.conf (权限 600)"
+        _log_write "Telegram 告警配置已更新"
+        pause ;;
+      2)
+        if [[ -z "$(_notify_conf_get TG_BOT_TOKEN)" ]]; then
+          msg_warn "未配置 Token，请先选择 1 进行配置"
+          pause; continue
+        fi
+        msg_info "正在发送测试消息..."
+        if _notify_send "[FusionBox] 测试消息 - $(hostname 2>/dev/null) $(date '+%Y-%m-%d %H:%M:%S')"; then
+          msg_ok "测试消息已发送，请检查 Telegram"
+        fi
+        pause ;;
+      3)
+        if [[ -z "$(_notify_conf_get TG_BOT_TOKEN)" ]]; then
+          msg_warn "未配置 Token，请先选择 1 进行配置"
+          pause; continue
+        fi
+        _notify_install_check
+        msg_ok "已安装 /usr/local/bin/fusionbox-notify-check"
+        msg_ok "已安装 cron: /etc/cron.d/fusionbox-notify (每 5 分钟)"
+        msg_tip "超过阈值时发送 Telegram 消息，冷却时间内不重复发送"
+        _log_write "Telegram 资源告警已安装"
+        pause ;;
+      4)
+        _notify_status
+        pause ;;
+      5)
+        if ! confirm "确认卸载 Telegram 资源告警（默认保留配置文件）？"; then
+          pause; continue
+        fi
+        rm -f /etc/cron.d/fusionbox-notify /usr/local/bin/fusionbox-notify-check
+        if confirm "是否同时删除配置文件 /etc/fusionbox/notify.conf（含凭据）？"; then
+          rm -f /etc/fusionbox/notify.conf /var/lib/fusionbox/notify.state
+          msg_ok "已卸载并删除配置"
+        else
+          msg_ok "已卸载，配置保留"
+        fi
+        _log_write "Telegram 资源告警已卸载"
+        pause ;;
+      0) break ;;
+      *) ;;
+    esac
+  done
+}
+
+# ---- 网络优化分级 ----
+# 探测默认路由网卡的协商速率
+_system_netopt_speed() {
+  local iface speed
+  iface=$(ip route show default 2>/dev/null | awk '/^default/{print $5; exit}')
+  if [[ -z "$iface" ]]; then
+    iface=$(awk '$2=="00000000"{print $1; exit}' /proc/net/route 2>/dev/null)
+  fi
+  [[ -z "$iface" ]] && return 1
+  speed=$(cat "/sys/class/net/$iface/speed" 2>/dev/null)
+  [[ "$speed" =~ ^[0-9]+$ ]] || return 1
+  [[ "$speed" -le 0 ]] && return 1
+  echo "$iface $speed"
+  return 0
+}
+
+# 用法: _system_netopt_apply <1|2|3>
+_system_netopt_apply() {
+  local tier="$1"
+  local file="/etc/sysctl.d/99-fusionbox-netopt.conf"
+  local label rmem_max wmem_max rmem_def wmem_def tcp_rmem tcp_wmem somaxconn backlog port_range
+
+  case "$tier" in
+    1)
+      label="≤100M"
+      rmem_max=4194304;  wmem_max=4194304
+      rmem_def=262144;   wmem_def=262144
+      tcp_rmem="4096 87380 4194304";  tcp_wmem="4096 65536 4194304"
+      somaxconn=1024; backlog=1024; port_range="1024 65535" ;;
+    2)
+      label="100M-1G"
+      rmem_max=16777216; wmem_max=16777216
+      rmem_def=1048576;  wmem_def=1048576
+      tcp_rmem="4096 87380 16777216"; tcp_wmem="4096 65536 16777216"
+      somaxconn=4096; backlog=4096; port_range="1024 65535" ;;
+    3)
+      label="≥1G"
+      rmem_max=67108864; wmem_max=67108864
+      rmem_def=2097152;  wmem_def=2097152
+      tcp_rmem="4096 262144 67108864"; tcp_wmem="4096 262144 67108864"
+      somaxconn=16384; backlog=16384; port_range="1024 65535" ;;
+    *)
+      msg_err "未知档位: $tier"
+      return 1 ;;
+  esac
+
+  msg ""
+  msg_info "即将应用网络优化档位: $label"
+  msg "    net.core.rmem_max = $rmem_max    net.core.wmem_max = $wmem_max"
+  msg "    net.core.rmem_default = $rmem_def    net.core.wmem_default = $wmem_def"
+  msg "    net.ipv4.tcp_rmem = $tcp_rmem"
+  msg "    net.ipv4.tcp_wmem = $tcp_wmem"
+  msg "    net.core.somaxconn = $somaxconn    net.core.netdev_max_backlog = $backlog"
+  msg "    net.ipv4.ip_local_port_range = $port_range"
+  msg "    net.ipv4.tcp_fastopen = 3    net.ipv4.tcp_tw_reuse = 1"
+  msg_tip "拥塞控制算法与队列算法保持系统现状，不做修改"
+  confirm "确认写入 $file 并应用？" || return 1
+
+  if [[ -f "$file" ]]; then
+    local bak="/etc/fusionbox/netopt-bak-$(date +%s).conf"
+    if _fb_backup_file "$file" "$bak"; then
+      msg_ok "已备份原文件: $bak"
+    else
+      msg_err "备份原文件失败，已取消操作"
+      return 1
+    fi
+  fi
+
+  local snapshot="/etc/fusionbox/netopt-original.conf" k value
+  mkdir -p /etc/fusionbox || return 1
+  if [[ ! -f "$snapshot" ]]; then
+    local tmp; tmp=$(mktemp) || return 1
+    for k in net.core.rmem_max net.core.wmem_max net.core.rmem_default net.core.wmem_default net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.core.somaxconn net.core.netdev_max_backlog net.ipv4.ip_local_port_range net.ipv4.tcp_fastopen net.ipv4.tcp_tw_reuse; do
+      value=$(sysctl -n "$k") || { rm -f "$tmp"; return 1; }
+      printf '%s = %s\n' "$k" "$value" >> "$tmp"
+    done
+    if [[ -f "$file" ]]; then cp -p "$file" "$snapshot.previous" || return 1; fi
+    mv "$tmp" "$snapshot" || return 1
+  fi
+  cat > "$file" << NEOF
+# FusionBox 网络优化 ($label)
+# 由 fusionbox system netopt 生成，恢复时使用首次应用前的运行值快照
+net.core.rmem_max = $rmem_max
+net.core.wmem_max = $wmem_max
+net.core.rmem_default = $rmem_def
+net.core.wmem_default = $wmem_def
+net.ipv4.tcp_rmem = $tcp_rmem
+net.ipv4.tcp_wmem = $tcp_wmem
+net.core.somaxconn = $somaxconn
+net.core.netdev_max_backlog = $backlog
+net.ipv4.ip_local_port_range = $port_range
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_tw_reuse = 1
+NEOF
+  chmod 644 "$file"
+
+  if sysctl -p "$file" >/dev/null 2>&1; then
+    msg_ok "网络优化已应用 ($label)"
+  else
+    msg_err "应用失败，恢复原运行值"
+    sysctl -p "$snapshot" >/dev/null 2>&1
+    if [[ -f "$snapshot.previous" ]]; then cp -p "$snapshot.previous" "$file"; else rm -f "$file"; fi
+    return 1
+  fi
+
+  msg ""
+  msg "  ${F_BOLD}当前关键参数:${F_RESET}"
+  local k
+  for k in net.core.rmem_max net.core.wmem_max net.core.somaxconn net.core.netdev_max_backlog net.ipv4.tcp_fastopen net.ipv4.tcp_tw_reuse; do
+    msg "    $k = $(sysctl -n "$k" 2>/dev/null)"
+  done
+  msg "    net.ipv4.tcp_rmem = $(sysctl -n net.ipv4.tcp_rmem 2>/dev/null)"
+  msg "    net.ipv4.tcp_wmem = $(sysctl -n net.ipv4.tcp_wmem 2>/dev/null)"
+  _log_write "网络优化已应用 ($label)"
+  return 0
+}
+
+_system_netopt_reset() {
+  local file="/etc/sysctl.d/99-fusionbox-netopt.conf"
+  if [[ ! -f "$file" ]]; then
+    msg_warn "未找到 $file，无需恢复"
+    return 0
+  fi
+  local snapshot="/etc/fusionbox/netopt-original.conf"
+  [[ -s "$snapshot" ]] || { msg_err "没有原运行值快照，拒绝宣称已恢复"; return 1; }
+  confirm "确认恢复首次优化前的实际运行值？" || return 1
+  sysctl -p "$snapshot" || { msg_err "恢复失败，保留快照供重试"; return 1; }
+  if [[ -f "$snapshot.previous" ]]; then
+    cp -p "$snapshot.previous" "$file" || return 1
+  else
+    rm -f "$file" || return 1
+  fi
+  rm -f "$snapshot" "$snapshot.previous"
+  msg_ok "已恢复优化前的运行参数和配置"
+
+  return 0
+}
+
+system_netopt() {
+  _require_root
+  while true; do
+    clear
+    _print_banner
+    msg_title "网络优化分级"
+    msg ""
+
+    local det; det=$(_system_netopt_speed)
+    if [[ -n "$det" ]]; then
+      local det_if="${det%% *}" det_sp="${det##* }"
+      local suggest="1" sname="≤100M"
+      if [[ "$det_sp" -ge 1000 ]]; then
+        suggest="3"; sname="≥1G"
+      elif [[ "$det_sp" -gt 100 ]]; then
+        suggest="2"; sname="100M-1G"
+      fi
+      msg "  ${F_BOLD}网卡:${F_RESET} $det_if    ${F_BOLD}协商速率:${F_RESET} ${det_sp} Mbps"
+      msg "  ${F_BOLD}建议档位:${F_RESET} ${suggest}) $sname"
+    else
+      msg "  ${F_BOLD}网卡速率:${F_RESET} ${F_YELLOW}无法自动探测（虚拟网卡常见），请手动选择档位${F_RESET}"
+    fi
+
+    if [[ -f /etc/sysctl.d/99-fusionbox-netopt.conf ]]; then
+      msg "  ${F_BOLD}优化文件:${F_RESET} 已应用 (net.core.rmem_max = $(sysctl -n net.core.rmem_max 2>/dev/null))"
+    else
+      msg "  ${F_BOLD}优化文件:${F_RESET} 未应用"
+    fi
+
+    msg ""
+    msg "  ${F_GREEN} 1${F_RESET}) 应用 ≤100M 档（小内存/低带宽）"
+    msg "  ${F_GREEN} 2${F_RESET}) 应用 100M-1G 档（通用）"
+    msg "  ${F_GREEN} 3${F_RESET}) 应用 ≥1G 档（高带宽）"
+    msg "  ${F_GREEN} 4${F_RESET}) 恢复默认（删除优化文件）"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-4]: " netopt_choice || { msg ""; break; }
+    case "$netopt_choice" in
+      1|2|3) _system_netopt_apply "$netopt_choice"; pause ;;
+      4) _system_netopt_reset; pause ;;
+      0) break ;;
+      *) ;;
+    esac
+  done
+}
+
+# ---- 系统设置子菜单 ----
+system_settings_menu() {
+  while true; do
+    clear
+    _print_banner
+    msg_title "系统设置"
+    msg ""
+    msg "  ${F_GREEN} 1${F_RESET}) DNS 优化"
+    msg "  ${F_GREEN} 2${F_RESET}) 修改主机名"
+    msg "  ${F_GREEN} 3${F_RESET}) hosts 解析管理"
+    msg "  ${F_GREEN} 4${F_RESET}) 系统更新源切换"
+    msg "  ${F_GREEN} 5${F_RESET}) 系统日志管理"
+    msg "  ${F_GREEN} 6${F_RESET}) Swap 管理"
+    msg "  ${F_GREEN} 7${F_RESET}) 流量阈值保护"
+    msg "  ${F_GREEN} 8${F_RESET}) Telegram 告警"
+    msg "  ${F_GREEN} 9${F_RESET}) 网络优化分级"
+    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择 [0-9]: " set_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    case "$set_choice" in
+      1) system_dns ;;
+      2) system_hostname ;;
+      3) system_hosts ;;
+      4) system_mirror ;;
+      5) system_log ;;
+      6) system_swap ;;
+      7) system_traffic_guard ;;
+      8) system_notify ;;
+      9) system_netopt ;;
+      0) break ;;
+      *) ;;
+    esac
+  done
+}
+
 # ---- 系统工具子菜单 ----
 system_tools_menu() {
   while true; do
@@ -1783,6 +3539,15 @@ system_help() {
   msg "  fusionbox system disk           磁盘管理"
   msg "  fusionbox system timezone       时区管理"
   msg "  fusionbox system trash          回收站管理"
+  msg "  fusionbox system dns            DNS 优化 (预设/自定义/锁定/备份恢复)"
+  msg "  fusionbox system hostname       修改主机名"
+  msg "  fusionbox system hosts          hosts 解析管理"
+  msg "  fusionbox system mirror         系统更新源切换 (apt/yum)"
+  msg "  fusionbox system log            系统日志查看与清理"
+  msg "  fusionbox system traffic-guard  流量阈值保护 (超限告警/关机)"
+  msg "  fusionbox system notify         Telegram 资源告警"
+  msg "  fusionbox system netopt         网络优化分级 (按网卡速率)"
+  msg "  fusionbox system settings       系统设置子菜单"
   msg "  fusionbox system tools          系统工具子菜单"
   msg ""
 }
@@ -1803,9 +3568,10 @@ system_menu() {
     msg "  ${F_GREEN} 7${F_RESET}) 更新系统"
     msg "  ${F_GREEN} 8${F_RESET}) 系统清理"
     msg "  ${F_GREEN} 9${F_RESET}) 系统工具 (SSH/防火墙/定时任务/磁盘/时区/回收站)"
+    msg "  ${F_GREEN}10${F_RESET}) 系统设置 (DNS/主机名/hosts/源/日志/流量/告警/网络优化)"
     msg "  ${F_GREEN} 0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-9]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-10]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) system_info ;;
       2) system_bbr ;;
@@ -1816,6 +3582,7 @@ system_menu() {
       7) system_update ;;
       8) system_clean ;;
       9) system_tools_menu ;;
+      10) system_settings_menu ;;
       0) break ;;
     esac
   done

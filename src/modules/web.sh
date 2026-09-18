@@ -18,6 +18,10 @@ web_main() {
     proxy|rp)              web_reverse_proxy "$@" ;;
     stream|l4)             web_stream_proxy "$@" ;;
     sitedata|backup)       web_site_data "$@" ;;
+    sites|site-list)       web_sites "$@" ;;
+    site-del|sitedel)      web_site_del "$@" ;;
+    site-alias|alias)      web_site_alias "$@" ;;
+    guard|cc)              web_guard "$@" ;;
     wordpress|wp)          web_wordpress "$@" ;;
     menu|main)             web_menu ;;
     help|h)                web_help ;;
@@ -281,10 +285,38 @@ NEOF
 # ---- SSL Certificate ----
 web_ssl() {
   _require_root
-  local domain="${1:-}"
+  local arg="${1:-}"
+
+  # 子命令直达: fusionbox web ssl status|renew|auto
+  case "$arg" in
+    status|st)         web_ssl_status; return $? ;;
+    renew|now|r)       web_ssl_renew; return $? ;;
+    auto|autorenew)    web_ssl_autorenew; return $? ;;
+  esac
 
   msg_title "SSL 证书"
   msg ""
+
+  local domain="$arg"
+
+  # 无域名参数时显示子菜单（选项 1 保持原有签发流程）
+  if [[ -z "$domain" ]]; then
+    msg "  ${F_GREEN}1${F_RESET}) 申请/签发 SSL 证书"
+    msg "  ${F_GREEN}2${F_RESET}) 查看证书状态与到期监控"
+    msg "  ${F_GREEN}3${F_RESET}) 立即续期全部证书"
+    msg "  ${F_GREEN}4${F_RESET}) 自动续期管理 (cron)"
+    msg "  ${F_GREEN}0${F_RESET}) 返回"
+    msg ""
+    local ssl_choice=""
+    read -p "请选择 [0-4]: " ssl_choice || return
+    case "$ssl_choice" in
+      1) ;;   # 继续下方签发流程
+      2) web_ssl_status; return ;;
+      3) web_ssl_renew; return ;;
+      4) web_ssl_autorenew; return ;;
+      *) return ;;
+    esac
+  fi
 
   if ! command -v certbot &>/dev/null; then
     msg_info "正在安装 Certbot..."
@@ -307,18 +339,255 @@ web_ssl() {
     fi
     if [[ -n "$domain" ]]; then
       msg_info "正在申请 $domain 的 SSL 证书..."
-      certbot --nginx -d "$domain" --non-interactive --agree-tos --email admin@"$domain" 2>/dev/null || \
-        certbot --nginx -d "$domain" 2>/dev/null || \
+      if certbot --nginx -d "$domain" --non-interactive --agree-tos --email admin@"$domain" 2>/dev/null || \
+         certbot --nginx -d "$domain" 2>/dev/null; then
+        msg_ok "SSL 证书申请完成: $domain"
+        msg_info "已支持自动续期：fusionbox web ssl auto"
+        _log_write "SSL 证书已获取: $domain"
+      else
         msg_err "SSL 证书申请失败，请检查域名 DNS。"
-      _log_write "SSL 证书已获取: $domain"
+        msg_info "详细日志: /var/log/letsencrypt/letsencrypt.log"
+      fi
     else
       msg_info "未指定域名，Certbot 已安装可供手动使用。"
     fi
+  else
+    msg_err "Certbot 安装失败，请检查系统软件源。"
   fi
 
   msg ""
   msg "  ${F_BOLD}已有证书:${F_RESET}"
   certbot certificates 2>/dev/null || msg "    无"
+  pause
+}
+
+# ---- SSL 到期监控与自动续期 ----
+
+# 读取证书信息，输出 "到期时间|剩余天数"；无法解析时返回 1
+_web_cert_info() {
+  local cert="$1"
+  [[ -f "$cert" ]] || return 1
+  command -v openssl &>/dev/null || return 1
+  local enddate end_ts now_ts
+  enddate=$(openssl x509 -enddate -noout -in "$cert" 2>/dev/null | cut -d= -f2)
+  [[ -z "$enddate" ]] && return 1
+  end_ts=$(date -d "$enddate" +%s 2>/dev/null) || return 1
+  now_ts=$(date +%s)
+  printf '%s|%s' "$enddate" "$(( (end_ts - now_ts) / 86400 ))"
+}
+
+# 仅返回证书剩余天数
+_web_cert_days() {
+  local info
+  info=$(_web_cert_info "$1" 2>/dev/null) || return 1
+  echo "${info##*|}"
+}
+
+# 证书状态与到期监控
+web_ssl_status() {
+  _require_root
+  msg_title "SSL 证书状态与到期监控"
+  msg ""
+
+  command -v openssl &>/dev/null || _install_pkg openssl 2>/dev/null || true
+
+  # 是否有可用证书
+  local found=0 c
+  for c in /etc/letsencrypt/live/*/fullchain.pem; do
+    [[ -f "$c" ]] && { found=1; break; }
+  done
+
+  local total=0 ok=0 warning=0 expired=0
+  if [[ $found -eq 0 ]]; then
+    msg_info "未找到证书：/etc/letsencrypt/live 下没有 fullchain.pem"
+  else
+    msg "  ${F_BOLD}域名 | 到期时间 | 剩余天数${F_RESET}"
+    msg "  ------------------------------------------------------------"
+    local d name cert info enddate days color tail
+    for d in /etc/letsencrypt/live/*/; do
+      [[ -d "$d" ]] || continue
+      cert="${d}fullchain.pem"
+      [[ -f "$cert" ]] || continue
+      name=$(basename "$d")
+
+      info=$(_web_cert_info "$cert")
+      if [[ -z "$info" ]]; then
+        # openssl 缺失或日期无法解析
+        enddate="未知"; days="?"; color="$F_YELLOW"; tail=""
+      else
+        enddate="${info%%|*}"; days="${info##*|}"
+        color="$F_GREEN"; tail=""
+      fi
+
+      total=$((total + 1))
+      if [[ "$days" =~ ^-?[0-9]+$ ]]; then
+        if (( days < 0 )); then
+          color="$F_RED"; tail="  ${F_RED}(已过期)${F_RESET}"; expired=$((expired + 1))
+        elif (( days < 15 )); then
+          color="$F_YELLOW"; tail="  ${F_YELLOW}(即将过期)${F_RESET}"; warning=$((warning + 1))
+        else
+          ok=$((ok + 1))
+        fi
+      else
+        warning=$((warning + 1))
+      fi
+      msg "  ${F_BOLD}${name}${F_RESET} | ${enddate} | ${color}${days} 天${F_RESET}${tail}"
+    done
+    msg ""
+    msg "  共 ${total} 个证书：${F_GREEN}${ok} 正常${F_RESET} / ${F_YELLOW}${warning} 需关注${F_RESET} / ${F_RED}${expired} 已过期${F_RESET}"
+  fi
+
+  # certbot 自身信息作为补充
+  if command -v certbot &>/dev/null; then
+    msg ""
+    msg "  ${F_BOLD}certbot certificates（补充）:${F_RESET}"
+    local cbo line
+    cbo=$(certbot certificates 2>/dev/null | grep -E "Certificate Name|Domains|Expiry Date")
+    if [[ -n "$cbo" ]]; then
+      while IFS= read -r line; do
+        msg "  ${line#"${line%%[![:space:]]*}"}"
+      done <<< "$cbo"
+    else
+      msg "    无"
+    fi
+  elif [[ $found -eq 0 ]]; then
+    msg_warn "未安装 certbot，暂不能续期（可运行 fusionbox web ssl 安装）"
+  fi
+
+  pause
+}
+
+# 立即续期全部证书
+web_ssl_renew() {
+  _require_root
+  msg_title "证书续期 (certbot renew)"
+  msg ""
+
+  if ! command -v certbot &>/dev/null; then
+    msg_err "未安装 Certbot，请先运行: fusionbox web ssl"
+    pause; return 1
+  fi
+
+  if ! confirm "将执行 certbot renew 续期全部证书并重载 Nginx，确认继续？"; then
+    return
+  fi
+
+  local renew_log="/tmp/fusionbox-certbot-renew.log"
+  msg_info "正在续期（以下为 certbot 真实输出）..."
+  msg ""
+  certbot renew 2>&1 | tee "$renew_log"
+  local rc=${PIPESTATUS[0]}
+  msg ""
+
+  if [[ $rc -eq 0 ]]; then
+    systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+    msg_ok "续期流程完成，Nginx 已重载"
+    _log_write "certbot renew 执行成功"
+  else
+    msg_err "续期失败（退出码 $rc）"
+    msg_info "日志路径: /var/log/letsencrypt/letsencrypt.log"
+    msg_info "本次输出已保存: $renew_log"
+    _log_write "certbot renew 失败 rc=$rc"
+  fi
+  pause
+  return "$rc"
+}
+
+# 自动续期（cron）安装/查看/卸载
+_web_ssl_existing_schedule() {
+  local unit
+  for unit in certbot.timer snap.certbot.renew.timer certbot-renew.timer; do
+    if systemctl is-enabled "$unit" >/dev/null 2>&1 || systemctl is-active "$unit" >/dev/null 2>&1; then
+      printf '%s\n' "$unit"; return 0
+    fi
+  done
+  if grep -rEl '^[^#]*certbot[[:space:]].*renew' /etc/cron.d /etc/cron.daily /etc/crontab 2>/dev/null; then return 0; fi
+  crontab -l 2>/dev/null | grep -E '^[^#]*certbot[[:space:]].*renew'
+}
+
+web_ssl_autorenew() {
+  _require_root
+  local cron_file="/etc/cron.d/fusionbox-cert-renew"
+
+  msg_title "证书自动续期管理"
+  msg ""
+
+  if ! command -v certbot &>/dev/null; then
+    msg_warn "未检测到 certbot，请先安装并签发证书: fusionbox web ssl"
+    msg_info "安装完成后可再次运行: fusionbox web ssl auto"
+    pause; return 1
+  fi
+
+  msg "  ${F_GREEN}1${F_RESET}) 安装/更新自动续期"
+  msg "  ${F_GREEN}2${F_RESET}) 查看自动续期状态"
+  msg "  ${F_GREEN}3${F_RESET}) 卸载自动续期"
+  msg "  ${F_GREEN}0${F_RESET}) 返回"
+  msg ""
+  local ar_choice=""
+  read -p "请选择 [0-3]: " ar_choice || return
+
+  case "$ar_choice" in
+    1)
+      local existing
+      if existing=$(_web_ssl_existing_schedule); then
+        msg_info "已有续期任务，保留现有调度: $existing"
+        return 0
+      fi
+      if ! confirm "将写入 $cron_file（每天自动续期），确认继续？"; then
+        return
+      fi
+      # 随机分钟：避免大批机器在同一分钟集中请求 CA
+      local rnd_min=$((RANDOM % 60))
+      mkdir -p /etc/cron.d
+      if [[ -f "$cron_file" ]]; then
+        cp "$cron_file" "$cron_file.fb-bak-$(date +%s)" 2>/dev/null
+      fi
+      cat > "$cron_file" << AEOF
+# FusionBox 证书自动续期（由 fusionbox web ssl auto 生成）
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+# 每天 03:00-03:59 之间随机分钟执行，避免多机同时请求 CA
+$rnd_min 3 * * * root certbot renew --quiet --deploy-hook "systemctl reload nginx"
+AEOF
+      if [[ ! -f "$cron_file" ]]; then
+        msg_err "写入 $cron_file 失败，请检查目录权限"
+        pause; return 1
+      fi
+      chmod 644 "$cron_file"
+      msg_ok "自动续期已配置: 每天 03:$(printf '%02d' "$rnd_min") 执行"
+      msg_info "任务内容: certbot renew --quiet --deploy-hook \"systemctl reload nginx\""
+      if ! command -v cron &>/dev/null && ! command -v crond &>/dev/null; then
+        msg_warn "未检测到 cron/crond 服务，定时任务可能不会执行（请安装 cron）"
+      fi
+      _log_write "证书自动续期已配置 (min=$rnd_min)"
+      ;;
+    2)
+      _web_ssl_existing_schedule || msg_warn "未发现已启用的系统续期任务"
+      if [[ -f "$cron_file" ]]; then
+        msg_ok "自动续期已启用: $cron_file"
+        msg ""
+        while IFS= read -r line; do
+          msg "  $line"
+        done < "$cron_file"
+      else
+        msg_info "未配置自动续期，可选择 1 安装"
+      fi
+      ;;
+    3)
+      if [[ ! -f "$cron_file" ]]; then
+        msg_info "未找到 $cron_file，无需卸载"
+      else
+        if ! confirm "确认卸载证书自动续期（删除 $cron_file）？"; then
+          return
+        fi
+        cp "$cron_file" "$cron_file.fb-bak-$(date +%s)" 2>/dev/null
+        rm -f "$cron_file"
+        msg_ok "自动续期已卸载"
+        _log_write "证书自动续期已卸载"
+      fi
+      ;;
+    *) return ;;
+  esac
   pause
 }
 
@@ -408,9 +677,7 @@ web_mysql() {
         read -r -p "数据库: " db_name
         [[ "$db_user" =~ ^[A-Za-z0-9_]+$ ]] || { msg_err "用户名仅允许字母数字下划线"; return 1; }
         [[ "$db_name" =~ ^[A-Za-z0-9_]+$ ]] || { msg_err "数据库名仅允许字母数字下划线"; return 1; }
-        # 值转义：反斜杠加倍 + 单引号加倍（SQL 层）。SQL 必须经 heredoc/stdin 传入：
-        # 若放在 bash 双引号 -e "..." 里，bash 会把转义好的 \\ 再次折叠成 \，
-        # 导致 SQL 层把 \x 当未知转义丢掉反斜杠（v1.1.0 实测密码被静默改写）
+        # SQL 字符串转义与 Bash 参数展开是不同层；展开结果不会被 Bash 二次解释。
         local esc_user="$db_user"
         esc_user=${esc_user//\\/\\\\}
         esc_user=${esc_user//\'/\'\'}
@@ -1806,9 +2073,867 @@ web_site_data() {
   pause
 }
 
+# ---- 站点清单 ----
+# 解析 nginx server 块（容错，按行 + 花括号深度），输出 "文件|域名|端口|root|proxy|cert"
+_web_parse_server_blocks() {
+  local f="$1"
+  awk -v file="$f" '
+    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    function stmt(s,   dup, n, i, pp) {
+      s = trim(s)
+      if (s ~ /^server_name[ \t]/) {
+        sub(/^server_name[ \t]+/, "", s)
+        if (name == "") name = trim(s)
+      } else if (s ~ /^listen[ \t]/) {
+        sub(/^listen[ \t]+/, "", s)
+        sub(/[ \t].*/, "", s)
+        sub(/^\[::\]:/, "", s)
+        if (s != "") {
+          dup = 0
+          n = split(port, pp, ",")
+          for (i = 1; i <= n; i++) if (pp[i] == s) dup = 1
+          if (!dup) port = (port == "" ? s : port "," s)
+        }
+      } else if (s ~ /^root[ \t]/) {
+        sub(/^root[ \t]+/, "", s)
+        if (root == "") root = trim(s)
+      } else if (s ~ /^proxy_pass[ \t]/) {
+        sub(/^proxy_pass[ \t]+/, "", s)
+        if (proxy == "") proxy = trim(s)
+      } else if (s ~ /^ssl_certificate[ \t]/) {
+        sub(/^ssl_certificate[ \t]+/, "", s)
+        if (cert == "") cert = trim(s)
+      }
+    }
+    {
+      line = $0
+      sub(/[ \t]*#.*/, "", line)
+      if (in_srv) {
+        o = line; nb = gsub(/\{/, "", o)
+        c = line; ne = gsub(/\}/, "", c)
+        depth += nb - ne
+        flat = line
+        gsub(/[{}]/, ";", flat)
+        n = split(flat, parts, ";")
+        for (i = 1; i <= n; i++) stmt(parts[i])
+        if (depth <= 0) {
+          if (name != "" || port != "" || root != "" || proxy != "") \
+            print file "|" name "|" port "|" root "|" proxy "|" cert
+          in_srv = 0
+        }
+      } else if (line ~ /(^|[ \t])server[ \t]*\{/) {
+        in_srv = 1; depth = 0
+        name = ""; port = ""; root = ""; proxy = ""; cert = ""
+        o = line; nb = gsub(/\{/, "", o)
+        c = line; ne = gsub(/\}/, "", c)
+        depth += nb - ne
+        flat = line
+        sub(/^.*server[ \t]*\{/, "", flat)
+        gsub(/[{}]/, ";", flat)
+        n = split(flat, parts, ";")
+        for (i = 1; i <= n; i++) stmt(parts[i])
+        if (depth <= 0) {
+          if (name != "" || port != "" || root != "" || proxy != "") \
+            print file "|" name "|" port "|" root "|" proxy "|" cert
+          in_srv = 0
+        }
+      }
+    }
+  ' "$f"
+}
+
+web_sites() {
+  _require_root
+  msg_title "站点清单"
+  msg ""
+
+  if ! command -v nginx &>/dev/null; then
+    msg_warn "Nginx 未安装，无法读取站点配置（fusionbox web lnmp 可安装）"
+    pause; return
+  fi
+
+  local files=() f
+  for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do
+    [[ -e "$f" || -L "$f" ]] || continue
+    [[ -f "$f" ]] || continue
+    files+=("$f")
+  done
+
+  # 去重：sites-enabled 常是 sites-available 的软链
+  declare -A _seen_site=()
+  local uniq=() rp
+  for f in "${files[@]}"; do
+    rp=$(readlink -f "$f" 2>/dev/null || echo "$f")
+    [[ -n "${_seen_site[$rp]:-}" ]] && continue
+    _seen_site[$rp]=1
+    uniq+=("$f")
+  done
+  unset _seen_site
+
+  local parsed; parsed=$(mktemp)
+  for f in "${uniq[@]}"; do
+    _web_parse_server_blocks "$f" >> "$parsed"
+  done
+
+  if [[ ! -s "$parsed" ]]; then
+    rm -f "$parsed"
+    msg_info "未发现已配置站点（/etc/nginx/sites-enabled 与 /etc/nginx/conf.d 为空）"
+    pause; return
+  fi
+
+  msg "  ${F_BOLD}域名 | 端口 | 类型 | 根目录/后端 | 证书剩余 | 配置文件${F_RESET}"
+  msg "  ----------------------------------------------------------------------------"
+
+  local total=0
+  local domains=()
+  while IFS='|' read -r conf name port root proxy cert; do
+    [[ -z "$name$port$root$proxy" ]] && continue
+    total=$((total + 1))
+
+    # 类型：反代 > PHP > 静态
+    local type="静态"
+    if [[ -n "$proxy" ]]; then
+      type="反代"
+    elif grep -qE "fastcgi_pass|php" "$conf" 2>/dev/null; then
+      type="PHP"
+    fi
+
+    local target="-"
+    [[ -n "$proxy" ]] && target="$proxy"
+    [[ -z "$proxy" && -n "$root" ]] && target="$root"
+
+    local cert_info="-" days
+    if [[ -n "$cert" && -f "$cert" ]]; then
+      days=$(_web_cert_days "$cert" 2>/dev/null)
+      if [[ -n "$days" && "$days" =~ ^-?[0-9]+$ ]]; then
+        if (( days < 0 )); then
+          cert_info="${F_RED}已过期${F_RESET}"
+        elif (( days < 15 )); then
+          cert_info="${F_YELLOW}${days} 天${F_RESET}"
+        else
+          cert_info="${F_GREEN}${days} 天${F_RESET}"
+        fi
+      else
+        cert_info="未知"
+      fi
+    fi
+
+    msg "  ${F_BOLD}${name}${F_RESET} | ${port:--} | $type | $target | $cert_info | $conf"
+
+    local primary="${name%% *}"
+    [[ -n "$primary" ]] && domains+=("$primary")
+  done < "$parsed"
+  rm -f "$parsed"
+
+  msg ""
+  msg "  共 $total 个站点"
+
+  # 站点目录占用
+  local shown=0 d
+  declare -A _seen_dir=()
+  for d in "${domains[@]}"; do
+    [[ -z "$d" ]] && continue
+    [[ -n "${_seen_dir[$d]:-}" ]] && continue
+    _seen_dir[$d]=1
+    if [[ -d "/var/www/$d" ]]; then
+      if [[ $shown -eq 0 ]]; then
+        msg ""
+        msg "  ${F_BOLD}站点目录占用:${F_RESET}"
+      fi
+      msg "    $(du -sh "/var/www/$d" 2>/dev/null | cut -f1)  /var/www/$d"
+      shown=$((shown + 1))
+    fi
+  done
+  unset _seen_dir
+
+  pause
+}
+
+# ---- 删除站点 ----
+web_site_del() {
+  _require_root
+  msg_title "删除站点"
+  msg ""
+
+  local domain="${1:-}"
+  if [[ -z "$domain" ]]; then
+    domain=$(read_input "请输入要删除的域名")
+  fi
+  if ! _web_validate_domain "$domain"; then
+    msg_err "域名格式不合法: $domain"
+    pause; return 1
+  fi
+
+  local conf_avail="/etc/nginx/sites-available/$domain"
+  local conf_enabled="/etc/nginx/sites-enabled/$domain"
+  local conf_d="/etc/nginx/conf.d/$domain.conf"
+
+  if [[ ! -e "$conf_avail" && ! -L "$conf_avail" && \
+        ! -e "$conf_enabled" && ! -L "$conf_enabled" && \
+        ! -e "$conf_d" && ! -L "$conf_d" ]]; then
+    msg_err "未找到 $domain 的站点配置"
+    pause; return 1
+  fi
+
+  # 先备份（配置 -> /etc/fusionbox/site-bak-<ts>/）
+  local ts; ts=$(date +%Y%m%d%H%M%S)
+  local bak_dir="/etc/fusionbox/site-bak-$ts"
+  mkdir -p "$bak_dir"
+  local -a bak_pairs=()
+  if [[ -e "$conf_avail" || -L "$conf_avail" ]]; then
+    cp -a "$conf_avail" "$bak_dir/sites-available_$domain" 2>/dev/null && \
+      bak_pairs+=("$conf_avail|$bak_dir/sites-available_$domain")
+  fi
+  if [[ -e "$conf_enabled" || -L "$conf_enabled" ]]; then
+    cp -a "$conf_enabled" "$bak_dir/sites-enabled_$domain" 2>/dev/null && \
+      bak_pairs+=("$conf_enabled|$bak_dir/sites-enabled_$domain")
+  fi
+  if [[ -e "$conf_d" || -L "$conf_d" ]]; then
+    cp -a "$conf_d" "$bak_dir/conf.d_$domain.conf" 2>/dev/null && \
+      bak_pairs+=("$conf_d|$bak_dir/conf.d_$domain.conf")
+  fi
+
+  if ! confirm "确认删除站点 $domain ？（配置已备份到 $bak_dir）"; then
+    return
+  fi
+
+  local del_root=0
+  if [[ -d "/var/www/$domain" ]]; then
+    if confirm "是否同时删除网站目录 /var/www/$domain ？（默认否，删除后不可恢复）"; then
+      del_root=1
+    fi
+  fi
+
+  local original expected=0
+  for original in "$conf_enabled" "$conf_avail" "$conf_d"; do
+    [[ -e "$original" || -L "$original" ]] && expected=$((expected+1))
+  done
+  [[ ${#bak_pairs[@]} -eq $expected ]] || { msg_err "配置备份不完整，取消删除"; return 1; }
+  rm -f "$conf_enabled" "$conf_avail" "$conf_d" || return 1
+
+  if ! nginx -t 2>/dev/null; then
+    # 回滚配置（含软链：-L 兼容目标暂时不存在的情况）
+    local pair src dst
+    for pair in "${bak_pairs[@]}"; do
+      src="${pair%%|*}"; dst="${pair##*|}"
+      [[ -e "$dst" || -L "$dst" ]] && cp -a "$dst" "$src" 2>/dev/null
+    done
+    msg_err "nginx 配置校验失败，已回滚站点配置（备份: $bak_dir）"
+    pause; return 1
+  fi
+
+  systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+  msg_ok "站点已删除: $domain"
+  msg_info "配置备份: $bak_dir"
+
+  if [[ $del_root -eq 1 ]]; then
+    rm -rf "/var/www/$domain"
+    msg_ok "网站目录已删除: /var/www/$domain"
+  fi
+
+  # 证书需单独清理
+  if [[ -d "/etc/letsencrypt/live/$domain" ]]; then
+    msg ""
+    msg_info "该域名的证书仍在 /etc/letsencrypt/live/$domain"
+    if confirm "是否同时删除证书 (certbot delete --cert-name $domain)？"; then
+      if command -v certbot &>/dev/null; then
+        certbot delete --cert-name "$domain" --non-interactive 2>/dev/null && \
+          msg_ok "证书已删除: $domain" || msg_err "证书删除失败，请手动执行 certbot delete --cert-name $domain"
+      else
+        msg_err "certbot 未安装，请手动清理 /etc/letsencrypt/live/$domain"
+      fi
+    else
+      msg_info "如需清理请手动执行: certbot delete --cert-name $domain"
+    fi
+  fi
+
+  _log_write "站点已删除: $domain (备份: $bak_dir)"
+  pause
+}
+
+# ---- 关联多域名（server_name 别名）----
+web_site_alias() {
+  _require_root
+  msg_title "关联多域名 (server_name 别名)"
+  msg ""
+
+  local domain="${1:-}"
+  if [[ -z "$domain" ]]; then
+    domain=$(read_input "请输入主域名（已配置的站点）")
+  fi
+  if ! _web_validate_domain "$domain"; then
+    msg_err "域名格式不合法: $domain"
+    pause; return 1
+  fi
+
+  # 定位配置文件
+  local conf="" conf_real=""
+  if [[ -f "/etc/nginx/sites-available/$domain" ]]; then
+    conf="/etc/nginx/sites-available/$domain"
+  elif [[ -f "/etc/nginx/sites-enabled/$domain" ]]; then
+    conf="/etc/nginx/sites-enabled/$domain"
+  elif [[ -f "/etc/nginx/conf.d/$domain.conf" ]]; then
+    conf="/etc/nginx/conf.d/$domain.conf"
+  fi
+  if [[ -z "$conf" ]]; then
+    msg_err "未找到 $domain 的站点配置，请先用 fusionbox web site 创建"
+    pause; return 1
+  fi
+  # 软链场景：改写目标文件，避免破坏软链
+  conf_real=$(readlink -f "$conf" 2>/dev/null || echo "$conf")
+
+  local alias_domain="${2:-}"
+  if [[ -z "$alias_domain" ]]; then
+    alias_domain=$(read_input "请输入要关联的别名域名（如 www.$domain）")
+  fi
+  if ! _web_validate_domain "$alias_domain"; then
+    msg_err "别名域名格式不合法: $alias_domain"
+    pause; return 1
+  fi
+  if [[ "$alias_domain" == "$domain" ]]; then
+    msg_err "别名域名不能与主域名相同"
+    pause; return 1
+  fi
+
+  local already=0
+  if grep -qE "^[[:space:]]*server_name[^;]*[[:space:]]${alias_domain}([[:space:]]|;)" "$conf_real" 2>/dev/null; then
+    already=1
+    msg_info "配置中已包含别名 $alias_domain，将跳过修改"
+  fi
+
+  # 备份
+  local ts; ts=$(date +%Y%m%d%H%M%S)
+  local bak_dir="/etc/fusionbox/site-bak-$ts"
+  mkdir -p "$bak_dir"
+  local conf_bak="$bak_dir/$(basename "$conf_real")"
+  cp -a "$conf_real" "$conf_bak" 2>/dev/null || { msg_err "备份失败，取消修改"; return 1; }
+
+  if [[ $already -eq 0 ]]; then
+    if ! confirm "将把 $alias_domain 追加到 $domain 的 server_name，确认继续？"; then
+      return
+    fi
+
+    local tmp; tmp=$(mktemp)
+    awk -v d="$domain" -v a="$alias_domain" '
+      /^[ \t]*server_name[ \t]/ {
+        if (index($0, d) > 0 && index($0, a) == 0) {
+          sub(/;/, " " a ";")
+          hit++
+        }
+      }
+      { print }
+      END { if (hit == 0) exit 3 }
+    ' "$conf_real" > "$tmp"
+    local awk_rc=$?
+    if [[ $awk_rc -ne 0 ]]; then
+      rm -f "$tmp"
+      msg_err "未在 $conf_real 中找到 server_name $domain，未做修改"
+      pause; return 1
+    fi
+    cat "$tmp" > "$conf_real"
+    rm -f "$tmp"
+
+    if ! nginx -t 2>/dev/null; then
+      cp -a "$conf_bak" "$conf_real" 2>/dev/null
+      msg_err "nginx 配置校验失败，已回滚 $conf_real"
+      pause; return 1
+    fi
+    systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+    msg_ok "已关联别名: $domain + $alias_domain"
+    msg_info "配置备份: $bak_dir"
+  fi
+
+  # 多域名证书
+  if command -v certbot &>/dev/null; then
+    if confirm "是否为 $domain 和 $alias_domain 申请/更新证书？"; then
+      certbot --nginx -d "$domain" -d "$alias_domain" --expand --non-interactive --agree-tos --email admin@"$domain" 2>/dev/null || \
+        certbot --nginx -d "$domain" -d "$alias_domain" --expand 2>/dev/null || \
+        msg_err "证书签发失败，请检查别名域名 DNS 解析"
+      systemctl reload nginx 2>/dev/null || true
+    else
+      msg_info "可稍后手动执行: certbot --nginx -d $domain -d $alias_domain"
+    fi
+  else
+    msg_warn "Certbot 未安装，可运行 fusionbox web ssl 安装后签发多域名证书"
+  fi
+
+  _log_write "站点别名已关联: $domain -> $alias_domain"
+  pause
+}
+
 # ---- WordPress 快速部署 (快捷) ----
 web_wordpress() {
   _deploy_wordpress
+}
+
+# ---- 防 CC 与 Cloudflare 联动 ----
+web_guard() {
+  _require_root
+
+  while true; do
+    clear
+    _print_banner
+    msg_title "防 CC 与 Cloudflare 联动"
+    msg ""
+    msg "  ${F_GREEN}1${F_RESET}) 安装 nginx 防 CC (fail2ban)"
+    msg "  ${F_GREEN}2${F_RESET}) 卸载 nginx 防 CC"
+    msg "  ${F_GREEN}3${F_RESET}) 查看封禁状态"
+    msg "  ${F_GREEN}4${F_RESET}) Cloudflare 联动配置"
+    msg "  ${F_GREEN}5${F_RESET}) 负载自适应开盾 (安装/卸载/状态)"
+    msg "  ${F_GREEN}0${F_RESET}) 返回"
+    msg ""
+    local g_choice=""
+    read -p "请选择 [0-5]: " g_choice || return
+    case "$g_choice" in
+      1) _web_guard_cc_install ;;
+      2) _web_guard_cc_uninstall ;;
+      3) _web_guard_cc_status ;;
+      4) _web_guard_cf_config ;;
+      5) _web_guard_cf_adaptive ;;
+      0) return ;;
+      *) continue ;;
+    esac
+    pause
+  done
+}
+
+# 安装 fail2ban 防 CC
+_web_guard_cc_install() {
+  msg_info "原理: fail2ban 统计 nginx access.log 中同一 IP 的 4xx 请求，超阈值自动封禁"
+  msg ""
+
+  if ! confirm "将安装/配置 fail2ban 防 CC 规则，确认继续？"; then
+    return
+  fi
+
+  if ! command -v fail2ban-client &>/dev/null; then
+    msg_info "正在安装 fail2ban..."
+    _install_pkg fail2ban || { msg_err "fail2ban 安装失败"; return 1; }
+  fi
+  systemctl enable fail2ban 2>/dev/null || true
+
+  local filter="/etc/fail2ban/filter.d/fusionbox-nginx-cc.conf"
+  local jail="/etc/fail2ban/jail.d/fusionbox-nginx-cc.local"
+  mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d
+  # 先备份已有同名文件
+  [[ -f "$filter" ]] && cp "$filter" "$filter.fb-bak-$(date +%s)" 2>/dev/null
+  [[ -f "$jail" ]] && cp "$jail" "$jail.fb-bak-$(date +%s)" 2>/dev/null
+
+  cat > "$filter" << 'F2BFILTER'
+# FusionBox nginx 防 CC 过滤器（_daemon = nginx）
+# 统计同一来源 IP 在 findtime 内的 4xx 请求次数
+[Definition]
+failregex = ^<HOST> \S+ \S+ \[[^\]]+\] "(?:GET|POST|HEAD|PUT|DELETE|OPTIONS|PATCH|CONNECT) [^"]*"\s+4\d\d\s
+ignoreregex =
+F2BFILTER
+
+  cat > "$jail" << 'F2BJAIL'
+[fusionbox-nginx-cc]
+enabled = true
+filter = fusionbox-nginx-cc
+logpath = /var/log/nginx/access.log
+maxretry = 30
+findtime = 60
+bantime = 3600
+action = iptables-multiport[name=fusionbox-nginx,port="http,https"]
+F2BJAIL
+
+  if [[ ! -f /var/log/nginx/access.log ]]; then
+    msg_warn "未发现 /var/log/nginx/access.log，请确认 Nginx 已启用访问日志"
+  fi
+
+  if ! systemctl restart fail2ban 2>/dev/null; then
+    msg_err "fail2ban 重启失败，请检查: systemctl status fail2ban"
+    return 1
+  fi
+
+  if fail2ban-client status fusionbox-nginx-cc >/dev/null 2>&1; then
+    msg_ok "nginx 防 CC 已启用: jail=fusionbox-nginx-cc (30 次/60 秒 → 封禁 3600 秒)"
+    fail2ban-client status fusionbox-nginx-cc 2>/dev/null | sed 's/^/  /'
+    _log_write "nginx 防 CC 已安装 (fail2ban jail: fusionbox-nginx-cc)"
+  else
+    msg_err "jail 未生效，请检查日志: /var/log/fail2ban.log"
+    msg_info "可用 'fail2ban-client status' 排查 filter 语法"
+    return 1
+  fi
+}
+
+# 卸载 fail2ban 防 CC
+_web_guard_cc_uninstall() {
+  local filter="/etc/fail2ban/filter.d/fusionbox-nginx-cc.conf"
+  local jail="/etc/fail2ban/jail.d/fusionbox-nginx-cc.local"
+
+  if ! command -v fail2ban-client &>/dev/null; then
+    msg_info "fail2ban 未安装，无需卸载"
+    return
+  fi
+
+  if ! confirm "将删除 fusionbox 防 CC 规则并重启 fail2ban，确认继续？"; then
+    return
+  fi
+
+  # 先解除该 jail 已封禁的 IP，避免残留 iptables 规则
+  local banned ip
+  banned=$(fail2ban-client status fusionbox-nginx-cc 2>/dev/null | sed -n 's/.*Banned IP list:[[:space:]]*//p')
+  if [[ -n "$banned" ]]; then
+    for ip in $banned; do
+      fail2ban-client set fusionbox-nginx-cc unbanip "$ip" >/dev/null 2>&1 || true
+    done
+    msg_info "已解除封禁 IP: $banned"
+  fi
+
+  local removed=0
+  if [[ -f "$filter" ]]; then
+    rm -f "$filter"; removed=1; msg_ok "已删除: $filter"
+  fi
+  if [[ -f "$jail" ]]; then
+    rm -f "$jail"; removed=1; msg_ok "已删除: $jail"
+  fi
+  [[ $removed -eq 0 ]] && msg_info "未发现 fusionbox 防 CC 规则文件"
+
+  systemctl restart fail2ban 2>/dev/null || systemctl reload fail2ban 2>/dev/null || true
+  msg_ok "nginx 防 CC 已卸载"
+  _log_write "nginx 防 CC 已卸载"
+}
+
+# 查看 fail2ban jail 与封禁 IP
+_web_guard_cc_status() {
+  if ! command -v fail2ban-client &>/dev/null; then
+    msg_warn "fail2ban 未安装（本菜单选项 1 可安装）"
+    return
+  fi
+  if ! fail2ban-client status >/dev/null 2>&1; then
+    msg_err "fail2ban 未运行"
+    systemctl status fail2ban --no-pager 2>/dev/null | head -5 | sed 's/^/  /'
+    return
+  fi
+
+  msg "  ${F_BOLD}fail2ban 总览:${F_RESET}"
+  fail2ban-client status 2>/dev/null | sed 's/^/  /'
+
+  local jails j
+  jails=$(fail2ban-client status 2>/dev/null | sed -n 's/.*Jail list:[[:space:]]*//p' | tr ',' ' ')
+  if [[ -z "${jails// /}" ]]; then
+    msg_info "当前无活动 jail"
+    return
+  fi
+
+  for j in $jails; do
+    msg ""
+    msg "  ${F_BOLD}Jail: $j${F_RESET}"
+    fail2ban-client status "$j" 2>/dev/null | sed 's/^/    /'
+  done
+}
+
+# Cloudflare 联动：配置 + 封禁辅助脚本
+_web_guard_cf_config() {
+  local cf_conf="/etc/fusionbox/cloudflare.conf"
+  local ban_script="/usr/local/bin/fusionbox-cf-ban"
+
+  msg "  ${F_BOLD}Cloudflare 联动配置${F_RESET}"
+  msg ""
+  if [[ -f "$cf_conf" ]]; then
+    local zid
+    zid=$(sed -n 's/^CF_ZONE_ID=//p' "$cf_conf" 2>/dev/null | tail -1)
+    msg_info "配置文件: $cf_conf"
+    msg "    CF_ZONE_ID: ${zid:-未设置}"
+    if grep -qE '^CF_API_TOKEN=.+' "$cf_conf" 2>/dev/null; then
+      msg_ok "    CF_API_TOKEN: 已配置（出于安全不显示）"
+    else
+      msg_warn "    CF_API_TOKEN: 未配置"
+    fi
+  else
+    msg_warn "尚未配置 Cloudflare API（$cf_conf 不存在），联动功能不可用"
+  fi
+  msg ""
+
+  msg "  ${F_GREEN}1${F_RESET}) 写入/更新 API 配置 (Token + Zone ID)"
+  msg "  ${F_GREEN}2${F_RESET}) 部署 IP 封禁辅助脚本 (fusionbox-cf-ban)"
+  msg "  ${F_GREEN}0${F_RESET}) 返回"
+  msg ""
+  local cf_choice=""
+  read -p "请选择 [0-2]: " cf_choice || return
+
+  case "$cf_choice" in
+    1)
+      msg_info "Token 需要 Zone → Firewall/Rules 编辑权限；Zone ID 在 CF 控制台域名概览页获取"
+      local token zone threshold
+      token=$(read_input "请输入 Cloudflare API Token")
+      [[ -z "$token" ]] && { msg_warn "未输入 Token，已取消"; return; }
+      if ! [[ "$token" =~ ^[A-Za-z0-9_-]{10,}$ ]]; then
+        msg_err "Token 格式不合法（仅允许字母数字、下划线、连字符）"
+        return 1
+      fi
+      zone=$(read_input "请输入 Zone ID (32 位十六进制)")
+      if ! [[ "$zone" =~ ^[a-fA-F0-9]{32}$ ]]; then
+        msg_err "Zone ID 格式不合法，应为 32 位十六进制"
+        return 1
+      fi
+      threshold=$(read_input "负载自适应阈值 LOAD_THRESHOLD" "5.0")
+      threshold=${threshold:-5.0}
+      if ! [[ "$threshold" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        msg_err "阈值必须是数字（如 5.0）"
+        return 1
+      fi
+
+      umask 077
+      mkdir -p /etc/fusionbox
+      [[ -f "$cf_conf" ]] && cp "$cf_conf" "$cf_conf.fb-bak-$(date +%s)" 2>/dev/null
+      cat > "$cf_conf" << CFCONF
+# FusionBox Cloudflare 联动配置（含密钥，请勿外泄）
+CF_API_TOKEN=$token
+CF_ZONE_ID=$zone
+# 负载自适应开盾阈值（1 分钟负载，默认 5.0）
+LOAD_THRESHOLD=$threshold
+CFCONF
+      chmod 600 "$cf_conf"
+      msg_ok "Cloudflare 配置已写入: $cf_conf (权限 600)"
+      _log_write "Cloudflare 配置已更新 (zone=$zone)"
+      ;;
+    2)
+      if [[ ! -f "$cf_conf" ]] || ! grep -qE '^CF_API_TOKEN=.+' "$cf_conf" 2>/dev/null; then
+        msg_warn "请先完成选项 1 配置 API Token，再部署封禁脚本"
+        return
+      fi
+      if ! confirm "将写入 $ban_script，确认继续？"; then
+        return
+      fi
+      mkdir -p /usr/local/bin
+      cat > "$ban_script" << 'CFBANEOF'
+#!/bin/bash
+# FusionBox Cloudflare IP 封禁/解封辅助脚本
+# 用法: fusionbox-cf-ban ban|unban <ip>
+# token 从 /etc/fusionbox/cloudflare.conf 读取，脚本不会打印密钥
+set -u
+
+CONF="/etc/fusionbox/cloudflare.conf"
+API="https://api.cloudflare.com/client/v4"
+
+[ -f "$CONF" ] || { echo "缺少配置文件: $CONF"; exit 1; }
+# shellcheck source=/dev/null
+. "$CONF"
+: "${CF_API_TOKEN:?未配置 CF_API_TOKEN}"
+: "${CF_ZONE_ID:?未配置 CF_ZONE_ID}"
+command -v curl >/dev/null 2>&1 || { echo "需要 curl 支持"; exit 1; }
+
+action="${1:-}"
+ip="${2:-}"
+if [ -z "$action" ] || [ -z "$ip" ]; then
+  echo "用法: fusionbox-cf-ban ban|unban <ip>"
+  exit 1
+fi
+case "$ip" in
+  *[!0-9a-fA-F:.]*) echo "IP 格式不合法: $ip"; exit 1 ;;
+esac
+
+# 认证头写入 600 权限临时配置，避免 token 出现在进程命令行（ps 可见）
+CURL_CFG=$(mktemp)
+chmod 600 "$CURL_CFG"
+trap 'rm -f "$CURL_CFG"' EXIT
+printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$CF_API_TOKEN" > "$CURL_CFG"
+
+cf() {
+  local method="$1" path="$2" data="${3:-}"
+  if [ -n "$data" ]; then
+    curl -fsS --max-time 20 -X "$method" "$API$path" -K "$CURL_CFG" --data @"$data"
+  else
+    curl -fsS --max-time 20 -X "$method" "$API$path" -K "$CURL_CFG"
+  fi
+}
+
+find_rule_id() {
+  cf GET "/zones/$CF_ZONE_ID/firewall/access_rules/rules?mode=block&configuration%5Bvalue%5D=$1&per_page=10" \
+    | grep -o '"id":"[a-f0-9]\{32\}"' | head -1 | cut -d'"' -f4
+}
+
+case "$action" in
+  ban)
+    rid=$(find_rule_id "$ip")
+    if [ -n "$rid" ]; then
+      echo "已封禁: $ip (规则 $rid)"
+      exit 0
+    fi
+    payload=$(mktemp)
+    printf '{"mode":"block","configuration":{"target":"ip","value":"%s"},"notes":"FusionBox auto ban"}' "$ip" > "$payload"
+    resp=$(cf POST "/zones/$CF_ZONE_ID/firewall/access_rules/rules" "$payload")
+    rm -f "$payload"
+    if echo "$resp" | grep -q '"success":true'; then
+      echo "已封禁: $ip"
+    else
+      echo "封禁失败: $ip (请检查 Token 权限)"
+      exit 1
+    fi
+    ;;
+  unban)
+    rid=$(find_rule_id "$ip")
+    if [ -z "$rid" ]; then
+      echo "未找到封禁规则: $ip"
+      exit 0
+    fi
+    resp=$(cf DELETE "/zones/$CF_ZONE_ID/firewall/access_rules/rules/$rid")
+    if echo "$resp" | grep -q '"success":true'; then
+      echo "已解封: $ip"
+    else
+      echo "解封失败: $ip"
+      exit 1
+    fi
+    ;;
+  *)
+    echo "用法: fusionbox-cf-ban ban|unban <ip>"
+    exit 1
+    ;;
+esac
+CFBANEOF
+      chmod 755 "$ban_script"
+      msg_ok "封禁脚本已部署: $ban_script"
+      msg ""
+      msg "  ${F_BOLD}使用说明:${F_RESET}"
+      msg "    手动封禁: fusionbox-cf-ban ban 1.2.3.4"
+      msg "    手动解封: fusionbox-cf-ban unban 1.2.3.4"
+      msg "    也可在 fail2ban action 中调用，实现自动同步封禁到 Cloudflare"
+      _log_write "Cloudflare 封禁脚本已部署: $ban_script"
+      ;;
+    *) return ;;
+  esac
+}
+
+# 负载自适应开盾：安装/卸载/状态
+_web_guard_cf_adaptive() {
+  local g_script="/usr/local/bin/fusionbox-cf-guard"
+  local g_cron="/etc/cron.d/fusionbox-cf-guard"
+  local g_state="/var/lib/fusionbox/cf-guard.state"
+  local cf_conf="/etc/fusionbox/cloudflare.conf"
+
+  msg "  ${F_BOLD}负载自适应开盾${F_RESET}"
+  msg "  负载高于阈值时把 Cloudflare security_level 切到 under_attack，回落后恢复首次运行时的安全级别"
+  msg ""
+  msg "  ${F_GREEN}1${F_RESET}) 安装"
+  msg "  ${F_GREEN}2${F_RESET}) 卸载"
+  msg "  ${F_GREEN}3${F_RESET}) 查看状态"
+  msg "  ${F_GREEN}0${F_RESET}) 返回"
+  msg ""
+  local ad_choice=""
+  read -p "请选择 [0-3]: " ad_choice || return
+
+  case "$ad_choice" in
+    1)
+      if [[ ! -f "$cf_conf" ]] || ! grep -qE '^CF_API_TOKEN=.+' "$cf_conf" 2>/dev/null; then
+        msg_warn "未配置 Cloudflare API Token，脚本会安全跳过（可先执行本菜单选项 4 → 1）"
+      fi
+      if ! confirm "将写入 $g_script 并配置每 5 分钟检查，确认继续？"; then
+        return
+      fi
+      mkdir -p /var/lib/fusionbox /usr/local/bin /etc/cron.d
+      [[ -f "$g_script" ]] && cp "$g_script" "$g_script.fb-bak-$(date +%s)" 2>/dev/null
+
+      cat > "$g_script" << 'CFGUARDEOF'
+#!/bin/bash
+# FusionBox Cloudflare 负载自适应开盾
+# load1 > LOAD_THRESHOLD → security_level=under_attack；否则恢复初始安全级别
+# 状态记录在 /var/lib/fusionbox/cf-guard.state，避免重复调用 API
+CONF="/etc/fusionbox/cloudflare.conf"
+STATE="/var/lib/fusionbox/cf-guard.state"
+API="https://api.cloudflare.com/client/v4"
+
+[ -f "$CONF" ] && . "$CONF"
+LOAD_THRESHOLD="${LOAD_THRESHOLD:-5.0}"
+
+if [ -z "${CF_API_TOKEN:-}" ] || [ -z "${CF_ZONE_ID:-}" ]; then
+  echo "未配置 Cloudflare API（$CONF），安全跳过"
+  exit 0
+fi
+command -v curl >/dev/null 2>&1 || { echo "需要 curl 支持"; exit 1; }
+
+load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+load1="${load1:-0}"
+
+want=""
+if awk -v l="$load1" -v t="$LOAD_THRESHOLD" 'BEGIN { exit !(l > t) }' 2>/dev/null; then
+  want="under_attack"
+fi
+
+last=""
+[ -f "$STATE" ] && last=$(cat "$STATE" 2>/dev/null)
+if [ -n "$want" ] && [ "$want" = "$last" ]; then
+  exit 0
+fi
+
+# 认证头写入 600 权限临时配置，避免 token 出现在进程命令行（ps 可见）
+CURL_CFG=$(mktemp)
+chmod 600 "$CURL_CFG"
+trap 'rm -f "$CURL_CFG"' EXIT
+printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$CF_API_TOKEN" > "$CURL_CFG"
+
+command -v python3 >/dev/null || { echo "需要 python3 解析 API 响应"; exit 1; }
+umask 077
+exec 9>"${STATE}.lock"
+flock -n 9 || exit 0
+if [ ! -s "${STATE}.original" ]; then
+  original=$(curl -fsS --max-time 20 -K "$CURL_CFG" "$API/zones/$CF_ZONE_ID/settings/security_level" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("success"); print(d["result"]["value"])') || exit 1
+  case "$original" in off|essentially_off|low|medium|high|under_attack) ;; *) exit 1 ;; esac
+  printf '%s\n' "$original" > "${STATE}.original" || exit 1
+fi
+[ -n "$want" ] || want=$(cat "${STATE}.original")
+[ "$want" = "$last" ] && exit 0
+resp=$(curl -fsS --max-time 20 -X PATCH "$API/zones/$CF_ZONE_ID/settings/security_level" \
+  -K "$CURL_CFG" \
+  --data "{\"value\":\"$want\"}")
+
+if echo "$resp" | grep -q '"success":true'; then
+  mkdir -p "$(dirname "$STATE")"
+  echo "$want" > "$STATE"
+  echo "负载 $load1 → Cloudflare security_level: $want"
+else
+  echo "Cloudflare API 调用失败（负载 $load1），状态未更新"
+  exit 1
+fi
+CFGUARDEOF
+      chmod 755 "$g_script"
+
+      cat > "$g_cron" << 'CFCRONEOF'
+# FusionBox 负载自适应开盾（由 fusionbox web guard 生成）
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+*/5 * * * * root /usr/local/bin/fusionbox-cf-guard >/dev/null 2>&1
+CFCRONEOF
+      if [[ ! -f "$g_script" || ! -f "$g_cron" ]]; then
+        msg_err "写入脚本或定时任务失败，请检查目录权限"
+        pause; return 1
+      fi
+      chmod 644 "$g_cron"
+
+      msg_ok "负载自适应开盾已安装 (每 5 分钟检查)"
+      msg_info "阈值 LOAD_THRESHOLD 可在 $cf_conf 调整（默认 5.0）"
+      _log_write "负载自适应开盾已安装"
+      ;;
+    2)
+      if [[ ! -f "$g_script" && ! -f "$g_cron" ]]; then
+        msg_info "未安装负载自适应开盾"
+        return
+      fi
+      if ! confirm "确认卸载负载自适应开盾？（Cloudflare 当前安全级别保持不变）"; then
+        return
+      fi
+      rm -f "$g_script" "$g_cron" "$g_state"
+      msg_ok "已卸载负载自适应开盾"
+      _log_write "负载自适应开盾已卸载"
+      ;;
+    3)
+      [[ -f "$g_script" ]] && msg_ok "脚本: $g_script" || msg_info "脚本未安装"
+      [[ -f "$g_cron" ]] && msg_ok "定时任务: $g_cron (每 5 分钟)" || msg_info "定时任务未配置"
+      if [[ -f "$cf_conf" ]] && grep -qE '^CF_API_TOKEN=.+' "$cf_conf" 2>/dev/null; then
+        local th
+        th=$(sed -n 's/^LOAD_THRESHOLD=//p' "$cf_conf" 2>/dev/null | tail -1)
+        th=${th:-5.0}
+        msg "  当前负载(1 分钟): $(awk '{print $1}' /proc/loadavg 2>/dev/null)"
+        msg "  阈值: $th"
+        msg "  上次切换状态: $(cat "$g_state" 2>/dev/null || echo "未记录")"
+      else
+        msg_warn "未配置 Cloudflare API Token，脚本会安全跳过（不影响系统）"
+      fi
+      ;;
+    *) return ;;
+  esac
 }
 
 # ---- Help ----
@@ -1820,6 +2945,9 @@ web_help() {
   msg "  fusionbox web lamp              安装 LAMP 环境"
   msg "  fusionbox web site              创建网站"
   msg "  fusionbox web ssl [domain]      申请 SSL 证书"
+  msg "  fusionbox web ssl status        证书状态与到期监控"
+  msg "  fusionbox web ssl renew         立即续期全部证书"
+  msg "  fusionbox web ssl auto          配置/查看/卸载证书自动续期"
   msg "  fusionbox web nginx             Nginx 管理"
   msg "  fusionbox web php               PHP 管理"
   msg "  fusionbox web mysql             MySQL 管理"
@@ -1830,9 +2958,17 @@ web_help() {
   msg "  fusionbox web deploy            LDNMP 应用一键部署"
   msg "  fusionbox web wordpress         快速部署 WordPress"
   msg ""
+  msg "  ${F_BOLD}[站点管理]${F_RESET}"
+  msg "  fusionbox web sites             站点清单（端口/类型/证书/占用）"
+  msg "  fusionbox web site-del [domain] 删除站点（配置备份 + 回滚）"
+  msg "  fusionbox web site-alias        关联多域名（server_name 别名）"
+  msg ""
   msg "  ${F_BOLD}[反向代理]${F_RESET}"
   msg "  fusionbox web proxy             HTTP/HTTPS 反向代理"
   msg "  fusionbox web stream            TCP/UDP L4 端口转发"
+  msg ""
+  msg "  ${F_BOLD}[安全防护]${F_RESET}"
+  msg "  fusionbox web guard             nginx 防 CC + Cloudflare 联动/自适应开盾"
   msg ""
   msg "  ${F_BOLD}[数据管理]${F_RESET}"
   msg "  fusionbox web sitedata          站点数据备份/恢复/远程备份"
@@ -1859,9 +2995,13 @@ web_menu() {
     msg "  ${F_GREEN}11${F_RESET}) 反向代理 (HTTP/HTTPS/负载均衡)"
     msg "  ${F_GREEN}12${F_RESET}) Stream L4 代理 (TCP/UDP 端口转发)"
     msg "  ${F_GREEN}13${F_RESET}) 站点数据管理"
+    msg "  ${F_GREEN}14${F_RESET}) 站点清单 (域名/端口/类型/证书)"
+    msg "  ${F_GREEN}15${F_RESET}) 删除站点 (含配置备份)"
+    msg "  ${F_GREEN}16${F_RESET}) 关联多域名 (别名)"
+    msg "  ${F_GREEN}17${F_RESET}) 防 CC / Cloudflare 联动"
     msg "  ${F_GREEN} 0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-9]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-17]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) web_install_lnmp ;;
       2) web_install_lamp ;;
@@ -1876,6 +3016,10 @@ web_menu() {
       11) web_reverse_proxy ;;
       12) web_stream_proxy ;;
       13) web_site_data ;;
+      14) web_sites ;;
+      15) web_site_del ;;
+      16) web_site_alias ;;
+      17) web_guard ;;
       0) break ;;
     esac
   done

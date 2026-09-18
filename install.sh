@@ -48,8 +48,9 @@ msg_info "检测到: $OS ($ARCH)"
 
 # Shared finisher: tighten permissions, create symlink, seed default config
 _finalize_install() {
-  find "$FUSION_BASE" -type d -exec chmod 755 {} +
-  find "$FUSION_BASE" -type f -exec chmod 644 {} +
+  # Do not change permissions of existing credentials or business state.
+  find "$FUSION_BASE/src" "$FUSION_BASE/templates" -type d -exec chmod 755 {} +
+  find "$FUSION_BASE/src" "$FUSION_BASE/templates" -type f -exec chmod 644 {} +
   chmod 755 "$FUSION_BASE/fusion.sh" "$FUSION_BASE/install.sh" 2>/dev/null || true
   ln -sf "$FUSION_BASE/fusion.sh" "$FUSION_BIN"
 
@@ -64,7 +65,6 @@ _do_local_install() {
   src_dir="$(cd "$(dirname "$0")" && pwd)"
   if [[ "$src_dir" != "$FUSION_BASE" ]]; then
     msg_info "本地安装模式: $src_dir -> $FUSION_BASE"
-    rm -rf "$FUSION_BASE"
     mkdir -p "$FUSION_BASE"
     cp -rf "$src_dir/"* "$FUSION_BASE/" || { msg_err "复制文件失败"; exit 1; }
   else
@@ -106,18 +106,17 @@ curl -fsSL "$FUSION_REPO/archive/$FUSION_BRANCH.tar.gz" -o "$TMPDIR/fusionbox.ta
 }
 
 tar xzf "$TMPDIR/fusionbox.tar.gz" -C "$TMPDIR"
-ls "$TMPDIR/fusionbox-$FUSION_BRANCH/fusion.sh" >/dev/null 2>&1 || \
-ls "$TMPDIR/fusionbox-main/fusion.sh" >/dev/null 2>&1 || {
+ls "$TMPDIR/FusionBox-$FUSION_BRANCH/fusion.sh" >/dev/null 2>&1 || \
+ls "$TMPDIR/FusionBox-main/fusion.sh" >/dev/null 2>&1 || {
   msg_err "解压失败"
   rm -rf "$TMPDIR"
   exit 1
 }
 
 msg_info "正在安装 FusionBox 到 $FUSION_BASE..."
-rm -rf "$FUSION_BASE"
 mkdir -p "$FUSION_BASE"
-cp -rf "$TMPDIR/fusionbox-$FUSION_BRANCH/"* "$FUSION_BASE/" 2>/dev/null || \
-cp -rf "$TMPDIR/fusionbox-main/"* "$FUSION_BASE/" 2>/dev/null || {
+cp -rf "$TMPDIR/FusionBox-$FUSION_BRANCH/"* "$FUSION_BASE/" 2>/dev/null || \
+cp -rf "$TMPDIR/FusionBox-main/"* "$FUSION_BASE/" 2>/dev/null || {
   msg_err "复制文件失败"
   rm -rf "$TMPDIR"
   exit 1

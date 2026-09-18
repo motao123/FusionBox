@@ -6,6 +6,7 @@ panels_main() {
 
   case "$cmd" in
     docker|dk)            panels_docker "$@" ;;
+    mirror|mirrors)       panels_docker_mirror "${1:-}" ;;
     bt|baota)             panels_bt ;;
     aa|aapanel)           panels_aa ;;
     xui|x-ui)             panels_xui ;;
@@ -29,6 +30,7 @@ panels_docker() {
     images)       panels_docker_images ;;
     prune)        panels_docker_prune ;;
     compose|up)   panels_docker_compose "$@" ;;
+    mirror|mirrors) panels_docker_mirror "${2:-}" ;;
     menu|"")      panels_docker_menu ;;
     *)            panels_docker_menu ;;
   esac
@@ -376,6 +378,330 @@ with open(path, "w") as f: json.dump(cfg, f, indent=2)
   pause
 }
 
+# ---- Docker 镜像加速 / 换源 ----
+# 预设镜像源 数据表，字段: 名称|URL
+# 特殊占位: __official__ = 清空 registry-mirrors 恢复官方, __aliyun__ = 需输入阿里云 ID, __custom__ = 手动输入
+PANELS_DOCKER_MIRRORS=(
+  "官方(清空)|__official__"
+  "DaoCloud(需自行验证)|https://docker.m.daocloud.io"
+  "1ms(需自行验证)|https://docker.1ms.run"
+  "阿里云(需输入ID)|__aliyun__"
+  "自定义 URL|__custom__"
+)
+
+# 检测可用的 JSON 处理工具
+_panels_docker_json_tool() {
+  if command -v jq &>/dev/null; then
+    echo "jq"
+  elif command -v python3 &>/dev/null; then
+    echo "python3"
+  else
+    echo ""
+  fi
+}
+
+# JSON 合法性校验: $1=文件 $2=工具
+_panels_docker_json_valid() {
+  local file="$1" tool="$2"
+  [[ -s "$file" ]] || return 1
+  case "$tool" in
+    jq)      jq -e . "$file" >/dev/null 2>&1 ;;
+    python3) python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$file" >/dev/null 2>&1 ;;
+    *)       return 1 ;;
+  esac
+}
+
+# 显示当前 registry-mirrors 配置
+_panels_docker_mirror_show_current() {
+  local daemon_json="/etc/docker/daemon.json"
+  local tool; tool=$(_panels_docker_json_tool)
+
+  msg "  ${F_BOLD}当前配置 (${daemon_json}):${F_RESET}"
+  if [[ ! -f "$daemon_json" ]]; then
+    msg "    ${F_YELLOW}未配置${F_RESET} - daemon.json 不存在，使用 Docker 官方仓库"
+    return
+  fi
+
+  local mirrors=""
+  if [[ "$tool" == "jq" ]]; then
+    mirrors=$(jq -r '."registry-mirrors" // [] | .[]' "$daemon_json" 2>/dev/null)
+  elif [[ "$tool" == "python3" ]]; then
+    mirrors=$(python3 -c '
+import json, sys
+try:
+    cfg = json.load(open(sys.argv[1]))
+except Exception:
+    cfg = {}
+if not isinstance(cfg, dict):
+    cfg = {}
+for m in cfg.get("registry-mirrors") or []:
+    print(m)
+' "$daemon_json" 2>/dev/null)
+  fi
+
+  if [[ -z "$mirrors" ]]; then
+    msg "    ${F_YELLOW}未配置${F_RESET} - 使用 Docker 官方仓库"
+  else
+    echo "$mirrors" | while IFS= read -r m; do
+      [[ -n "$m" ]] && msg "    ${F_GREEN}${m}${F_RESET}"
+    done
+  fi
+}
+
+# 列出可选镜像源
+_panels_docker_mirror_list() {
+  local item name url shown num i=0
+  msg "  ${F_BOLD}可选镜像源:${F_RESET}"
+  for item in "${PANELS_DOCKER_MIRRORS[@]}"; do
+    IFS='|' read -r name url <<< "$item"
+    i=$((i + 1))
+    case "$url" in
+      __official__) shown="清空 registry-mirrors，恢复 Docker 官方仓库" ;;
+      __aliyun__)   shown="需输入你的阿里云 ID，生成专属加速地址" ;;
+      __custom__)   shown="手动输入镜像源 URL" ;;
+      *)            shown="$url" ;;
+    esac
+    printf -v num '%2d' "$i"
+    msg "  ${F_GREEN}${num}${F_RESET}) ${F_BOLD}${name}${F_RESET} - ${shown}"
+  done
+  msg ""
+}
+
+# 回滚: $1=备份文件 $2=备份是否存在(0/1)
+_panels_docker_mirror_rollback() {
+  local bak_file="$1" existed="$2"
+  local daemon_json="/etc/docker/daemon.json"
+  if [[ "$existed" -eq 1 && -f "$bak_file" ]]; then
+    cp -a "$bak_file" "$daemon_json"
+    msg_info "已回滚到备份: $bak_file"
+  else
+    rm -f "$daemon_json"
+    msg_info "已删除新建的 daemon.json，恢复到未配置状态"
+  fi
+  systemctl restart docker 2>/dev/null
+}
+
+# 合并 registry-mirrors: $1=模式(set|clear) $2=源JSON $3=目标JSON $4=工具 $5=URL
+_panels_docker_mirror_merge() {
+  local mode="$1" src="$2" dst="$3" tool="$4" url="${5:-}"
+  if [[ "$tool" == "jq" ]]; then
+    if [[ "$mode" == "clear" ]]; then
+      jq 'del(."registry-mirrors")' "$src" > "$dst" 2>/dev/null
+    else
+      jq --arg u "$url" '."registry-mirrors" = [$u]' "$src" > "$dst" 2>/dev/null
+    fi
+  else
+    FB_SRC="$src" FB_DST="$dst" FB_MODE="$mode" FB_URL="$url" python3 -c '
+import json, os
+src, dst = os.environ["FB_SRC"], os.environ["FB_DST"]
+mode, url = os.environ["FB_MODE"], os.environ["FB_URL"]
+try:
+    with open(src) as f:
+        cfg = json.load(f)
+except Exception:
+    cfg = {}
+if not isinstance(cfg, dict):
+    cfg = {}
+if mode == "clear":
+    cfg.pop("registry-mirrors", None)
+else:
+    cfg["registry-mirrors"] = [url]
+with open(dst, "w") as f:
+    json.dump(cfg, f, indent=2)
+' 2>/dev/null
+  fi
+}
+
+# 应用镜像源: $1=模式(set|clear) $2=名称 $3=URL(clear 时可省略)
+_panels_docker_mirror_apply() {
+  local mode="$1" label="$2" url="${3:-}"
+  local daemon_json="/etc/docker/daemon.json"
+  local ts; ts=$(date '+%Y%m%d_%H%M%S')
+  local bak_dir="/etc/fusionbox/docker-bak-${ts}"
+  local bak_file="$bak_dir/daemon.json"
+  local existed=0
+
+  local tool; tool=$(_panels_docker_json_tool)
+  if [[ -z "$tool" ]]; then
+    msg_err "未找到 jq 或 python3，无法安全修改 JSON 配置"
+    msg_info "请先安装: fusionbox market install jq"
+    pause
+    return 1
+  fi
+
+  # 1) 备份现有配置
+  mkdir -p /etc/docker || { msg_err "无法创建 /etc/docker"; pause; return 1; }
+  mkdir -p "$bak_dir" || { msg_err "无法创建备份目录: $bak_dir"; pause; return 1; }
+  if [[ -f "$daemon_json" ]]; then
+    cp -a "$daemon_json" "$bak_file" || { msg_err "备份失败: $daemon_json"; pause; return 1; }
+    existed=1
+    msg_info "已备份: $daemon_json -> $bak_file"
+  else
+    msg_info "未发现 daemon.json，将新建（备份目录: $bak_dir）"
+  fi
+
+  # 2) 合并 registry-mirrors
+  local src; src=$(mktemp)
+  local new_json; new_json=$(mktemp)
+  if [[ "$existed" -eq 1 ]]; then cp "$daemon_json" "$src"; else echo '{}' > "$src"; fi
+  if ! _panels_docker_json_valid "$src" "$tool"; then
+    msg_err "现有 daemon.json 非法，拒绝覆盖"
+    rm -f "$src" "$new_json"
+    return 1
+  fi
+
+  if [[ "$mode" == "clear" ]]; then
+    _panels_docker_mirror_merge clear "$src" "$new_json" "$tool"
+  else
+    _panels_docker_mirror_merge set "$src" "$new_json" "$tool" "$url"
+  fi
+
+  # 3) JSON 校验通过后才落盘
+  if ! _panels_docker_json_valid "$new_json" "$tool"; then
+    msg_err "生成的配置不是合法 JSON，已放弃写入（原配置未改动）"
+    rm -f "$src" "$new_json"
+    pause
+    return 1
+  fi
+  cat "$new_json" > "$daemon_json"
+  chmod 600 "$daemon_json"
+  rm -f "$src" "$new_json"
+  msg_info "已写入 $daemon_json（权限 600）"
+
+  # 4) 重启并验证
+  if ! systemctl restart docker 2>/dev/null; then
+    msg_err "systemctl restart docker 失败，正在回滚配置"
+    _panels_docker_mirror_rollback "$bak_file" "$existed"
+    pause
+    return 1
+  fi
+
+  sleep 1
+  local info_raw; info_raw=$(docker info 2>/dev/null)
+  if [[ -z "$info_raw" ]]; then
+    msg_err "docker info 无输出（守护进程可能未正常启动），正在回滚配置"
+    _panels_docker_mirror_rollback "$bak_file" "$existed"
+    pause
+    return 1
+  fi
+
+  msg ""
+  local mirrors; mirrors=$(echo "$info_raw" | grep -A5 "Registry Mirrors")
+  if [[ -n "$mirrors" ]]; then
+    msg_ok "镜像源已生效:"
+    echo "$mirrors" | while IFS= read -r l; do msg "  $l"; done
+  else
+    msg_ok "镜像源已清空，Docker 将使用官方仓库"
+  fi
+  _log_write "Docker 镜像源已更新: ${label} ${url:-（清空）}"
+  pause
+  return 0
+}
+
+# 清空镜像源（恢复官方）
+panels_docker_mirror_clear() {
+  if confirm "确认清空镜像源（恢复 Docker 官方仓库）？"; then
+    _panels_docker_mirror_apply clear "官方(清空)"
+  fi
+}
+
+# 测试拉取
+panels_docker_mirror_test() {
+  msg_info "正在通过当前镜像源拉取 hello-world 镜像（最长等待 30 秒）..."
+  local out; out=$(timeout 30 docker pull hello-world 2>&1)
+  local rc=$?
+  msg ""
+  if [[ $rc -eq 0 ]]; then
+    msg_ok "拉取成功，当前镜像源工作正常"
+    echo "$out" | tail -2 | while IFS= read -r l; do msg "  $l"; done
+  elif [[ $rc -eq 124 ]]; then
+    msg_warn "拉取超时（30 秒），当前镜像源较慢或不可用"
+    msg_info "可返回上一级切换其他镜像源"
+  else
+    msg_err "拉取失败（退出码 $rc），当前镜像源可能不可用"
+    echo "$out" | tail -3 | while IFS= read -r l; do msg "  $l"; done
+  fi
+  pause
+}
+
+# 按序号或名称应用预设镜像源
+_panels_docker_mirror_apply_preset() {
+  local want="$1" item name url i=0
+  for item in "${PANELS_DOCKER_MIRRORS[@]}"; do
+    IFS='|' read -r name url <<< "$item"
+    i=$((i + 1))
+    [[ "$want" == "$i" || "${want,,}" == "${name,,}" ]] || continue
+    case "$url" in
+      __official__)
+        panels_docker_mirror_clear
+        ;;
+      __aliyun__)
+        local aliyun_id; aliyun_id=$(read_input "请输入阿里云加速器 ID (形如 abcd1234)")
+        if [[ ! "$aliyun_id" =~ ^[a-zA-Z0-9]+$ ]]; then
+          msg_err "无效的阿里云 ID（仅允许字母与数字）: $aliyun_id"
+          pause
+          return 1
+        fi
+        _panels_docker_mirror_apply set "阿里云" "https://${aliyun_id}.mirror.aliyuncs.com"
+        ;;
+      __custom__)
+        local custom_url; custom_url=$(read_input "请输入镜像源 URL (https:// 开头)")
+        if [[ "$custom_url" != https://* ]]; then
+          msg_err "仅支持 https:// 开头的地址: $custom_url"
+          pause
+          return 1
+        fi
+        _panels_docker_mirror_apply set "自定义" "$custom_url"
+        ;;
+      *)
+        _panels_docker_mirror_apply set "$name" "$url"
+        ;;
+    esac
+    return $?
+  done
+  msg_err "未找到镜像源: $want（可用序号或名称）"
+  pause
+  return 1
+}
+
+panels_docker_mirror() {
+  _require_root
+  local action="${1:-}"
+
+  if ! command -v docker &>/dev/null; then
+    msg_err "Docker 未安装，请先执行: fusionbox panels docker install"
+    pause
+    return 1
+  fi
+
+  case "$action" in
+    clear)  panels_docker_mirror_clear; return $? ;;
+    test)   panels_docker_mirror_test; return $? ;;
+    list)   _panels_docker_mirror_list; pause; return 0 ;;
+    "")     ;;
+    *)      _panels_docker_mirror_apply_preset "$action"; return $? ;;
+  esac
+
+  while true; do
+    clear
+    _print_banner
+    msg_title "Docker 镜像加速 / 换源"
+    msg ""
+    _panels_docker_mirror_show_current
+    msg ""
+    _panels_docker_mirror_list
+    msg "  ${F_GREEN} t${F_RESET}) 测试拉取 hello-world  ${F_GREEN}c${F_RESET}) 清空镜像源（恢复官方）  ${F_GREEN}0${F_RESET}) 返回"
+    msg ""
+    read -p "请选择: " m_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    case "$m_choice" in
+      ""|0) break ;;
+      t|T)  panels_docker_mirror_test ;;
+      c|C)  panels_docker_mirror_clear ;;
+      *)    _panels_docker_mirror_apply_preset "$m_choice" ;;
+    esac
+  done
+}
+
 # ---- Docker 备份/迁移/恢复 ----
 panels_docker_backup() {
   _require_root
@@ -617,9 +943,10 @@ panels_docker_menu() {
     msg "  ${F_GREEN}10${F_RESET}) 容器管理 (启动/停止/重启/删除)"
     msg "  ${F_GREEN}11${F_RESET}) 网络管理"
     msg "  ${F_GREEN}12${F_RESET}) 卷管理"
+    msg "  ${F_GREEN}13${F_RESET}) 镜像加速 / 换源"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-12]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-13]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$dk_choice" in
       1) panels_docker_install; pause ;;
       2) panels_docker_ps ;;
@@ -633,6 +960,7 @@ panels_docker_menu() {
       10) panels_docker_container_mgmt ;;
       11) panels_docker_network ;;
       12) panels_docker_volumes ;;
+      13) panels_docker_mirror ;;
       0) break ;;
     esac
   done
@@ -882,6 +1210,10 @@ panels_help() {
   msg_title "面板与工具 帮助"
   msg ""
   msg "  fusionbox panels docker           Docker 管理"
+  msg "  fusionbox panels docker mirror    Docker 镜像加速 / 换源"
+  msg "  fusionbox panels mirror           Docker 镜像加速 / 换源"
+  msg "  fusionbox panels mirror test      测试拉取 hello-world"
+  msg "  fusionbox panels mirror clear     清空镜像源（恢复官方）"
   msg "  fusionbox panels bt               安装宝塔面板"
   msg "  fusionbox panels aa               安装 Aapanel"
   msg "  fusionbox panels xui              安装 X-UI"

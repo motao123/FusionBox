@@ -184,8 +184,8 @@ self_update() {
       tmpdir="$(mktemp -d)"
       if _download "$FUSION_REPO/archive/main.tar.gz" "$tmpdir/fusionbox.tar.gz" \
          && tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir" \
-         && [[ -f "$tmpdir/fusionbox-main/fusion.sh" ]]; then
-        cp -rf "$tmpdir/fusionbox-main/"* "$FUSION_BASE/"
+         && [[ -f "$tmpdir/FusionBox-main/fusion.sh" ]]; then
+        cp -rf "$tmpdir/FusionBox-main/"* "$FUSION_BASE/" || { rm -rf "$tmpdir"; msg_err "更新复制失败"; return 1; }
         msg_ok "更新完成，重新运行 fusionbox 生效"
       else
         msg_err "下载或解压失败，已取消更新"
@@ -201,12 +201,14 @@ self_update() {
 
 # ---- Self Uninstall ----
 self_uninstall() {
-  msg_warn "将删除 FusionBox 本体：$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "$FUSION_BASE")")、/usr/local/bin/fusionbox、$FUSION_CONFIG_DIR（配置与日志）"
+  msg_warn "将删除 FusionBox 本体：$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "$FUSION_BASE")")、/usr/local/bin/fusionbox、$FUSION_CONFIG_DIR（业务状态、配置与日志保留）"
   msg_warn "各模块安装的服务（代理、面板、Docker 等）不会被卸载，请先在对应模块内清理"
   confirm "确认卸载 FusionBox 本体？" || { msg_info "已取消"; return 1; }
-  rm -rf "$FUSION_BASE"
+  [[ "$FUSION_BASE" == /etc/fusionbox ]] || { msg_err "仅支持卸载 /etc/fusionbox 中的安装"; return 1; }
+  rm -rf "$FUSION_BASE/src" "$FUSION_BASE/templates"
+  rm -f "$FUSION_BASE/fusion.sh" "$FUSION_BASE/install.sh" "$FUSION_BASE/version.txt"
   rm -f /usr/local/bin/fusionbox
-  rm -rf "$FUSION_CONFIG_DIR"
+  msg_info "业务状态、配置与日志已保留: $FUSION_BASE 和 $FUSION_CONFIG_DIR"
   # 清理 k 命令别名注入
   local rc
   for rc in /root/.bashrc "$HOME/.bashrc"; do
