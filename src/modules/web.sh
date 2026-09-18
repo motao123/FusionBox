@@ -1945,6 +1945,29 @@ web_stream_proxy() {
 }
 
 # ---- 站点数据管理 ----
+_web_backup_jobs() {
+  command -v python3 >/dev/null || { msg_err "配置备份需要 Python 3 标准库，请先安装 python3"; return 1; }
+  local helper="$FUSION_SRC/lib/backup_jobs.py" action job hour minute
+  msg_warn "仅本地 nginx/caddy 配置归档，不含网站、数据库、证书或容器数据；拒绝链接。"
+  msg_warn "计划时段必须没有配置写入者；不会停止任何服务。归档不自动清理，请监控磁盘。"
+  msg "1) 创建每日任务  2) 列表/状态  3) 删除自有任务  4) 检测旧任务（不修改）"
+  read -r -p "请选择: " action || return 1
+  case "$action" in
+    1)
+      read -r -p "任务 ID (小写字母/数字/连字符): " job
+      read -r -p "每日小时 (0-23): " hour
+      read -r -p "分钟 (0-59): " minute
+      confirm "确认该时段配置稳定无写入，且只备份 nginx/caddy 配置？" || return 1
+      python3 "$helper" create "$job" --hour "$hour" --minute "$minute" --ack-stable-config || return 1
+      msg_ok "每日配置任务已写入；请确认 cron 服务正常运行"
+      ;;
+    2) python3 "$helper" list ;;
+    3) read -r -p "删除任务 ID（保留归档）: " job; python3 "$helper" remove "$job" ;;
+    4) python3 "$helper" legacy ;;
+    *) return 0 ;;
+  esac
+}
+
 web_site_data() {
   _require_root
   msg_title "站点数据管理"
@@ -1960,7 +1983,7 @@ web_site_data() {
   msg ""
   msg "  ${F_GREEN}1${F_RESET}) 备份所有站点数据"
   msg "  ${F_GREEN}2${F_RESET}) 恢复站点数据"
-  msg "  ${F_GREEN}3${F_RESET}) 配置定时远程备份"
+  msg "  ${F_GREEN}3${F_RESET}) 每日配置备份任务（仅本地 nginx/caddy）"
   msg "  ${F_GREEN}4${F_RESET}) 清理旧备份"
   msg "  ${F_GREEN}0${F_RESET}) 返回"
   read -p "请选择: " sd_choice
@@ -2002,8 +2025,8 @@ web_site_data() {
       fi
       ;;
     3)
-      msg_err "定时远程备份尚未迁移到带清单的安全归档格式，暂不创建新任务；旧任务请人工检查。"
-      return 1
+      _web_backup_jobs
+      return $?
       msg "  ${F_BOLD}远程备份配置${F_RESET}"
       msg "  1) Rclone (S3/WebDAV/FTP)"
       msg "  2) SCP (SSH 远程)"

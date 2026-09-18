@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 
 SCOPES = {
+    'config': ('etc/nginx', 'etc/caddy'),
     'system': ('etc/fusionbox', 'etc/nginx', 'etc/caddy', 'var/www', 'opt/docker'),
     'web': ('var/www', 'opt/docker', 'etc/nginx'),
 }
