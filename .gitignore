@@ -5,3 +5,4 @@
 *.log
 backups/
 fusionbox_backup_*.tar.gz
+__pycache__/

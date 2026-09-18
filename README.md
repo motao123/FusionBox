@@ -4,6 +4,30 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.14.0 用户管理与 SSH 加固工作流（G03/G04/G05）
+
+新增用户全生命周期与登录策略管理。危险操作沿用 `system_safety.py` 事务模式：暂存 + 备份 + 校验（visudo/sshd -t/-T）+ 失败回滚，拒绝软链接与未知归属文件。
+
+```bash
+fusionbox system users                 # 交互菜单（列表/创建/删除/sudo/密码）
+fusionbox system users add deploy      # 创建用户（useradd -m，bash shell）
+fusionbox system users passwd deploy   # 修改用户密码（chpasswd，stdin 传入，不落 argv/日志）
+fusionbox system users sudo deploy     # 授予 sudo（受管文件 /etc/sudoers.d/90-fusionbox-deploy）
+fusionbox system users sudo deploy nopasswd
+fusionbox system users unsudo deploy   # 回收 sudo（仅删除自有 marker 文件）
+fusionbox system users del deploy      # 删除用户及主目录（拒绝 root 与 uid<1000）
+fusionbox system hardening             # 加固向导：建用户→装公钥→sudo→验证登录→收紧 root
+fusionbox system sshkey                # 新增 5) 开启 root 密码登录  6) 禁止 root 密码登录
+```
+
+- 用户名仅允许小写字母开头、数字/_/-，最长 32 字符；密码拒绝冒号/换行、上限 512 字符，通过 stdin 传递，不进命令行参数与日志。
+- sudo 授权只写自有命名文件（marker 归属校验，拒绝覆盖同名未知文件），staged `visudo -c` 验证后安装 0440 root:root，目标验证失败回滚；不修改 sudoers 主文件、组成员或他人配置。
+- `PermitRootLogin` 仅接受 yes/prohibit-password/no；沿用 `sshd -t`/`sshd -T` 生效值校验、重载与失败回滚，socket activation 仍拒绝自动处理。
+- 加固向导在密钥登录验证通过（本机回环实测或人工独立确认）前绝不修改 root 策略；粘贴公钥场景本机无私钥，必须人工另行验证后再继续。
+- 真机验证为隔离范围：专用测试用户 + 独立临时 sshd 实例（高端口、独立配置目录）完成密钥登录与 PermitRootLogin 生效验证；生产 sshd 配置仅校验未重载，root 密码未改动。
+
+Linux 验证目标：42 基础 + 229 行为（新增 20），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.13.0 受管 ntfy 通知服务（限定目录扩容）
 
 复用原有注册表、flock、归属检查、端口探测及 Compose 备份，不新增第二套生命周期。新增 [ntfy 官方镜像](https://docs.ntfy.sh/install/) `binwiederhier/ntfy:v2.28.0`，固定官方 manifest digest `sha256:6ef4b819f722fccdc036af611c4774cfdc2de821ab74fdd48bbf4c9d6f8973da`，部署登记实际本地 image ID。不是任意镜像安装器。
@@ -304,6 +328,8 @@ fusionbox system backup          # 备份系统配置
 fusionbox system update          # 更新系统软件包
 fusionbox system clean           # 系统清理
 fusionbox system tools           # 系统工具子菜单
+fusionbox system users           # 用户管理 (list/add/del/sudo/unsudo/passwd)
+fusionbox system hardening       # SSH 加固：新建密钥用户并收紧 root 登录
 fusionbox system sshkey          # SSH 密钥管理
 fusionbox system firewall        # 防火墙管理
 fusionbox system cron            # 定时任务管理

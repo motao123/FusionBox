@@ -1,11 +1,19 @@
-# v1.13.0 受管 ntfy 小范围扩容
+# v1.14.0 用户管理与 SSH 加固工作流
+
+新增 G03/G04/G05 限定范围：用户创建/删除（拒绝 root 与 uid<1000，userdel -r 前置归属审查）、chpasswd 改密（stdin 传入，拒绝冒号/换行，不落 argv/日志）、受管 sudoers.d 授权/回收（marker 归属校验、staged visudo -c 验证、0440 root:root、目标校验失败回滚、不触碰 sudoers 主文件与他人文件）、`ssh PermitRootLogin yes|prohibit-password|no` 事务化切换（沿用 sshd -t/-T 生效值校验、重载回滚、socket activation 拒绝）。`system hardening` 向导：建用户→装公钥（粘贴或本机生成，authorized_keys 0600/.ssh 0700 归属校验）→sudo→验证密钥登录→收紧 root；验证未通过（回环实测失败或无法验证且未人工确认）绝不修改 root 策略。sshkey 菜单新增 root 密码登录开/关。
+
+真机隔离验证：专用测试用户全流程（创建/密码/sudo 授权回收/公钥安装/删除清理）+ 独立临时 sshd 实例（高端口、独立配置目录与主机密钥）实测密钥登录与 PermitRootLogin 生效；生产 sshd 配置仅校验未重载，root 密码未改动，sudoers 主文件未改动。sudoers 主文件全局语义、PAM 限策、SELinux 环境未验证。
+
+最终归档 Linux 验证目标：42 基础 + 229 行为（新增 20），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。剩余优先范围调整：环境变量/网卡管理、Fail2Ban 完整面板（G09/G10/G11）；Docker 卸载与容器级防火墙（G27/G30）。
+
+## v1.13.0 受管 ntfy 小范围扩容（历史）
 
 新增 ntfy v2.28.0 官方 digest 固定镜像，复用数据驱动 Compose 生命周期；非 root、无特权/socket、localhost 默认、资源限额与每应用磁盘预检。SQLite 消息缓存 24h，非认证本机通知用途；不支持公开入口/域名/TLS，候选镜像改变拒绝升级，避免未经验证的数据库迁移回滚。实际 HTTP JSON 健康检查，卸载保留卷、同镜像重装；离线停容器备份/恢复与持久化通过专用夹具。详情与命令见 README。
 
 最终归档 Linux 验证目标：42 基础 + 209 行为（新增 7），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。新增真实 API 发布/读取、SQLite 停写快照/恢复、重装/重启持久化、拒绝迁移、失败清理/重试；不改生产服务。外部 ACME/CF/TG 凭据验证仍缺。
 
 当前优先剩余范围（不重开 v1.12.1 六项已修复问题）：
-1. P1 用户 CRUD/sudoers 授权回收、完整 SSH 密钥用户工作流、环境变量/网卡管理、Fail2Ban 完整日志/卸载面板；现有用户入口仅列表，SSH 安全校验不是完整工作流。
+1. P1 环境变量/网卡管理（G09/G10）、Fail2Ban 完整日志/卸载面板（G11）；用户 CRUD/改密/加固向导已于 v1.14.0 完成。
 2. P1 全量 Docker 卸载与容器原始目标防火墙规则；归档传输已有，目标机应用重建/迁移与数据库版本升级仍缺。
 3. P2 站点克隆/数据库域名替换、CF 缓存清理、GoAccess、运行时热升级/卸载；已有入口/局部校验不等于端到端完成。
 4. P2 现代应用各分类仍大部分缺失；ntfy 仅一个轻量运维通知模板，不声称完成 G51–G56。游戏定时备份/兼容矩阵、后台编号工作区/注入、自动更新仍待。
@@ -103,9 +111,9 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 |---|---|---|---|
 | G01 | 优化 DNS（按国家写 resolv.conf + `chattr +i` 防篡改） | 部分实现 | system dns；普通文件 DNS 配置；受管理链接拒绝覆盖 |
 | G02 | 系统更新源切换（内置镜像源/linuxmirrors） | 部分实现 | system mirror；APT/YUM 分支，未覆盖所有发行版 |
-| G03 | 用户管理（建普通/高级用户、sudoers 授权回收、删除） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G04 | 修改登录密码 / 一键开启 root 密码登录 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G05 | 禁用 root 登录并新建密钥用户 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G03 | 用户管理（建普通/高级用户、sudoers 授权回收、删除） | 受管范围完成 | v1.14.0 users add/del/sudo/unsudo：受管 sudoers.d marker 文件 + visudo 暂存校验 + 0440；拒绝 root/uid<1000 与未知归属文件；sudoers 主文件与组成员不修改 |
+| G04 | 修改登录密码 / 一键开启 root 密码登录 | 受管范围完成 | v1.14.0 users passwd（stdin chpasswd）+ sshkey 菜单 root 密码登录开/关（PermitRootLogin yes/prohibit-password 事务化）；PAM 限策未验证 |
+| G05 | 禁用 root 登录并新建密钥用户 | 受管范围完成 | v1.14.0 system hardening 向导：建用户→公钥→sudo→登录验证门禁→收紧 root（prohibit-password/no）；验证未通过不修改策略 |
 | G06 | Swap 任意大小 + 旧 swap 清理 | 部分实现 | 自定义 Swap；未自动清理未知旧 swap |
 | G07 | 时区预设 20+ 城市 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G08 | 系统日志管理菜单（journalctl 查询/服务日志/secure 登录日志/实时跟踪/清理） | 已提供入口 | system log；未实测所有日志后端 |

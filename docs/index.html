@@ -137,9 +137,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.13.0 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.14.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">v1.13.0 新增受管 ntfy 本机通知服务：官方 v2.28.0 digest 固定镜像、非 root、无特权或 Docker socket，localhost 默认、128 MiB/0.5 CPU/64 PID 限额、512 MiB 最低磁盘预检。实际 HTTP JSON 健康检查，SQLite 24 小时消息缓存，离线停写备份/恢复、卸载保留数据并同镜像重装。无认证，不用于敏感数据或不可信多用户环境；ntfy 域名/TLS 和跨版本升级明确拒绝，避免数据库迁移后盲目回滚。原 Nginx 域名/TLS、Docker 只读诊断、校验归档 SSH 传输与六项安全修复保留。Linux 验证目标 42 基础 + 209 行为，SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；仅专用隔离夹具并验证清理，不修改生产服务。ACME/Cloudflare/Telegram 仍待凭据验证，未完成全部待办。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
+        <p class="sub">v1.14.0 新增用户管理与 SSH 加固工作流：用户创建/删除（拒绝 root 与系统账号）、stdin 改密、受管 sudoers.d 授权/回收（marker 归属 + visudo 暂存校验 + 0440 + 回滚）、PermitRootLogin 三值事务化切换（sshd -t/-T 生效值校验与重载回滚），以及 <code>system hardening</code> 加固向导——建密钥用户→装公钥→sudo→登录验证门禁→收紧 root，验证未通过绝不修改 root 策略。原 ntfy 受管应用、域名/TLS、Docker 只读诊断、校验归档 SSH 传输保留。Linux 验证目标 42 基础 + 229 行为，SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机验证为隔离范围（专用测试用户 + 独立临时 sshd），生产 sshd 仅校验未重载。ACME/Cloudflare/Telegram 仍待凭据验证，未完成全部待办。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>

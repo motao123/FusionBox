@@ -15,6 +15,7 @@ system_main() {
     clean|cleanup)    system_clean "$@" ;;
     swap)             system_swap "$@" ;;
     users)            system_users "$@" ;;
+    hardening)        system_hardening ;;
     security|sec)     system_security "$@" ;;
     sshkey|ssh)       system_sshkey "$@" ;;
     firewall|fw)      system_firewall "$@" ;;
@@ -1072,18 +1073,276 @@ system_swap() {
   pause
 }
 
-# ---- User Management ----
-system_users() {
-  _require_root
-  msg_title "用户管理"
+# ---- User Management (CRUD/sudo/password, was read-only) ----
+
+_fb_user_check_name() {
+  [[ "$1" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || {
+    msg_err "用户名无效: 仅小写字母开头，可含小写字母/数字/_/-，最长 32 字符"
+    return 1
+  }
+}
+
+_fb_user_read_password() {
+  local label="$1" p1 p2
+  read -rsp "$label: " p1 || return 1
   msg ""
-  msg "  ${F_BOLD}系统用户:${F_RESET}"
-  awk -F: '$3>=1000 && $3<65534 {printf "  %s (uid=%s, shell=%s)\n", $1, $3, $7}' /etc/passwd
+  if [[ -z "$p1" ]]; then
+    msg_err "密码不能为空"
+    return 1
+  fi
+  if [[ ${#p1} -gt 512 || "$p1" == *:* || "$p1" == *$'\n'* || "$p1" == *$'\r'* ]]; then
+    msg_err "密码包含不允许的字符（冒号/换行）或超过 512 字符"
+    return 1
+  fi
+  read -rsp "再次输入密码: " p2 || return 1
+  msg ""
+  if [[ "$p1" != "$p2" ]]; then
+    msg_err "两次输入不一致"
+    return 1
+  fi
+  printf '%s' "$p1"
+}
+
+_fb_users_list() {
+  msg "  ${F_BOLD}可登录用户 (uid>=1000):${F_RESET}"
+  awk -F: '$3>=1000 && $3<65534 {printf "  %s (uid=%s, shell=%s, home=%s)\n", $1, $3, $7, $6}' /etc/passwd
+  msg ""
+  msg "  ${F_BOLD}FusionBox 受管 sudo 授权 (/etc/sudoers.d/90-fusionbox-*):${F_RESET}"
+  local f base found=0
+  for f in /etc/sudoers.d/90-fusionbox-*; do
+    [[ -f "$f" ]] || continue
+    base="${f##*/90-fusionbox-}"
+    if head -n1 "$f" 2>/dev/null | grep -q "^# FusionBox managed sudo grant"; then
+      msg "  $base (受管)"
+    else
+      msg "  ${F_YELLOW}$base (归属未知，不自动操作)${F_RESET}"
+    fi
+    found=1
+  done
+  [[ $found -eq 0 ]] && msg "  无"
   msg ""
   msg "  ${F_BOLD}最近登录:${F_RESET}"
-  last -n 10 2>/dev/null | head -10
+  last -n 5 2>/dev/null | head -5
+}
+
+_fb_user_set_password() {
+  local name="$1" pw
+  pw=$(_fb_user_read_password "为 $name 设置新密码") || return 1
+  printf '%s\n' "$pw" | python3 "$FUSION_SRC/lib/system_safety.py" passwd-set "$name" || return 1
+  msg_ok "$name 密码已更新"
+  _log_write "用户密码已更新: $name"
+}
+
+_fb_users_cmd_add() {
+  local name="${1:-}"
+  _fb_user_check_name "$name" || return 1
+  id "$name" &>/dev/null && { msg_err "用户已存在: $name"; return 1; }
+  confirm "创建用户 $name（主目录 /home/$name, shell /bin/bash）？" || { msg_info "已取消"; return 1; }
+  python3 "$FUSION_SRC/lib/system_safety.py" user-add "$name" || return 1
+  msg_ok "用户 $name 已创建"
+  _log_write "用户已创建: $name"
+  if confirm "立即为 $name 设置登录密码？"; then
+    _fb_user_set_password "$name" || msg_warn "可稍后用 fusionbox system users passwd $name 设置"
+  fi
+  return 0
+}
+
+_fb_users_cmd_del() {
+  local name="${1:-}"
+  _fb_user_check_name "$name" || return 1
+  msg_warn "将删除用户 $name 及其主目录（/home/$name）与受管 sudo 授权；系统账号与 root 一律拒绝"
+  confirm "确认删除 $name？" || { msg_info "已取消"; return 1; }
+  python3 "$FUSION_SRC/lib/system_safety.py" user-del "$name" || return 1
+  msg_ok "用户 $name 已删除"
+  _log_write "用户已删除: $name"
+}
+
+_fb_users_cmd_sudo() {
+  local name="${1:-}" mode="${2:-}"
+  _fb_user_check_name "$name" || return 1
+  local flag=""
+  if [[ -z "$mode" ]]; then
+    mode=$(select_option "选择 $name 的 sudo 模式:" "需要密码（推荐）" "免密 NOPASSWD") || return 1
+  fi
+  [[ "$mode" == "nopasswd" || "$mode" == "2" ]] && flag="nopasswd"
+  confirm "授予 $name sudo 权限（${flag:+免密}${flag:-需密码}，写入受管文件 90-fusionbox-$name）？" || { msg_info "已取消"; return 1; }
+  python3 "$FUSION_SRC/lib/system_safety.py" sudo-grant "$name" $flag || return 1
+  msg_ok "$name 已获得 sudo 权限"
+  _log_write "sudo 已授予: $name (${flag:-password})"
+}
+
+_fb_users_cmd_unsudo() {
+  local name="${1:-}"
+  _fb_user_check_name "$name" || return 1
+  confirm "回收 $name 的 FusionBox 受管 sudo 授权（不影响其他 sudo 配置）？" || { msg_info "已取消"; return 1; }
+  python3 "$FUSION_SRC/lib/system_safety.py" sudo-revoke "$name" || return 1
+  msg_ok "$name 的受管 sudo 授权已回收"
+  _log_write "sudo 已回收: $name"
+}
+
+_fb_users_cmd_passwd() {
+  local name="${1:-}"
+  _fb_user_check_name "$name" || return 1
+  _fb_user_set_password "$name"
+}
+
+_fb_users_menu() {
+  while true; do
+    clear
+    _print_banner
+    msg_title "用户管理"
+    msg ""
+    _fb_users_list
+    msg "  1) 创建用户"
+    msg "  2) 删除用户"
+    msg "  3) 授权 sudo"
+    msg "  4) 回收 sudo"
+    msg "  5) 修改用户密码"
+    msg "  0) 返回"
+    read -p "请选择: " u_choice || { msg ""; return; }
+    case "$u_choice" in
+      1) u_name=$(read_input "请输入新用户名") && _fb_users_cmd_add "$u_name" ;;
+      2) u_name=$(read_input "请输入要删除的用户名") && _fb_users_cmd_del "$u_name" ;;
+      3) u_name=$(read_input "请输入用户名") && _fb_users_cmd_sudo "$u_name" ;;
+      4) u_name=$(read_input "请输入用户名") && _fb_users_cmd_unsudo "$u_name" ;;
+      5) u_name=$(read_input "请输入用户名") && _fb_users_cmd_passwd "$u_name" ;;
+      0) return ;;
+      *) ;;
+    esac
+  done
+}
+
+system_users() {
+  _require_root
+  local action="${1:-menu}"
+  case "$action" in
+    list)    _fb_users_list; return 0 ;;
+    add)     shift; _fb_users_cmd_add "$@"; return $? ;;
+    del)     shift; _fb_users_cmd_del "$@"; return $? ;;
+    sudo)    shift; _fb_users_cmd_sudo "$@"; return $? ;;
+    unsudo)  shift; _fb_users_cmd_unsudo "$@"; return $? ;;
+    passwd)  shift; _fb_users_cmd_passwd "$@"; return $? ;;
+    menu)    _fb_users_menu; return 0 ;;
+    *)       _fb_users_menu; return 0 ;;
+  esac
+}
+
+# ---- SSH 加固向导：新建密钥用户并收紧 root 登录 (G05) ----
+# 验证未通过时绝不修改 root 登录策略。
+
+_fb_pubkey_valid() {
+  local pubkey_re='^(ssh-(rsa|ed25519|dss)|ecdsa-sha2-[a-z0-9-]+|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh\.com) [A-Za-z0-9+/=]+( .*)?$'
+  [[ "$1" =~ $pubkey_re ]]
+}
+
+_fb_hardening_verify_key_login() {
+  # $1=用户名 $2=本机私钥路径；返回 0=验证通过 1=验证失败 2=无法本地验证
+  local user="$1" keyfile="$2" port
+  command -v ssh &>/dev/null || return 2
+  systemctl is-active sshd.service &>/dev/null || systemctl is-active ssh.service &>/dev/null || return 2
+  port=$(grep -E "^Port[[:space:]]" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | tail -1)
+  port=${port:-22}
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+      -o ConnectTimeout=5 -o IdentitiesOnly=yes -i "$keyfile" -p "$port" \
+      "${user}@127.0.0.1" "true" &>/dev/null
+}
+
+_fb_hardening_root_policy() {
+  # $1=用户名 $2=yes(已验证密钥登录)|no(未验证)
+  local name="$1" verified="$2" choice
+  if [[ "$verified" != "yes" ]]; then
+    msg_warn "未能自动验证密钥登录。在收紧 root 策略前，必须先用新用户完成一次真实 SSH 登录"
+    confirm "我已在新的连接中用 $name 密钥登录成功，继续修改 root 策略？" || { msg_info "root 策略保持不变"; return 1; }
+  fi
+  choice=$(select_option "root 登录策略:" "prohibit-password：root 仅允许密钥登录（推荐）" "no：完全禁止 root 登录" "暂不修改，保持现状") || return 1
+  case "$choice" in
+    1)
+      python3 "$FUSION_SRC/lib/system_safety.py" ssh PermitRootLogin prohibit-password || return 1
+      msg_ok "root 已限制为仅密钥登录"
+      _log_write "PermitRootLogin -> prohibit-password (加固向导, 用户 $name)"
+      ;;
+    2)
+      msg_warn "完全禁止 root 登录后只能通过普通用户 + sudo 管理；请确保 $name 可用且已验证"
+      confirm "确认完全禁止 root 登录？" || return 1
+      python3 "$FUSION_SRC/lib/system_safety.py" ssh PermitRootLogin no || return 1
+      msg_ok "root 登录已完全禁止"
+      _log_write "PermitRootLogin -> no (加固向导, 用户 $name)"
+      ;;
+    *) msg_info "root 策略保持不变" ;;
+  esac
+}
+
+system_hardening() {
+  _require_root
+  msg_title "SSH 加固：新建密钥用户并收紧 root 登录"
   msg ""
-  pause
+  msg "  流程：创建专用用户 → 安装 SSH 公钥 →（可选）sudo → 验证密钥登录 → 收紧 root 策略"
+  msg "  ${F_YELLOW}本流程不修改 SSH 端口与防火墙；每步失败即停止并保留当前状态${F_RESET}"
+  msg ""
+
+  local name
+  name=$(read_input "请输入新用户名（小写字母开头，最长 32 字符）") || return 1
+  _fb_user_check_name "$name" || return 1
+  id "$name" &>/dev/null && { msg_err "用户已存在: $name，请换一个名字或走单独的用户管理"; return 1; }
+
+  msg ""
+  msg "${F_BOLD}[1/5] 创建用户${F_RESET}"
+  confirm "创建用户 $name？" || { msg_info "已取消"; return 1; }
+  python3 "$FUSION_SRC/lib/system_safety.py" user-add "$name" || return 1
+  if confirm "为 $name 设置登录密码（sudo 授权后需要）？"; then
+    _fb_user_set_password "$name" || msg_warn "跳过；可稍后用 fusionbox system users passwd $name 补设"
+  fi
+
+  msg ""
+  msg "${F_BOLD}[2/5] 安装 SSH 公钥${F_RESET}"
+  local key_source key_file=""
+  key_source=$(select_option "公钥来源:" "粘贴现有公钥（推荐，私钥留在你手里）" "在本机生成新密钥对") || return 1
+  if [[ "$key_source" == "1" ]]; then
+    msg "请粘贴公钥内容（以 ssh-rsa/ssh-ed25519 开头）:"
+    local pubkey
+    read -r pubkey || return 1
+    pubkey="${pubkey%$'\r'}"
+    _fb_pubkey_valid "$pubkey" || { msg_err "公钥格式无效，已停止（用户已创建，可用 users del 回滚）"; return 1; }
+    python3 "$FUSION_SRC/lib/system_safety.py" user-key-install "$name" <<< "$pubkey" || return 1
+  else
+    local ugroup
+    ugroup=$(id -gn "$name" 2>/dev/null) || ugroup="$name"
+    key_file="/home/$name/.ssh/id_ed25519"
+    install -d -m 700 -o "$name" -g "$ugroup" "/home/$name/.ssh" || return 1
+    ssh-keygen -t ed25519 -f "$key_file" -N "" -C "fusionbox-$name" || return 1
+    chown "$name:$ugroup" "$key_file" "$key_file.pub" && chmod 600 "$key_file" || return 1
+    python3 "$FUSION_SRC/lib/system_safety.py" user-key-install "$name" < "${key_file}.pub" || return 1
+    msg "  私钥已生成: $key_file （请立即下载到本地并妥善保存）"
+  fi
+
+  msg ""
+  msg "${F_BOLD}[3/5] sudo 授权（可选）${F_RESET}"
+  if confirm "授予 $name sudo 权限？"; then
+    _fb_users_cmd_sudo "$name" || msg_warn "sudo 授权未完成，可稍后用 fusionbox system users sudo $name"
+  fi
+
+  msg ""
+  msg "${F_BOLD}[4/5] 验证密钥登录${F_RESET}"
+  local verified="no" rc=0
+  if [[ -n "$key_file" ]]; then
+    if _fb_hardening_verify_key_login "$name" "$key_file"; then
+      msg_ok "本机回环验证：$name 密钥登录成功"
+      verified="yes"
+    else
+      rc=$?
+      [[ $rc -eq 2 ]] && msg_warn "本机无法验证（无 ssh 客户端或本机 sshd 未运行）" || msg_warn "本机回环验证失败"
+    fi
+  else
+    msg_info "粘贴的公钥在本机无私钥，需你在新的连接中实测"
+  fi
+
+  msg ""
+  msg "${F_BOLD}[5/5] 收紧 root 登录策略${F_RESET}"
+  _fb_hardening_root_policy "$name" "$verified" || true
+
+  msg ""
+  msg_ok "加固流程结束。回滚方式: users del $name / users unsudo $name；root 策略可用 sshkey 菜单调整"
+  _log_write "SSH 加固向导完成: $name (verified=$verified)"
 }
 
 # ---- Security Audit ----
@@ -1199,6 +1458,8 @@ system_sshkey() {
   msg "  2) 生成新密钥对"
   msg "  3) 删除指定密钥"
   msg "  4) 禁用密码登录（仅密钥）"
+  msg "  5) 开启 root 密码登录（改 root 密码 + PermitRootLogin yes）"
+  msg "  6) 禁止 root 密码登录（PermitRootLogin prohibit-password）"
   msg "  0) 返回"
   read -p "请选择: " ssh_choice
 
@@ -1253,6 +1514,22 @@ system_sshkey() {
         python3 "$FUSION_SRC/lib/system_safety.py" ssh PasswordAuthentication no || return 1
         msg_ok "PasswordAuthentication 已设为 no；PAM/交互式认证等策略未更改"
       fi
+      ;;
+    5)
+      msg_warn "将允许 root 使用密码通过 SSH 登录（公网暴露风险上升；建议配合 fail2ban/非标端口/仅密钥用户）"
+      confirm "确认继续？" || { msg_info "已取消"; pause; return; }
+      local rootpw
+      rootpw=$(_fb_user_read_password "设置 root 新密码") || { pause; return 1; }
+      printf '%s\n' "$rootpw" | python3 "$FUSION_SRC/lib/system_safety.py" passwd-set root || { pause; return 1; }
+      python3 "$FUSION_SRC/lib/system_safety.py" ssh PermitRootLogin yes || { pause; return 1; }
+      msg_ok "root 密码登录已开启"
+      msg_info "若 PasswordAuthentication 为 no，root 仍无法密码登录；如需放开请先执行选项 4 的反向操作"
+      _log_write "root 密码登录已开启（PermitRootLogin yes）"
+      ;;
+    6)
+      python3 "$FUSION_SRC/lib/system_safety.py" ssh PermitRootLogin prohibit-password || return 1
+      msg_ok "root 密码登录已禁止（root 密钥登录不受影响）"
+      _log_write "root 密码登录已禁止（PermitRootLogin prohibit-password）"
       ;;
   esac
   pause
@@ -3434,10 +3711,11 @@ system_tools_menu() {
     msg "  ${F_GREEN} 6${F_RESET}) 回收站"
     msg "  ${F_GREEN} 7${F_RESET}) 用户管理"
     msg "  ${F_GREEN} 8${F_RESET}) 安全审计"
-    msg "  ${F_GREEN} 9${F_RESET}) Swap 管理"
+    msg "  ${F_GREEN} 9${F_RESET}) SSH 加固向导（密钥用户+锁定 root）"
+    msg "  ${F_GREEN}10${F_RESET}) Swap 管理"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-9]: " tools_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-10]: " tools_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$tools_choice" in
       1) system_sshkey ;;
       2) system_firewall ;;
@@ -3447,7 +3725,8 @@ system_tools_menu() {
       6) system_trash ;;
       7) system_users ;;
       8) system_security ;;
-      9) system_swap ;;
+      9) system_hardening ;;
+      10) system_swap ;;
       0) break ;;
     esac
   done
@@ -3466,6 +3745,8 @@ system_help() {
   msg "  fusionbox system update         更新系统软件包"
   msg "  fusionbox system clean          系统清理"
   msg "  fusionbox system swap           Swap 管理"
+  msg "  fusionbox system users          用户管理 (list/add/del/sudo/unsudo/passwd)"
+  msg "  fusionbox system hardening      SSH 加固：新建密钥用户并收紧 root 登录"
   msg "  fusionbox system security       安全审计与加固"
   msg "  fusionbox system sshkey         SSH 密钥管理"
   msg "  fusionbox system firewall       防火墙管理 (UFW/iptables)"
