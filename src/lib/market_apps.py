@@ -28,6 +28,18 @@ CATALOG = {
              'health': ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:8080/v1/health | grep -q \'"healthy":true\''],
              'health_json': '/v1/health', 'domain': False,
              'description': 'local notification server; 24h SQLite message cache; no auth; local users can publish/read; no attachments or domain/TLS; image upgrades refused'},
+    'uptime-kuma': {'image': 'louislam/uptime-kuma:1@sha256:70233f4acb5163fd2a59a49909cf01e44415cecff13dba69e3a86647a2919f83',
+                    'port': 8082, 'bytes': 1536 * 1024 * 1024, 'target': 3001,
+                    'mount': '/app/data', 'readonly': False, 'memory': '512m',
+                    'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3001/ || exit 1'],
+                    'domain': False,
+                    'description': 'uptime monitoring panel; runs as container root user (image default); localhost only; no domain/TLS mapping; image upgrades refused'},
+    'ddns-go': {'image': 'jeessy/ddns-go:latest@sha256:0336e6eddcb4052e978c90f0aa530f77205b1dd08fe28057869dbc77a60c5671',
+                'port': 8083, 'bytes': 512 * 1024 * 1024, 'target': 9876,
+                'mount': '/root', 'readonly': False, 'memory': '64m',
+                'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:9876/ || exit 1'],
+                'domain': False,
+                'description': 'DDNS updater with web UI; runs as container root user (image default); config in named volume; localhost only; no domain/TLS; image upgrades refused'},
 }
 
 

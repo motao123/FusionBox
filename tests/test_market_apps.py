@@ -155,6 +155,20 @@ class Market(unittest.TestCase):
             self.assertFalse(any(c.args[0] in ('stop', 'rm') for c in docker.call_args_list))
         self.assertEqual(before, (self.registry.read_bytes(), Path(r['compose']).read_bytes()))
 
+    def test_new_catalog_entries_validate(self):
+        for app, target, min_bytes in (('uptime-kuma', 3001, 1024 * 1024 * 1024),
+                                       ('ddns-go', 9876, 256 * 1024 * 1024)):
+            spec = m.metadata(app)
+            self.assertEqual(spec['target'], target)
+            self.assertGreaterEqual(spec['bytes'], min_bytes)
+            self.assertIn('@sha256:', spec['image'])
+            self.assertFalse(spec['domain'])
+            doc = m.document({'project': 'fb-market-' + app.replace('-', ''),
+                              'market': {'token': 'a' * 32, 'app': app, 'port': 12345,
+                                         'image': spec['image']},
+                              'compose': 'x'})
+            self.assertIn('127.0.0.1:12345:' + str(target), doc['services']['app']['ports'])
+
     def test_ntfy_metadata_runtime_and_identity(self):
         m.operate('install', app='ntfy', accepted=True)
         registry = self.base / 'fb-market-ntfy.json'
