@@ -137,9 +137,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.17.0 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.18.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">v1.17.0 新增 Docker 一键卸载与容器端口封禁（G27/G30）：port-block 在 DOCKER-USER 链按容器 IP+端口（DNAT 原始目标）插入 DROP，comment 标记只管自有规则，插入失败回滚、删除按标记解析；uninstall 先展示只读资源统计，YES 门禁后清空容器/镜像/卷/网络、停用服务、按包管理器 purge 并校验，可选保留数据目录。原 env/网卡管理（v1.16.0）、Fail2Ban 面板（v1.15.0）、用户管理/SSH 加固向导（v1.14.0）保留。Linux 验证目标 42 基础 + 333 行为，SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机以临时 netns 转发流量验证 DROP/恢复共 20 项，完整卸载由 mock 覆盖。ACME/Cloudflare/Telegram 仍待凭据验证，未完成全部待办。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
+        <p class="sub">v1.18.0 站点运维闭环（G39/G41/G42/G49/G50）：web clone 站点克隆（目录+配置+nginx -t 回滚+可选 WP 库克隆）、web cache 缓存清理（FPM/fastcgi_cache/可选 CF purge）、web goaccess 私有目录访问日志报表、web upgrade 组件热升级（nginx/php/mysql/redis）、web uninstall-lnmp 一键卸载（YES 门禁+配置备份+keep/wipe 数据）。原 Docker 卸载与端口封禁（v1.17.0）、env/网卡（v1.16.0）、Fail2Ban 面板（v1.15.0）、用户管理/加固向导（v1.14.0）保留。Linux 验证目标 42 基础 + 370 行为，SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 25 项全过（真实 nginx 夹具全链路含完整卸载，验证后恢复原状）。ACME/Cloudflare/Telegram 仍待凭据验证，未完成全部待办。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>

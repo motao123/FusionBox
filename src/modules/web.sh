@@ -2345,7 +2345,7 @@ web_uninstall_lnmp() {
   msg_info "按包管理器卸载..."
   local -a pkgs=()
   local p
-  for p in nginx php-fpm libapache2-mod-php mariadb-server mariadb-client mysql-server mysql-client redis-server redis; do
+  for p in nginx nginx-core nginx-common php-fpm libapache2-mod-php mariadb-server mariadb-client mysql-server mysql-client redis-server redis; do
     dpkg -s "$p" >/dev/null 2>&1 2>/dev/null && pkgs+=("$p")
     rpm -q "$p" >/dev/null 2>&1 && pkgs+=("$p")
   done

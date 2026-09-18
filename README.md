@@ -4,6 +4,24 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.18.0 站点运维闭环（G39/G41/G42/G49/G50）
+
+```bash
+fusionbox web clone <源域名> <新域名>      # 克隆站点：目录+配置（nginx -t 回滚；WP 可选克隆库并替换域名）
+fusionbox web cache                        # 清缓存：重启 php-fpm、清 fastcgi_cache 目录、重载 nginx、可选 CF purge
+fusionbox web goaccess [domain]            # GoAccess 报表（/root/fusionbox-reports，0700/0600，含 IP 不入 Web 目录）
+fusionbox web upgrade [nginx|php|mysql|redis|all]   # 组件热升级（按包管理器，失败保持原版本，不提供降级）
+fusionbox web uninstall-lnmp               # 卸载 LNMP（YES 门禁；配置先备份到 /root；keep/wipe 数据）
+```
+
+- 克隆按源 server 块解析（复用 `web sites` 解析器），新目录建在源根目录同级，配置做域名+路径替换；`nginx -t` 失败自动删除新配置并保留目录回滚；WordPress 站点检测 wp-config.php 后可克隆数据库（CREATE DATABASE + mysqldump + sed 域名替换导入）。
+- 缓存清理只清 nginx.conf/conf.d 中声明的 `fastcgi_cache_path` 目录；CF purge 需已配置 `/etc/fusionbox/cloudflare.conf`，未配置时如实跳过。
+- 热升级按 dpkg/rpm 实际安装包升级（含 nginx-core）；升级失败不伪装成功，也不宣称可回滚。
+- LNMP 卸载配置备份失败即中止；wipe 分支删除 /var/www、/var/lib/mysql、/var/lib/redis。
+- 真机验证（25 项全过）：临时启用服务器上已有但损坏的 nginx-core 夹具——sites 清单解析、真实克隆（含克隆站对外服务）、缓存清理、GoAccess 真实安装与报表、nginx 热升级、卸载门禁与完整卸载（配置备份 tar + 包 purge + 数据 wipe 逐项核验）；验证后恢复服务器原状（nginx-core 保持已安装未激活，验证产物清理）。
+
+Linux 验证目标：42 基础 + 370 行为（新增 37），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 25/25。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.17.0 Docker 一键卸载与容器端口封禁（G30/G27）
 
 ```bash
@@ -388,6 +406,8 @@ fusionbox system fail2ban        # Fail2Ban 面板 (状态/解封/日志/参数/
 fusionbox system env             # 环境变量管理 (list/show/check/edit)
 fusionbox panels docker port-block  # 容器端口封禁 (DOCKER-USER, list/add/del)
 fusionbox panels docker uninstall   # Docker 一键卸载 (YES 门禁)
+fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
+fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)
 fusionbox system sshkey          # SSH 密钥管理
 fusionbox system firewall        # 防火墙管理
 fusionbox system cron            # 定时任务管理

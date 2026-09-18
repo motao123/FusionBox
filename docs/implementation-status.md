@@ -1,4 +1,8 @@
-# v1.17.0 Docker 一键卸载与容器端口封禁
+# v1.18.0 站点运维闭环
+
+G39/G41/G42/G49/G50 限定范围完成：`web clone`（server 块解析复用、同级目录复制、域名+路径替换、nginx -t 回滚、可选 WP 数据库克隆）、`web cache`（FPM 重启、fastcgi_cache 目录清理、CF purge 凭据可选）、`web goaccess`（私有目录报表）、`web upgrade`（按包管理器组件升级，无降级声明）、`web uninstall-lnmp`（YES 门禁、配置备份失败即中止、keep/wipe 数据）。真机验证 25 项全过：真实 nginx 夹具上完成清单/克隆/对外服务/缓存/报表/升级/门禁与完整卸载（备份 tar + purge + wipe 逐项核验），验证后恢复原状。最终 Linux 验证目标：42 基础 + 370 行为（新增 37）。剩余：市场模板扩容（G51/G52）与杂项（G62/G68/G32-34/G15/G16/G21/G19/G14）。
+
+## v1.17.0 Docker 一键卸载与容器端口封禁（历史）
 
 G27/G30 限定范围完成：`panels docker port-block add/del/list`（DOCKER-USER 顶部插入、原始目标=容器 IP+端口、comment 标记只管自有规则、插入失败回滚、iptables-save 解析删除时剥离引号保证 -D 匹配）；`panels docker uninstall`（只读统计→YES 门禁→可选数据目录保留→全量清理→按包管理器 purge→命令消失校验）。真机验证 20/20：临时 netns+veth 真实转发流量验证 DROP 生效与恢复；卸载仅拒绝路径，完整流由 mock 覆盖（服务器保留 Docker 供后续夹具）。最终 Linux 验证目标：42 基础 + 333 行为（新增 36）。剩余优先范围：P1 已全部完成；P2 站点闭环（G39/G41/G42/G49/G50）、市场模板扩容（G51/G52）、杂项（G62/G68/G32-34/G15 等）。
 
@@ -159,18 +163,18 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G36 | 证书到期状态表（全站证书 + 剩余天数） | 已提供入口 | web ssl status；实际域名证书未验证 |
 | G37 | 站点清单表（解析 server_name 生成访问地址+证书状态） | 已提供入口 | web sites；解析常规 Nginx 配置，不是完整 Nginx 语法解析器 |
 | G38 | 删除站点（目录/conf/证书/库全清） | 部分实现 | web site del；备份配置，数据与证书另行确认；不自动删数据库 |
-| G39 | 克隆站点（建库+dump 导入+全表替换域名） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G39 | 克隆站点（建库+dump 导入+全表替换域名） | 受管范围完成 | v1.18.0 web clone：目录+配置克隆真机验证；WP 库克隆实现（wp-config 检测+dump 域名替换），真实库场景未验证 |
 | G40 | 关联多域名（复制 conf 替换 server_name/证书） | 部分实现 | web site alias；配置校验回滚，证书仍需域名条件 |
-| G41 | 清缓存（重启容器 + Cloudflare purge API） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G42 | 站点访问日志分析（goaccess 报表） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G41 | 清缓存（重启容器 + Cloudflare purge API） | 受管范围完成 | v1.18.0 web cache：FPM 重启+缓存目录清理真机验证；CF purge 凭据依赖未实测 |
+| G42 | 站点访问日志分析（goaccess 报表） | 受管范围完成 | v1.18.0 web goaccess：真实安装+报表生成，/root 私有存放 |
 | G43 | 防 CC（fail2ban nginx filter + DOCKER-USER chain + Cloudflare action） | 部分实现 | 宿主 Nginx 4xx fail2ban；未覆盖 DOCKER-USER/真实流量测试 |
 | G44 | Cloudflare 联动（负载>5 自动 under_attack + CF API 封 IP） | 凭据依赖 | CF 封禁辅助脚本/开盾；保存初始安全级别；未实测 API |
 | G45 | 优化模式（标准/高性能切换：worker_connections/www.conf/MySQL/WP 内存） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G46 | brotli/zstd 压缩开关 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G47 | WordPress + Redis 预配置（wp-config 注入缓存参数） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G48 | 运行时调优模板注入（opcache/JIT、MySQL 4096M、PHP-FPM 池、valkey） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G49 | 组件热更新（单独升级 nginx/mysql/php/redis） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G50 | LDNMP 环境卸载 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G49 | 组件热更新（单独升级 nginx/mysql/php/redis） | 受管范围完成 | v1.18.0 web upgrade：真机 nginx 升级路径验证；失败保持原版本，不提供降级 |
+| G50 | LDNMP 环境卸载 | 受管范围完成 | v1.18.0 uninstall-lnmp：真机完整卸载（备份/purge/wipe），验证后恢复原状 |
 | G51 | AI/LLM 类应用（13 个：LobeChat/llama3/DeepSeek/Dify/OpenWebUI/RAGFlow/NewAPI/n8n/AstrBot/LangBot…） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G52 | 面板类应用（1Panel/NPM/Dockge/DPanel/AcePanel/Sun-Panel） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G53 | 网盘/同步类（Cloudreve/OpenList/小雅/immich/Syncthing/ZFile/FileCodeBox） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
