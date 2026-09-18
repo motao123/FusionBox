@@ -7,6 +7,7 @@ cluster_main() {
   case "$cmd" in
     add)              cluster_add "$@" ;;
     remove|rm)        cluster_remove "$@" ;;
+    import|export)    cluster_transfer "$cmd" "$@" ;;
     list|ls)          cluster_list "$@" ;;
     exec|run)         cluster_exec "$@" ;;
     task|tasks)       cluster_task "$@" ;;
@@ -25,82 +26,59 @@ cluster_main() {
 CLUSTER_DIR="/etc/fusionbox/cluster"
 CLUSTER_NODES="$CLUSTER_DIR/nodes.conf"
 
+_cluster_nodes() {
+  python3 "$FUSION_SRC/lib/cluster_nodes.py" --directory "$CLUSTER_DIR" "$@"
+}
+
 _cluster_init() {
-  mkdir -p "$CLUSTER_DIR"
-  [[ -f "$CLUSTER_NODES" ]] || touch "$CLUSTER_NODES"
-  chmod 600 "$CLUSTER_NODES" 2>/dev/null   # 节点表含服务器地址与端口
+  # Capture a validated, locked snapshot. Never consume unvalidated disk rows.
+  CLUSTER_SNAPSHOT=$(_cluster_nodes list) || return 1
+}
+
+cluster_transfer() {
+  _require_root
+  _cluster_nodes "$@"
 }
 
 cluster_add() {
   _require_root
-  _cluster_init
-  msg_title "添加集群节点"
-  msg ""
-
-  read -p "节点名称: " node_name
-  read -p "SSH 地址 (user@host): " ssh_addr
-  read -p "SSH 端口 (默认 22): " ssh_port
-  ssh_port=${ssh_port:-22}
-
-  # 输入校验：节点名/地址直接写入配置文件并参与 SSH 调用
-  [[ "$node_name" =~ ^[a-zA-Z0-9_-]+$ ]] || { msg_err "节点名称仅允许字母数字与 _ -"; pause; return 1; }
-  [[ "$ssh_addr" =~ ^[a-zA-Z0-9._@-]+$ ]] || { msg_err "SSH 地址格式无效（应为 user@host）"; pause; return 1; }
-  [[ "$ssh_port" =~ ^[0-9]+$ && "$ssh_port" -ge 1 && "$ssh_port" -le 65535 ]] || { msg_err "无效端口（1-65535）"; pause; return 1; }
-
-  if [[ -n "$node_name" && -n "$ssh_addr" ]]; then
-    echo "$node_name|$ssh_addr|$ssh_port" >> "$CLUSTER_NODES"
-    msg_ok "节点 '$node_name' 已添加"
-    _log_write "集群节点已添加: $node_name ($ssh_addr)"
-
-    # Test SSH connection
-    msg_info "正在测试 SSH 连接..."
-    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -p "$ssh_port" "$ssh_addr" "echo ok" &>/dev/null; then
-      msg_ok "SSH 连接测试成功"
-    else
-      msg_warn "SSH 连接测试失败，请检查密钥/密码配置"
-    fi
-  fi
+  local node_name ssh_addr ssh_port
+  read -r -p "节点名称: " node_name || return 1
+  read -r -p "SSH 地址 (user@host，IPv6 不加方括号): " ssh_addr || return 1
+  read -r -p "SSH 端口 (默认 22): " ssh_port || return 1
+  [[ "$ssh_addr" == *@* ]] || { msg_err "需要 user@host"; return 1; }
+  _cluster_nodes add "$node_name" "${ssh_addr%%@*}" "${ssh_addr#*@}" "${ssh_port:-22}" || return 1
+  msg_ok "节点已添加；未建立 SSH 连接"
   pause
 }
 
 cluster_remove() {
   _require_root
-  _cluster_init
-  cluster_list
-  read -p "输入要删除的节点名称: " node_name
-  if [[ -n "$node_name" ]]; then
-    if ! grep -qF "${node_name}|" "$CLUSTER_NODES"; then
-      msg_err "节点 '$node_name' 不存在"
-      pause; return 1
-    fi
-    confirm "确认删除节点 '$node_name'？" || { pause; return; }
-    # 按字面匹配过滤，避免节点名中的正则元字符误删其他行
-    # 注意：过滤掉全部行时 grep 退出码为 1，不能与 mv 做 && 短路
-    local tmpf
-    tmpf=$(mktemp)
-    grep -vF "${node_name}|" "$CLUSTER_NODES" > "$tmpf" || true
-    mv "$tmpf" "$CLUSTER_NODES"
-    chmod 600 "$CLUSTER_NODES" 2>/dev/null
-    msg_ok "节点 '$node_name' 已删除"
-  fi
+  local node_name
+  _cluster_nodes list || return 1
+  read -r -p "输入要删除的节点名称: " node_name || return 1
+  confirm "确认删除节点 '$node_name'？" || return 1
+  _cluster_nodes remove "$node_name" || return 1
+  msg_ok "节点已删除"
   pause
 }
 
 cluster_list() {
   _require_root
-  _cluster_init
+  _cluster_init || return 1
   msg_title "集群节点列表"
   msg ""
-  if [[ -s "$CLUSTER_NODES" ]]; then
+  if [[ -n "$CLUSTER_SNAPSHOT" ]]; then
     local i=1
     while IFS='|' read -r name addr port; do
+    [[ -n "$name" ]] || continue
       local status="${F_RED}离线${F_RESET}"
       if ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -p "$port" "$addr" "echo ok" &>/dev/null; then
         status="${F_GREEN}在线${F_RESET}"
       fi
       msg "  $i) $name ($addr:$port) - $status"
       i=$((i+1))
-    done < "$CLUSTER_NODES"
+    done <<< "$CLUSTER_SNAPSHOT"
   else
     msg "  暂无节点"
   fi
@@ -109,19 +87,20 @@ cluster_list() {
 
 cluster_exec() {
   _require_root
-  _cluster_init
+  _cluster_init || return 1
   msg_title "批量执行命令"
   msg ""
 
-  if [[ ! -s "$CLUSTER_NODES" ]]; then
+  if [[ -z "$CLUSTER_SNAPSHOT" ]]; then
     msg_warn "暂无集群节点，请先添加"
     pause; return
   fi
 
   msg "  当前节点:"
   while IFS='|' read -r name addr port; do
+    [[ -n "$name" ]] || continue
     msg "    $name ($addr:$port)"
-  done < "$CLUSTER_NODES"
+  done <<< "$CLUSTER_SNAPSHOT"
 
   msg ""
   read -p "请输入要执行的命令: " cmd_to_run
@@ -135,6 +114,7 @@ cluster_exec() {
   msg_info "正在所有节点执行: $cmd_to_run"
   msg "————————————————————————————————"
   while IFS='|' read -r name addr port; do
+    [[ -n "$name" ]] || continue
     msg "  ${F_CYAN}[$name]${F_RESET}"
     # 先声明再赋值，避免 local 吞掉 ssh 的退出码（SC2155）
     local result
@@ -146,7 +126,7 @@ cluster_exec() {
     else
       msg "    ${F_RED}执行失败${F_RESET}"
     fi
-  done < "$CLUSTER_NODES"
+  done <<< "$CLUSTER_SNAPSHOT"
   msg "————————————————————————————————"
   _log_write "集群批量执行: $cmd_to_run"
   pause
@@ -154,11 +134,11 @@ cluster_exec() {
 
 cluster_sync() {
   _require_root
-  _cluster_init
+  _cluster_init || return 1
   msg_title "同步文件到集群"
   msg ""
 
-  if [[ ! -s "$CLUSTER_NODES" ]]; then
+  if [[ -z "$CLUSTER_SNAPSHOT" ]]; then
     msg_warn "暂无集群节点"
     pause; return
   fi
@@ -172,11 +152,14 @@ cluster_sync() {
 
   msg ""
   while IFS='|' read -r name addr port; do
+    [[ -n "$name" ]] || continue
     msg_info "正在同步到 $name..."
-    scp -r -P "$port" -o ConnectTimeout=10 "$local_path" "$addr:$remote_path" 2>/dev/null && \
+    local destination="$addr"
+    if [[ "${addr#*@}" == *:* ]]; then destination="${addr%%@*}@[${addr#*@}]"; fi
+    scp -r -P "$port" -o ConnectTimeout=10 -- "$local_path" "$destination:$remote_path" 2>/dev/null && \
       msg_ok "  $name: 同步成功" || \
       msg_err "  $name: 同步失败"
-  done < "$CLUSTER_NODES"
+  done <<< "$CLUSTER_SNAPSHOT"
   _log_write "集群文件同步: $local_path → $remote_path"
   pause
 }
@@ -198,11 +181,11 @@ CLUSTER_TASKS=(
 
 cluster_task() {
   _require_root
-  _cluster_init
+  _cluster_init || return 1
   msg_title "预置批量任务"
   msg ""
 
-  if [[ ! -s "$CLUSTER_NODES" ]]; then
+  if [[ -z "$CLUSTER_SNAPSHOT" ]]; then
     msg_warn "暂无集群节点，请先添加节点"
     pause; return
   fi
@@ -253,7 +236,7 @@ cluster_task() {
     [[ -z "$n" ]] && continue
     msg "    $n ($a:$p)"
     node_total=$((node_total+1))
-  done < "$CLUSTER_NODES"
+  done <<< "$CLUSTER_SNAPSHOT"
 
   msg ""
   msg "  已选任务: ${run_names[*]}"
@@ -303,7 +286,7 @@ cluster_task() {
       msg "    ${F_RED}$n: 存在失败任务${F_RESET}"
       fail=$((fail+1))
     fi
-  done < "$CLUSTER_NODES"
+  done <<< "$CLUSTER_SNAPSHOT"
 
   msg "————————————————————————————————"
   msg "  汇总: ${F_GREEN}成功 $ok${F_RESET} / ${F_RED}失败 $fail${F_RESET} （共 $node_total 个节点）"
@@ -1011,6 +994,9 @@ cluster_help() {
   msg_title "集群控制 帮助"
   msg ""
   msg "  ${F_BOLD}[集群管理]${F_RESET}"
+  msg "  fusionbox cluster export /absolute/nodes.json  私有 JSON；拒绝覆盖"
+  msg "  fusionbox cluster import /absolute/nodes.json --dry-run  预览（默认）"
+  msg "  fusionbox cluster import /absolute/nodes.json --confirm  合并；冲突拒绝"
   msg "  fusionbox cluster add            添加集群节点"
   msg "  fusionbox cluster remove         删除集群节点"
   msg "  fusionbox cluster list           列出集群节点"
@@ -1055,12 +1041,21 @@ cluster_menu() {
     read -p "请选择 [0-8]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1)
-        msg "  1) 添加节点  2) 删除节点  3) 列出节点"
+        msg "  1) 添加节点  2) 删除节点  3) 列出节点  4) 导出  5) 导入"
         read -p "请选择: " node_choice || { msg ""; break; }
         case "$node_choice" in
           1) cluster_add ;;
           2) cluster_remove ;;
           3) cluster_list ;;
+          4) read -r -p "导出文件路径（必须不存在）: " transfer_file || return 1
+             cluster_transfer export "$transfer_file"; pause ;;
+          5) read -r -p "导入 JSON 路径（0600）: " transfer_file || return 1
+             if cluster_transfer import "$transfer_file" --dry-run; then
+               if confirm "确认合并？同名节点拒绝，原节点保留"; then
+                 cluster_transfer import "$transfer_file" --confirm
+               fi
+             fi
+             pause ;;
         esac
         ;;
       2) cluster_exec ;;

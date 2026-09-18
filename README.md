@@ -4,7 +4,21 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
-## v1.9.0 自备证书刷新与实际入口状态
+## v1.10.0 集群节点安全导入/导出
+
+```bash
+fusionbox cluster export /root/nodes.json
+fusionbox cluster import /root/nodes.json --dry-run
+fusionbox cluster import /root/nodes.json --confirm
+```
+
+G64 本批仅完成节点清单迁移：版本 1 JSON 包含 `format: fusionbox-cluster-nodes`、`version: 1`、`nodes`，每项仅 `id/user/host/port`。不接受密码、私钥、SSH 选项或命令，不导出 SSH 配置/known_hosts，不连接节点。默认只预览，确认后合并；所有同名节点（即使字段相同）拒绝，无覆盖模式。支持严格 DNS/IPv4/裸 IPv6；不支持 IPv6 zone ID、方括号地址或隐式 SSH 用户。上限 4096 节点/输入 1 MiB。
+
+本地继续使用 `nodes.conf` 的 `name|user@host|port` 格式；合法旧记录可直接读取/导出，不自动迁移或改写。确认合并/增删才原子写入规范化记录（0600），原节点字段保留，导入源文件不变。旧文件中的无用户地址、重复 ID、额外字段或不安全字段必须先人工修复，拒绝静默丢弃。节点目录要求操作者拥有且不可被其他用户写入；文件必须操作者拥有、私有 0600/0400、单硬链接，拒绝所有路径软链接。导出目标必须不存在，父目录须已存在；绝不覆盖既有文件。导入源也需私有权限。新增/删除/导入/导出共享非阻塞 flock，冲突报错后重试；执行从锁内校验的快照读取，快照后节点变更不改变本次目标。外部手工写入者须暂停。
+
+菜单节点管理增加导入/导出。Linux 验证目标：42 基础 + 150 行为（新增 14），Compose 13、市场 20、TLS 34 保留。真实集群连接、批量任务、SSH 密钥/配置迁移均未验证，也未纳入本批。
+
+## v1.9.0 自备证书刷新与实际入口状态（历史）
 
 新增 `fusionbox market managed tls-refresh nginx --confirm`：在注册表锁内重新检查当前登记的 PEM/私钥、SAN、有效期与匹配关系，通过 Nginx 校验后重载，并有界等待本机 SNI 入口实际提供新证书 SHA-256。`status` 显示到期时间、剩余完整天数和本机实际证书是否匹配；本机身份探测不校验 CA 信任，不能替代公共链/主机名验证。
 

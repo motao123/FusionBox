@@ -137,9 +137,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.9.0 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.10.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖常见运维场景。v1.9.0 新增自备 PEM 刷新：tls-refresh 显式校验/重载并确认本机 SNI 实际证书，status 显示剩余完整天数与文件/入口差异。不复制私钥；原文件已被外部覆盖时无法回滚。刷新失败保留 journal、报告运行状态未知，修复文件后显式重试。Linux 验证目标 42 基础 + 136 行为测试，真实域名/TLS 夹具 34 项检查，Compose 13 与市场 20 项夹具。test.local 自签名证书以 curl --cacert 验证真实 TLS，不使用 -k，不代表公共 CA/ACME 验证；无签发/自动续期，DNS/公网与 Cloudflare/TG 未验证。本机上游仍可访问，不声称防火墙隔离。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
+        <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖常见运维场景。v1.10.0 新增 G64 节点清单导入/导出：无凭据版本化 JSON、默认预览、确认合并、同名拒绝、私有原子写入和共享锁，支持严格 IPv4/IPv6。合法旧 nodes.conf 保持原格式兼容，非法旧行需人工修复；不迁移 SSH 配置/密钥，不执行生产集群任务。Linux 验证目标 42 基础 + 150 行为测试，真实域名/TLS 夹具 34 项检查，Compose 13 与市场 20 项夹具。test.local 自签名证书以 curl --cacert 验证真实 TLS，不使用 -k，不代表公共 CA/ACME 验证；无签发/自动续期，DNS/公网与 Cloudflare/TG 未验证。本机上游仍可访问，不声称防火墙隔离。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>
