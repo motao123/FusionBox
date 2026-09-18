@@ -48,7 +48,7 @@ class Transactions(unittest.TestCase):
 
     def test_user_add_refuses_existing_and_invalid_names(self):
         with patch.object(safety, 'run', self.record):
-            with patch('pwd.getpwnam', return_value=self.entry()):
+            with patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
                 with self.assertRaises(ValueError):
                     safety.user_add('deploy1')
             for bad in ('Deploy1', '1abc', 'a' * 33, '../root', 'a b', '', 'a:b'):
@@ -60,7 +60,7 @@ class Transactions(unittest.TestCase):
         with patch('pwd.getpwnam', side_effect=KeyError):
             with self.assertRaises(ValueError):
                 safety.passwd_set('ghost', 'x')
-        with patch('pwd.getpwnam', return_value=self.entry()):
+        with patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             for bad in ('', 'a:b', 'a\nb', 'a\rb', 'x' * 513):
                 with self.assertRaises(ValueError):
                     safety.passwd_set('deploy1', bad)
@@ -82,7 +82,7 @@ class Transactions(unittest.TestCase):
             self.assertEqual(captured['input'], name + ':s3cret-' + name + '\n')
 
     def test_sudo_grant_installs_validated_0440(self):
-        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             safety.sudo_grant('deploy1', self.sudo_dir)
         target = self.sudo_dir / '90-fusionbox-deploy1'
         self.assertTrue(target.read_text().startswith(
@@ -93,7 +93,7 @@ class Transactions(unittest.TestCase):
     def test_sudo_grant_nopasswd_leaves_foreign_files(self):
         foreign = self.sudo_dir / '99-other'
         foreign.write_text('x ALL=(ALL) ALL\n')
-        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             safety.sudo_grant('deploy1', self.sudo_dir, nopasswd=True)
         self.assertIn('NOPASSWD:ALL', (self.sudo_dir / '90-fusionbox-deploy1').read_text())
         self.assertEqual(foreign.read_text(), 'x ALL=(ALL) ALL\n')
@@ -102,7 +102,7 @@ class Transactions(unittest.TestCase):
         target = self.sudo_dir / '90-fusionbox-deploy1'
         target.write_text('deploy1 ALL=(ALL) ALL\n')
         target.chmod(0o440)
-        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             with self.assertRaises(ValueError):
                 safety.sudo_grant('deploy1', self.sudo_dir)
         self.assertEqual(target.read_text(), 'deploy1 ALL=(ALL) ALL\n')
@@ -117,29 +117,29 @@ class Transactions(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, args)
             return ''
 
-        with patch.object(safety, 'run', fail_target), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', fail_target), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             with self.assertRaises(subprocess.CalledProcessError):
                 safety.sudo_grant('deploy1', self.sudo_dir)
         self.assertFalse(target.exists())
 
     def test_sudo_revoke_only_removes_owned_marker_file(self):
-        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             with self.assertRaises(ValueError):
                 safety.sudo_revoke('deploy1', self.sudo_dir)
         foreign = self.sudo_dir / '90-fusionbox-deploy1'
         foreign.write_text('deploy1 ALL=(ALL) ALL\n')
-        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             with self.assertRaises(ValueError):
                 safety.sudo_revoke('deploy1', self.sudo_dir)
         self.assertTrue(foreign.exists())
         foreign.write_text('# FusionBox managed sudo grant v1\ndeploy1 ALL=(ALL:ALL) ALL\n')
-        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             safety.sudo_revoke('deploy1', self.sudo_dir)
         self.assertFalse(foreign.exists())
 
     def test_user_del_guards_uid_and_foreign_sudoers(self):
         managed = self.sudo_dir / '90-fusionbox-deploy1'
-        managed.write_text('deploy1 ALL=(ALL:ALL) ALL\n')
+        managed.write_text('# FusionBox managed sudo grant v1\ndeploy1 ALL=(ALL:ALL) ALL\n')
         for uid in (0, 999):
             with patch.object(safety, 'run', self.record), \
                  patch('pwd.getpwnam', return_value=self.entry(uid=uid)):
@@ -148,11 +148,11 @@ class Transactions(unittest.TestCase):
         self.assertFalse(self.commands)
         foreign = self.sudo_dir / '90-fusionbox-deploy2'
         foreign.write_text('deploy2 ALL=(ALL) ALL\n')
-        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             with self.assertRaises(ValueError):
                 safety.user_del('deploy2', self.sudo_dir)
         self.assertFalse(self.commands)
-        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry()):
+        with patch.object(safety, 'run', self.record), patch('pwd.getpwnam', return_value=self.entry(uid=1001)):
             safety.user_del('deploy1', self.sudo_dir)
         self.assertIn(('userdel', '-r', 'deploy1'), self.commands)
         self.assertFalse(managed.exists())
@@ -216,6 +216,23 @@ class Transactions(unittest.TestCase):
         self.assertTrue(config.read_text().startswith('PermitRootLogin prohibit-password\n'))
         self.assertIn(('systemctl', 'reload', 'ssh.service'), self.commands)
 
+    def test_ssh_permitrootlogin_accepts_without_password_alias(self):
+        config = self.root / 'sshd_config'
+        config.write_text('# preserved\n')
+
+        def command(*args):
+            self.commands.append(args)
+            if args[:2] == ('sshd', '-T'):
+                return 'permitrootlogin without-password\n'   # sshd alias output
+            return ''
+
+        def active(args, **kwargs):
+            return subprocess.CompletedProcess(args, 0 if args[-1] == 'ssh.service' else 3)
+
+        with patch.object(safety, 'run', command), patch.object(safety.subprocess, 'run', active):
+            safety.ssh_change(config, 'PermitRootLogin', 'prohibit-password')
+        self.assertTrue(config.read_text().startswith('PermitRootLogin prohibit-password\n'))
+
     def test_ssh_permitrootlogin_invalid_value_refused(self):
         config = self.root / 'sshd_config'
         config.write_text('# preserved\n')
@@ -228,6 +245,13 @@ class Transactions(unittest.TestCase):
 
 
 class UserMenus(Safety):
+    def test_password_read_returns_only_secret(self):
+        body = '''msg() { printf '%s' "$*" >> "$T/out"; }
+msg_err() { printf '%s' "$*" >> "$T/out"; }
+_pw=$(printf 'abc\\nabc\\n' | _fb_user_read_password 'pw')
+[[ "$_pw" == "abc" ]] || exit 9'''
+        self.run_shell('system', body)
+
     def test_users_cli_dispatches_to_safety_helper(self):
         body = '''python3() { printf '%s\\n' "$*" >> "$T/invoked"; }
 _fb_user_read_password() { printf 's3cret'; }

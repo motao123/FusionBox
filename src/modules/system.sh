@@ -1085,7 +1085,7 @@ _fb_user_check_name() {
 _fb_user_read_password() {
   local label="$1" p1 p2
   read -rsp "$label: " p1 || return 1
-  msg ""
+  msg "" >&2
   if [[ -z "$p1" ]]; then
     msg_err "密码不能为空"
     return 1
@@ -1095,7 +1095,7 @@ _fb_user_read_password() {
     return 1
   fi
   read -rsp "再次输入密码: " p2 || return 1
-  msg ""
+  msg "" >&2
   if [[ "$p1" != "$p2" ]]; then
     msg_err "两次输入不一致"
     return 1

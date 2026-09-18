@@ -162,6 +162,9 @@ def ssh_change(path, directive, value):
         effective = run('sshd', '-T', '-f', str(path))
         values = [line.split()[1] for line in effective.splitlines()
                   if line.split() and line.split()[0] == directive.lower()]
+        if directive == 'PermitRootLogin' and value == 'prohibit-password':
+            # sshd reports the alias "without-password" in -T output.
+            values = ['prohibit-password' if v == 'without-password' else v for v in values]
         if values != [value]:
             raise ValueError('Includes or configuration override requested SSH setting')
         attempted = True
@@ -374,7 +377,11 @@ def user_del(name, sudo_dir=Path('/etc/sudoers.d')):
             raise ValueError('Unknown sudoers entry for user; manual review required')
     if shutil.which('userdel') is None:
         raise ValueError('userdel is required (shadow suite)')
-    run('userdel', '-r', name)
+    try:
+        run('userdel', '-r', name)
+    except subprocess.CalledProcessError:
+        raise ValueError('userdel failed - the account may still have active '
+                         'sessions or processes; log out and retry')
     if target.exists():
         target.unlink()
     print('User and home directory removed; managed sudo entry removed.')
