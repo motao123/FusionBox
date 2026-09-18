@@ -137,9 +137,14 @@ def run():
                     assert before == (registry.read_bytes(), d.path(record()).read_bytes())
                 m.operate('tls', accepted=True, project=project, tls=good)
                 assert b'Welcome to nginx' in secure()
-                redirect = subprocess.run(['curl', '-sS', '--noproxy', '*', '-D', '-', '-o', '/dev/null', '-H', 'Host: test.local',
-                                           'http://127.0.0.1:' + str(listen)], capture_output=True, check=True).stdout
-                assert b'308' in redirect and ('https://test.local:' + str(tls_port)).encode() in redirect
+                for attempt in range(40):
+                    redirect = subprocess.run(['curl', '-sS', '--noproxy', '*', '-D', '-', '-o', '/dev/null', '-H', 'Host: test.local',
+                                               'http://127.0.0.1:' + str(listen)], capture_output=True, check=True).stdout
+                    if b'308' in redirect and ('https://test.local:' + str(tls_port)).encode() in redirect:
+                        break
+                    time.sleep(.1)
+                else:
+                    raise AssertionError('HTTP redirect did not activate after bounded reload wait')
                 wrong_host = subprocess.run(['curl', '-sS', '--noproxy', '*', '--cacert', good['cert'], '--resolve',
                                              'wrong.local:' + str(tls_port) + ':127.0.0.1', 'https://wrong.local:' + str(tls_port)], capture_output=True)
                 assert wrong_host.returncode == 60
