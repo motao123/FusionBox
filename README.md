@@ -4,6 +4,19 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.23.0 自动更新开关与 new-api 受管模板（G66/G51）
+
+```bash
+fusionbox update --cron on|off|status    # 每周日 03:07 自动运行 fusionbox update（受管 cron 条目，0600）
+fusionbox market managed install new-api --confirm   # LLM API 网关（127.0.0.1:8084 -> 3000，1GiB 预检）
+```
+
+- **自动更新（G66）**：受管 `/etc/cron.d/fusionbox-update` 仅调用既有带暂存校验/回滚的 `self_update`；日志写入私有文件；需已安装部署（/usr/local/bin/fusionbox）；off 即删条目。业务状态/配置在既有部署流程中保留。
+- **new-api（G51 首个 AI 类模板）**：LLM API 网关与计费面板，SQLite 位于具名卷，digest 固定镜像（实拉验证 `sha256:0a4d62b1…`），`/api/status` 真实健康检查。**首次启动无认证，部署后请立即设置管理员密码**（catalog 描述已注明）。
+- 真机验证 15/15：cron on/status/off 全往返（0600 条目写入/删除）、真实部署 new-api（健康 + /api/status 200 + 载荷）、重复安装拒绝、卸载清理核对。
+
+Linux 验证目标：42 基础 + 576 行为（含 update-cron 单元与市场目录校验扩展），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 15/15。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.22.0 rsync 任务、文件管理器与小工具（G16/G14/G22）
 
 ```bash
@@ -482,6 +495,8 @@ fusionbox market managed install uptime-kuma / ddns-go   # 受管模板扩容
 fusionbox web tune                      # 调优档位 (standard/high/restore)
 fusionbox web brotli                    # brotli 压缩开关
 fusionbox system rsync                  # rsync 同步任务 (add/list/run/cron)
+fusionbox update --cron on|off          # 自动更新开关 (每周)
+fusionbox market managed install new-api  # LLM API 网关受管模板
 fusionbox system file                   # 文件管理器 (ls/cat/cp/mv/del/tar/send)
 fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
 fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)

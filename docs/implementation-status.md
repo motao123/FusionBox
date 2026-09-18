@@ -1,4 +1,8 @@
-# v1.22.0 rsync 任务、文件管理器与小工具
+# v1.23.0 自动更新开关与 new-api 受管模板
+
+G66/G51 限定范围完成：`update --cron on|off|status`（受管 cron.d 条目复用既有带校验回滚的 self_update，需已安装部署，0600）；受管目录新增 `new-api`（LLM API 网关，digest 实拉验证，SQLite 具名卷，/api/status 真实健康检查，首启无认证警告写入描述）。真机验证 15 项全过：cron 全往返、真实部署/健康/HTTP 200/守卫/清理。最终 Linux 验证目标：42 基础 + 576 行为。**至此 69 项差距中：受管范围完成 55 项、部分覆盖 6 项、明确不做 8 项；未实现仅剩 G32-34（需真实 OCI 环境）、G51 其余 AI 应用（逐项评估）、G52 中需 Docker socket 的面板（与受管安全模型冲突）、G13 shutdown 分支（不能真机关机，mock 已覆盖）——均为环境/安全边界所限，列入后续观察。**
+
+## v1.22.0 rsync 任务、文件管理器与小工具（历史）
 
 G16/G14/G22 限定范围完成：`system rsync`（0600 持久化清单、端点严格校验、镜像模式确认、受管 cron.d 原子改写、rm 不删数据）；`system file`（ls/cat/mkdir/cp/mv/chmod/tar/untar/send，del 一律进回收站、拒绝删 /）；`system genpass`、`system gai`（前后自动备份）、`system locale`。真机验证 32 项全过：真实 rsync 同步、cron 写入/移除、文件管理器全操作（含回收站与拒绝删 /）、genpass、gai 往返。最终 Linux 验证目标：42 基础 + 576 行为（新增 59）。剩余：G66 自动更新、G51 NewAPI、G32-34（需 OCI 环境）、G52 其余（socket 依赖）。
 
@@ -191,7 +195,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G48 | 运行时调优模板注入 | 并入 tune 档位 | v1.21.0 tune 档位覆盖 PHP-FPM 池/MySQL buffer/nginx；opcache 细项与 valkey 未单独覆盖 |
 | G49 | 组件热更新（单独升级 nginx/mysql/php/redis） | 受管范围完成 | v1.18.0 web upgrade：真机 nginx 升级路径验证；失败保持原版本，不提供降级 |
 | G50 | LDNMP 环境卸载 | 受管范围完成 | v1.18.0 uninstall-lnmp：真机完整卸载（备份/purge/wipe），验证后恢复原状 |
-| G51 | AI/LLM 类应用 | 未实现 | 仍为 0；模板扩容先覆盖监控/DDNS 类，AI 类需逐项镜像与资源评估 |
+| G51 | AI/LLM 类应用 | 部分扩容 | v1.23.0 new-api 受管模板（真机部署验证）；其余 AI 应用逐项评估后续 |
 | G52 | 面板类应用 | 部分扩容 | v1.20.0 uptime-kuma 监控面板受管模板（真机全生命周期）；1Panel/Dockge 等未实现（Dockge 需 Docker socket，与受管安全模型冲突） |
 | G53 | 网盘/同步类（Cloudreve/OpenList/小雅/immich/Syncthing/ZFile/FileCodeBox） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G54 | 媒体/影音类（Navidrome/LibreTV/MoonTV/SyncTV/Owncast/QB/迅雷/Gopeed） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
@@ -206,7 +210,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G63 | 集群内置批量任务（18 项：update/clean/docker/swap/time/iptables…） | 部分实现 | cluster task；沿用密钥连接，未在生产节点批量执行 |
 | G64 | 集群配置备份/导入导出 | 节点清单范围完成 | v1.10.0 无凭据 JSON、预览/确认合并、冲突拒绝、共享锁与私有原子写入；合法旧 nodes.conf 原格式兼容，异常行人工修复；完整 SSH 配置/密钥/known_hosts 迁移不在范围 |
 | G65 | 游戏服管理面板（启停/重启/状态/内存/存档导入导出/定时备份/改配置/更新/卸载 12 项） | 部分实现 | game-manage；真实隔离卷往返测试通过；无定时备份/游戏内容兼容矩阵 |
-| G66 | 脚本更新机制增强（Range 200 字节读版本 + shebang/非空校验 + 失败回滚 .bak + 参数回灌 + cron 自动更新） | 部分实现 | 共用暂存校验与逐项切换回滚，保留旧代码恢复目录和业务状态；版本检查使用私有临时目录并校验归档版本一致；全目录原子切换/Range/参数回灌/自动更新仍后续 |
+| G66 | 脚本更新机制增强 | 受管范围完成 | 暂存校验回滚 + 业务状态保留（既有）+ v1.23.0 cron 自动更新开关（真机全往返）；Range 读版本未做（整包校验更严） |
 | G67 | 网络优化脚本（探测带宽→分级写 sysctl→restore/status 可回滚） | 部分实现 | system netopt；运行值快照恢复有 mock 断言，未改服务器真实网络参数 |
 | G68 | x86-64 psABI 级别检测（v1/v2/v3） | 受管范围完成 | v1.19.0 _psabi_from_flags 并入 system info；真机 CPU 识别为 v4 |
 | G69 | hermes / deepseek harness 管理器（AI Agent 服务管理，含 systemd/WebUI/域名+BasicAuth） | 大范围后续 | 独立生态与生命周期设计，未纳入本次实现 |
