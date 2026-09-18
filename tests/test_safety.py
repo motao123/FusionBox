@@ -22,7 +22,7 @@ class Safety(unittest.TestCase):
         for d in ('etc/fusionbox', 'etc/sysctl.d', 'opt/games/demo', 'backups', 'bin'):
             (self.root / d).mkdir(parents=True)
         self.modules = {}
-        for name in ('system', 'web', 'cluster', 'network', 'panels'):
+        for name in ('system', 'web', 'cluster', 'network', 'panels', 'market', 'workspace'):
             text = (ROOT / f'src/modules/{name}.sh').read_text(encoding='utf-8')
             for prefix in ('/etc/', '/opt/', '/var/', '/usr/local/'):
                 text = text.replace(prefix, self.posix + prefix)

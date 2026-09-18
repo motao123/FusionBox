@@ -94,6 +94,7 @@ market_main() {
 
   case "$cmd" in
     managed)          _require_root; python3 "$FUSION_SRC/lib/market_apps.py" "$@" ;;
+    clamav|scan)      market_clamav "$@" ;;
     list|l)           market_list "$@" ;;
     search|s)         market_search "$@" ;;
     install|i)        market_install "$@" ;;
@@ -105,7 +106,33 @@ market_main() {
   esac
 }
 
-# ---- List all apps ----
+# ---- List all apps ----# ---- ClamAV 病毒扫描动作 (G19)：为 market 的 clamav 安装条目补扫描能力 ----
+market_clamav() {
+  _require_root
+  local path="${1:-}"
+  [[ $# -eq 1 && -e "$path" ]] || { msg_err "用法: fusionbox market clamav <目录或文件>"; return 2; }
+  if ! command -v clamscan &>/dev/null; then
+    confirm "clamscan 未安装，安装 clamav（包较大，含病毒库下载）？" || return 1
+    _install_pkg clamav || { msg_err "clamav 安装失败"; return 1; }
+    freshclam 2>/dev/null || msg_warn "病毒库更新失败（freshclam），可稍后手动执行"
+  fi
+  local log="/root/clamav-scan-$(date +%Y%m%d%H%M%S).log"
+  msg_info "扫描 $path（大目录耗时较长，结果摘要如下）..."
+  local rc=0
+  clamscan -ri --exclude-dir="^/sys" --exclude-dir="^/proc" --exclude-dir="^/dev" "$path" > "$log" 2>&1 || rc=$?
+  grep -E "^(\[)?/?|SUMMARY|Infected files|Total errors|Infected:" "$log" 2>/dev/null | tail -15 || tail -15 "$log"
+  if [[ $rc -eq 0 ]]; then
+    msg_ok "扫描完成：未发现威胁"
+  elif [[ $rc -eq 1 ]]; then
+    msg_warn "扫描完成：发现威胁文件！完整日志: $log"
+    return 1
+  else
+    msg_err "扫描出错（rc=$rc），日志: $log"
+    return 1
+  fi
+  chmod 600 "$log"
+}
+
 market_list() {
   local filter="${1:-}"
   msg_title "可用应用"

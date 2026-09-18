@@ -69,6 +69,13 @@ system_info() {
   msg "  ${F_BOLD}网络:${F_RESET}"
   ip addr show | grep -E "inet " | grep -v "127.0.0.1" | awk '{print "            " $NF ": " $2}'
 
+  # x86-64 microarchitecture level (G68)
+  if [[ "$F_ARCH" == "amd64" ]]; then
+    local psabi
+    psabi=$(_psabi_from_flags "$(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null | cut -d: -f2)")
+    msg "  ${F_BOLD}x86-64 级别:${F_RESET} ${psabi}（二进制兼容性参考）"
+  fi
+
   # OS
   msg "  ${F_BOLD}系统:${F_RESET} $F_OS_NAME $F_OS_VER ($F_ARCH)"
   msg "  ${F_BOLD}内核:${F_RESET} $F_KERNEL"
@@ -1074,6 +1081,20 @@ system_swap() {
   esac
   pause
 }
+# ---- x86-64 psABI 级别检测 (G68) ----
+_psabi_from_flags() {
+  local flags="$1" lvl="v1"
+  if [[ "$flags" == *sse4_2* && "$flags" == *popcnt* && "$flags" == *sse4_1* && "$flags" == *ssse3* ]]; then
+    lvl="v2"
+  fi
+  if [[ "$lvl" == "v2" && "$flags" == *avx2* && "$flags" == *bmi2* && "$flags" == *bmi* && "$flags" == *fma* && "$flags" == *movbe* ]]; then
+    lvl="v3"
+  fi
+  if [[ "$lvl" == "v3" && "$flags" == *avx512f* && "$flags" == *avx512bw* && "$flags" == *avx512cd* && "$flags" == *avx512dq* && "$flags" == *avx512vl* ]]; then
+    lvl="v4"
+  fi
+  printf '%s' "$lvl"
+}
 
 # ---- User Management (CRUD/sudo/password, was read-only) ----
 
@@ -1462,6 +1483,7 @@ system_sshkey() {
   msg "  4) 禁用密码登录（仅密钥）"
   msg "  5) 开启 root 密码登录（改 root 密码 + PermitRootLogin yes）"
   msg "  6) 禁止 root 密码登录（PermitRootLogin prohibit-password）"
+  msg "  7) 从 GitHub/URL 导入公钥（逐条确认）"
   msg "  0) 返回"
   read -p "请选择: " ssh_choice
 
@@ -1533,8 +1555,52 @@ system_sshkey() {
       msg_ok "root 密码登录已禁止（root 密钥登录不受影响）"
       _log_write "root 密码登录已禁止（PermitRootLogin prohibit-password）"
       ;;
+    7)
+      msg "  1) 从 GitHub 用户导入"
+      msg "  2) 从 https URL 导入"
+      read -p "选择: " ksrc
+      local iurl=""
+      case "$ksrc" in
+        1) read -p "GitHub 用户名: " gh_user
+           [[ "$gh_user" =~ ^[a-zA-Z0-9-]{1,39}$ ]] || { msg_err "用户名无效"; pause; return; }
+           iurl="https://github.com/${gh_user}.keys" ;;
+        2) read -p "公钥列表 URL (https): " iurl ;;
+        *) pause; return ;;
+      esac
+      _fb_sshkey_import_url "$iurl" || { pause; return; }
+      ;;
   esac
   pause
+}
+# ---- 远程公钥导入 (G21)：https 拉取 + 逐条校验确认 ----
+_fb_sshkey_import_url() {
+  local url="$1" tmp added=0 line
+  [[ "$url" =~ ^https://[a-zA-Z0-9.-]+/ ]] || { msg_err "仅支持合法 https URL: $url"; return 1; }
+  tmp=$(mktemp) || return 1
+  if ! _download "$url" "$tmp"; then
+    rm -f "$tmp"
+    msg_err "下载失败: $url"
+    return 1
+  fi
+  local n; n=$(grep -c . "$tmp" 2>/dev/null || echo 0)
+  [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt 0 ] || { rm -f "$tmp"; msg_err "未获取到任何公钥"; return 1; }
+  msg_info "获取到 $n 行，逐条校验并确认："
+  while IFS= read -r line; do
+    line="${line%$''}"
+    [[ -n "$line" ]] || continue
+    if ! _fb_pubkey_valid "$line"; then
+      msg_warn "  跳过无效行"
+      continue
+    fi
+    msg "  ${line:0:60}..."
+    if confirm "添加该公钥？"; then
+      printf '%s
+' "$line" | python3 "$FUSION_SRC/lib/system_safety.py" keys-add && added=$((added+1))
+    fi
+  done < "$tmp"
+  rm -f "$tmp"
+  msg_ok "共添加 $added 个公钥"
+  _log_write "远程公钥导入: $url ($added)"
 }
 
 # ---- 防火墙管理 ----

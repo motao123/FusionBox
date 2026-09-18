@@ -8,6 +8,7 @@ workspace_main() {
     screen|sc)       workspace_screen "$@" ;;
     tmux|tm)         workspace_tmux "$@" ;;
     list|ls)         workspace_list "$@" ;;
+    work)            workspace_work "$@" ;;
     menu|main)       workspace_menu ;;
     help|h)          workspace_help ;;
     *)               workspace_menu ;;
@@ -153,6 +154,114 @@ workspace_tmux_menu() {
       4) workspace_tmux attach ;;
       5) workspace_tmux kill; pause ;;
       0) break ;;
+    esac
+  done
+}
+
+# ---- 编号工作区 (G62)：work1-10 常驻 tmux 会话，支持命令注入与重连 ----
+_ws_work_check_n() {
+  [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 10 ] || {
+    msg_err "编号必须是 1-10: $1"
+    return 1
+  }
+}
+
+_ws_work_tool() {
+  if command -v tmux &>/dev/null; then
+    printf tmux
+    return 0
+  fi
+  msg_err "tmux 未安装（workspace work 需要 tmux）"
+  return 1
+}
+
+workspace_work() {
+  _require_root
+  local action="${1:-menu}"
+  local tool; tool=$(_ws_work_tool) || return 1
+
+  case "$action" in
+    list)
+      local i state
+      msg "  ${F_BOLD}编号工作区 (tmux):${F_RESET}"
+      for i in 1 2 3 4 5 6 7 8 9 10; do
+        if tmux has-session -t "work$i" 2>/dev/null; then
+          state="${F_GREEN}运行中${F_RESET}"
+        else
+          state="空闲"
+        fi
+        msg "    work$i: $state"
+      done
+      ;;
+    new)
+      local n="${2:-}" cmd="${3:-}"
+      _ws_work_check_n "$n" || return 1
+      if tmux has-session -t "work$n" 2>/dev/null; then
+        msg_err "work$n 已存在（attach 进入或 kill 后重建）"
+        return 1
+      fi
+      if [[ -n "$cmd" ]]; then
+        tmux new-session -d -s "work$n" "$cmd" && msg_ok "work$n 已创建并执行: $cmd"
+      else
+        tmux new-session -d -s "work$n" && msg_ok "work$n 已创建"
+      fi
+      ;;
+    attach)
+      local n="${2:-}"
+      _ws_work_check_n "$n" || return 1
+      if ! tmux has-session -t "work$n" 2>/dev/null; then
+        msg_err "work$n 不存在（workspace work new $n 创建）"
+        return 1
+      fi
+      tmux attach -t "work$n"
+      ;;
+    send)
+      local n="${2:-}" cmd="${3:-}"
+      _ws_work_check_n "$n" || return 1
+      [[ -n "$cmd" ]] || { msg_err "用法: workspace work send <编号> <命令>"; return 2; }
+      if ! tmux has-session -t "work$n" 2>/dev/null; then
+        msg_err "work$n 不存在"
+        return 1
+      fi
+      tmux send-keys -t "work$n" "$cmd" C-m && msg_ok "已注入 work$n: $cmd"
+      ;;
+    kill)
+      local n="${2:-}"
+      _ws_work_check_n "$n" || return 1
+      if confirm "确认终止 work$n（其中进程全部退出）？"; then
+        tmux kill-session -t "work$n" 2>/dev/null && msg_ok "work$n 已终止" || msg_err "work$n 不存在"
+      fi
+      ;;
+    menu|"")
+      workspace_work_menu
+      ;;
+    *)
+      msg_err "未知子命令: $action（可用: list/new/attach/send/kill）"; return 2 ;;
+  esac
+}
+
+workspace_work_menu() {
+  while true; do
+    clear
+    _print_banner
+    msg_title "编号工作区"
+    msg ""
+    workspace_work list
+    msg ""
+    msg "  1) 新建编号会话 (可附带首条命令)"
+    msg "  2) 进入编号会话"
+    msg "  3) 向会话注入命令"
+    msg "  4) 终止会话"
+    msg "  0) 返回"
+    read -p "请选择: " w_choice || { msg ""; return; }
+    case "$w_choice" in
+      1) read -p "编号 (1-10): " w_n; read -p "首条命令（留空为空 shell）: " w_c
+         if [[ -n "$w_c" ]]; then workspace_work new "$w_n" "$w_c" || true; else workspace_work new "$w_n" || true; fi ;;
+      2) read -p "编号 (1-10): " w_n; workspace_work attach "$w_n" ;;
+      3) read -p "编号 (1-10): " w_n; read -p "要注入的命令: " w_c; workspace_work send "$w_n" "$w_c" ;;
+      4) read -p "编号 (1-10): " w_n; workspace_work kill "$w_n" ;;
+      0) return ;;
+      *) ;;
     esac
   done
 }

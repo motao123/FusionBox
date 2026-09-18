@@ -17,6 +17,7 @@ cluster_main() {
     game-manage|gm)   cluster_game_manage "$@" ;;
     oracle|oc)        cluster_oracle "$@" ;;
     kcmd|k)           cluster_kcmd "$@" ;;
+    sshout|out)       cluster_sshout "$@" ;;
     menu|main)        cluster_menu ;;
     help|h)           cluster_help ;;
     *)                cluster_menu ;;
@@ -905,7 +906,53 @@ OKEOF
   pause
 }
 
-# ---- k 命令快捷方式 ----
+# ---- k 命令快捷方式 ----# ---- SSH 出站收藏 (G15)：常用 ssh 目标保存与直连 ----
+_CLUSTER_SSHOUT_FILE="/etc/fusionbox/ssh_out.conf"
+
+cluster_sshout() {
+  _require_root
+  local action="${1:-list}"; shift || true
+  local file="$_CLUSTER_SSHOUT_FILE"
+
+  case "$action" in
+    list)
+      [[ -s "$file" ]] || { msg "  无 SSH 收藏（cluster sshout add 添加）"; return 0; }
+      msg "  ${F_BOLD}SSH 收藏:${F_RESET}"
+      awk -F'|' '{printf "    %s -> %s:%s\n", $1, $2, $3}' "$file"
+      ;;
+    add)
+      local name="${1:-}" target="${2:-}" port="${3:-22}"
+      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "名称无效（字母/数字/._-，≤32）: $name"; return 1; }
+      [[ "$target" =~ ^[a-zA-Z0-9._@-]+$ ]] || { msg_err "目标格式无效（应为 user@host，不含空格/特殊字符）: $target"; return 1; }
+      [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || { msg_err "端口无效: $port"; return 1; }
+      grep -q "^$name|" "$file" 2>/dev/null && { msg_err "名称已存在: $name"; return 1; }
+      mkdir -p "$(dirname "$file")" && touch "$file" && chmod 600 "$file"
+      printf '%s|%s|%s
+' "$name" "$target" "$port" >> "$file"
+      msg_ok "已收藏: $name -> $target:$port"
+      ;;
+    rm)
+      local name="${1:-}"
+      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "名称无效"; return 1; }
+      [[ -f "$file" ]] && grep -q "^$name|" "$file" || { msg_err "收藏不存在: $name"; return 1; }
+      sed -i "/^$name|/d" "$file"
+      msg_ok "已删除收藏: $name"
+      ;;
+    connect)
+      local name="${1:-}"
+      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "名称无效"; return 1; }
+      local row; row=$(grep "^$name|" "$file" 2>/dev/null | tail -1)
+      [[ -n "$row" ]] || { msg_err "收藏不存在: $name"; return 1; }
+      local target="${row#*|}"; target="${target%%|*}"
+      local port="${row##*|}"
+      msg_info "连接 $name ($target:$port)..."
+      ssh -t -p "$port" "$target"
+      ;;
+    *)
+      msg_err "未知子命令: $action（可用: list/add/rm/connect）"; return 2 ;;
+  esac
+}
+
 cluster_kcmd() {
   _require_root
   local kcmd_dir="/etc/fusionbox/kcmd"

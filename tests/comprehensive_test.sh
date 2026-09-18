@@ -10,6 +10,7 @@ if command -v python >/dev/null 2>&1; then
   python tests/test_env_nic.py
   python tests/test_docker_uninstall.py
   python tests/test_web_lifecycle.py
+  python tests/test_misc_batch.py
   python tests/test_docker_diagnostics.py
   python tests/test_archive_transfer.py
   python tests/test_cluster_nodes.py
@@ -29,6 +30,7 @@ else
   python3 tests/test_env_nic.py
   python3 tests/test_docker_uninstall.py
   python3 tests/test_web_lifecycle.py
+  python3 tests/test_misc_batch.py
   python3 tests/test_docker_diagnostics.py
   python3 tests/test_archive_transfer.py
   python3 tests/test_cluster_nodes.py
