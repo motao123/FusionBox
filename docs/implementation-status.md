@@ -1,4 +1,8 @@
-# v1.15.0 Fail2Ban 管理面板
+# v1.16.0 环境变量与网卡管理
+
+G09/G10 限定范围完成：`system env`（list/show/check/edit）仅允许清单内 rc 文件，编辑前私有备份、保存后 bash -n 校验并支持一键恢复；`network nic`（list/info/up/down）严格设备名校验、ethtool 详情、默认路由网卡停用需显式风险确认。真机验证 env 全链路（备份/no-op 编辑循环/允许清单拒绝）与 nic 只读、拒绝路径共 17 项通过；nic up/down 未在真实服务器执行（不改网络状态边界），由 mock 覆盖。最终 Linux 验证目标：42 基础 + 297 行为（新增 50）。剩余优先范围：Docker 完整卸载与容器原始目标防火墙规则（G27/G30）。
+
+## v1.15.0 Fail2Ban 管理面板（历史）
 
 G11 限定范围完成：`system fail2ban`（status/banned/unban/log/params/uninstall + 菜单）。unban 以 ipaddress 严格校验 IPv4/IPv6 后调用 fail2ban-client；幂等语义（未封禁 IP 返回同样成功）。log 尾部 N 行上限 500，/var/log/fail2ban.log 优先、journalctl 回退。卸载仅移除受管 marker jail 文件（未知文件拒绝），systemctl disable --now 后按包管理器 purge 并校验二进制消失；jail.local 等自有配置不触碰。params 复用 v1.12.1 受管事务。真机验证：status/banned/TEST-NET ban→unban→banned 清单循环/日志边界共 14 项通过；卸载与 params 仅 mock（服务器真实 fail2ban 正在防护 SSH，不实际停用）。最终 Linux 验证目标：42 基础 + 247 行为（新增 16）。剩余优先范围：环境变量/网卡管理（G09/G10）；Docker 卸载与容器级防火墙（G27/G30）。
 
@@ -17,7 +21,7 @@ G11 限定范围完成：`system fail2ban`（status/banned/unban/log/params/unin
 最终归档 Linux 验证目标：42 基础 + 209 行为（新增 7），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。新增真实 API 发布/读取、SQLite 停写快照/恢复、重装/重启持久化、拒绝迁移、失败清理/重试；不改生产服务。外部 ACME/CF/TG 凭据验证仍缺。
 
 当前优先剩余范围（不重开 v1.12.1 六项已修复问题）：
-1. P1 环境变量/网卡管理（G09/G10）；用户 CRUD/改密/加固向导（v1.14.0）与 Fail2Ban 面板（v1.15.0）已完成。
+1. P1 环境变量/网卡管理（G09/G10）、用户 CRUD/改密/加固向导（v1.14.0）、Fail2Ban 面板（v1.15.0）均已完成；剩余 P1 为 Docker 完整卸载与容器级防火墙（G27/G30）。
 2. P1 全量 Docker 卸载与容器原始目标防火墙规则；归档传输已有，目标机应用重建/迁移与数据库版本升级仍缺。
 3. P2 站点克隆/数据库域名替换、CF 缓存清理、GoAccess、运行时热升级/卸载；已有入口/局部校验不等于端到端完成。
 4. P2 现代应用各分类仍大部分缺失；ntfy 仅一个轻量运维通知模板，不声称完成 G51–G56。游戏定时备份/兼容矩阵、后台编号工作区/注入、自动更新仍待。
@@ -121,8 +125,8 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G06 | Swap 任意大小 + 旧 swap 清理 | 部分实现 | 自定义 Swap；未自动清理未知旧 swap |
 | G07 | 时区预设 20+ 城市 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G08 | 系统日志管理菜单（journalctl 查询/服务日志/secure 登录日志/实时跟踪/清理） | 已提供入口 | system log；未实测所有日志后端 |
-| G09 | 系统环境变量管理（查看/编辑 bashrc/profile/source 重载） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G10 | 网卡管理（ip link up/down、ethtool 详情） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G09 | 系统环境变量管理（查看/编辑 bashrc/profile/source 重载） | 受管范围完成 | v1.16.0 system env：允许清单内文件查看/编辑/语法检查，备份+恢复；source 重载属用户 shell 行为，只提示不代执 |
+| G10 | 网卡管理（ip link up/down、ethtool 详情） | 受管范围完成 | v1.16.0 network nic list/info/up/down；默认路由停用双确认；真机仅只读路径 |
 | G11 | fail2ban 完整面板（拦截记录/实时日志/参数配置/卸载） | 面板范围完成 | v1.15.0 status/banned/unban/log/params/uninstall；真实 fail2ban 上验证状态/解封/日志；卸载仅 mock（不停用生产防护） |
 | G12 | TG Bot 监控预警（CPU/内存/磁盘/流量阈值 + 登录通知） | 凭据依赖 | system notify；资源阈值与冷却，TG 仅 mock，SSH 登录通知未实现 |
 | G13 | 流量阈值自动关机（/proc/net/dev 统计超限关机） | 部分实现 | traffic-guard；默认 warn；shutdown 分支未执行，月统计从安装基线开始 |

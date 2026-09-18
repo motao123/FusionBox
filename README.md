@@ -4,6 +4,26 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.16.0 环境变量与网卡管理（G09/G10）
+
+```bash
+fusionbox system env list             # 列出清单内 rc 文件与语法状态
+fusionbox system env show <file>      # 查看文件（仅允许清单内路径，拒绝 /etc/shadow 等）
+fusionbox system env check            # 全部 shell rc 文件 bash -n 语法检查
+fusionbox system env edit <file>      # 编辑：预备份到私有目录，保存后 bash -n 校验，失败可一键恢复
+fusionbox network nic list            # 网卡/地址一览 + 默认路由网卡识别
+fusionbox network nic info <dev>      # 地址/计数器/ethtool 链路与驱动详情
+fusionbox network nic down <dev>      # 停用网卡（默认路由网卡需显式风险确认）
+fusionbox network nic up <dev>        # 启用网卡
+```
+
+- env 只管理允许清单内文件：/etc/profile、/etc/bash.bashrc、/etc/profile.d/*.sh、/etc/environment、~/.bashrc、~/.bash_profile、~/.profile；拒绝软链接与清单外路径。
+- 编辑前自动备份到 `$HOME/.config/fusionbox/backups/env/`（0700），保存后 `bash -n` 校验；语法错误时可从备份一键恢复，防止坏的 rc 文件破坏登录 shell。
+- nic up/down 直接改变网络状态：停用承载默认路由的网卡前必须确认风险提示；设备名校验严格（字母/数字/._-，≤15 字符），未知设备在执行前被拒绝。
+- 真机验证：env list/check/show/允许清单拒绝/备份与 no-op 编辑循环 11 项 + nic 只读与拒绝路径 6 项；up/down 不在真实服务器执行（隔离边界：不改网络状态），由 mock 测试覆盖。
+
+Linux 验证目标：42 基础 + 297 行为（新增 50 项 env/nic 与夹具中的既有项复核），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 17/17。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.15.0 Fail2Ban 管理面板（G11）
 
 `fusionbox system fail2ban`（别名 `f2b`）补齐 Fail2Ban 完整运维面板：状态总览、封禁清单、解封、日志、SSH 防护参数与卸载。系统工具菜单选项 11 提供相同入口。
@@ -350,6 +370,7 @@ fusionbox system tools           # 系统工具子菜单
 fusionbox system users           # 用户管理 (list/add/del/sudo/unsudo/passwd)
 fusionbox system hardening       # SSH 加固：新建密钥用户并收紧 root 登录
 fusionbox system fail2ban        # Fail2Ban 面板 (状态/解封/日志/参数/卸载)
+fusionbox system env             # 环境变量管理 (list/show/check/edit)
 fusionbox system sshkey          # SSH 密钥管理
 fusionbox system firewall        # 防火墙管理
 fusionbox system cron            # 定时任务管理
@@ -374,6 +395,7 @@ fusionbox system trash           # 回收站管理
 fusionbox network ip             # 查询 IP 地址
 fusionbox network streaming      # 流媒体解锁检测
 fusionbox network speedtest      # 网速测试
+fusionbox network nic            # 网卡管理 (list/info/up/down)
 fusionbox network dns            # DNS 解析测试
 fusionbox network trace <host>   # 路由追踪
 fusionbox network ping <host>    # Ping 测试
