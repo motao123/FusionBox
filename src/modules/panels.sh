@@ -266,59 +266,9 @@ YEOF
 
 # ---- Docker 端口访问控制 ----
 panels_docker_port_control() {
-  _require_root
-  if ! command -v docker &>/dev/null; then
-    msg_err "Docker 未安装"; pause; return
-  fi
-
-  msg_title "容器端口访问控制"
-  msg ""
-
-  docker ps --format "table {{.Names}}\t{{.Ports}}" 2>/dev/null | while read -r line; do
-    msg "  $line"
-  done
-
-  msg ""
-  msg "  1) 开放容器端口到公网"
-  msg "  2) 仅允许本机访问该端口 (其余来源 DROP)"
-  msg "  3) 查看容器端口详情"
-  msg "  0) 返回"
-  read -p "请选择: " pc_choice
-
-  case "$pc_choice" in
-    1)
-      read -p "要开放的端口: " port
-      if [[ "$port" =~ ^[0-9]+$ ]] && [[ "$port" -ge 1 && "$port" -le 65535 ]]; then
-        iptables -I DOCKER-USER -p tcp --dport "$port" -j ACCEPT 2>/dev/null
-        iptables -I DOCKER-USER -p udp --dport "$port" -j ACCEPT 2>/dev/null
-        if command -v ufw &>/dev/null; then ufw allow "$port" 2>/dev/null; fi
-        msg_ok "端口 $port 已开放"
-        _log_write "Docker 端口已开放: $port"
-      else
-        msg_err "端口必须是 1-65535 的数字"
-      fi
-      ;;
-    2)
-      read -p "要限制的端口: " port
-      if [[ "$port" =~ ^[0-9]+$ ]] && [[ "$port" -ge 1 && "$port" -le 65535 ]]; then
-        # 先放行本机回环，再丢弃其他来源 (ACCEPT 必须位于 DROP 之前)
-        iptables -C DOCKER-USER -p tcp --dport "$port" -s 127.0.0.1 -j ACCEPT 2>/dev/null || \
-          iptables -I DOCKER-USER -p tcp --dport "$port" -s 127.0.0.1 -j ACCEPT
-        iptables -C DOCKER-USER -p tcp --dport "$port" -j DROP 2>/dev/null || \
-          iptables -I DOCKER-USER 2 -p tcp --dport "$port" -j DROP
-        msg_ok "端口 $port 已限制为仅允许本机访问"
-        _log_write "Docker 端口已限制为仅本机访问: $port"
-      else
-        msg_err "端口必须是 1-65535 的数字"
-      fi
-      ;;
-    3)
-      read -p "容器名称: " c
-      docker port "$c" 2>/dev/null
-      docker inspect "$c" --format '{{json .HostConfig.PortBindings}}' 2>/dev/null
-      ;;
-  esac
-  pause
+  msg_err "旧端口开关已禁用：DOCKER-USER 的目标端口已经过 DNAT，不能按宿主端口安全匹配。"
+  msg_warn "请在 Compose ports 中明确绑定宿主 IP（本机使用 127.0.0.1），重新部署并验证；现有规则需人工审查。容器+原始目标地址规则尚未实现。"
+  return 1
 }
 
 # ---- Docker IPv6 网络配置 ----
@@ -793,6 +743,23 @@ panels_docker_mirror() {
 }
 
 # ---- Docker 备份/迁移/恢复 ----
+# Publish complete private archives only; an existing destination is never replaced.
+_panels_docker_archive() (
+  umask 077
+  local target="$1" operation="$2"; shift 2
+  local directory stage
+  directory=$(dirname "$target")
+  [[ -d "$directory" && ! -L "$directory" && ! -e "$target" && ! -L "$target" ]] || { msg_err "归档目标冲突或目录无效"; return 1; }
+  stage=$(mktemp -d "$directory/.fusionbox-export.XXXXXX") || return 1
+  trap 'rm -rf -- "$stage"' EXIT
+  if ! docker "$operation" "$@" > "$stage/archive.tar" || [[ ! -s "$stage/archive.tar" ]]; then
+    msg_err "Docker 导出失败；未发布归档"
+    return 1
+  fi
+  tar -tf "$stage/archive.tar" >/dev/null 2>&1 || { msg_err "归档校验失败"; return 1; }
+  ln -- "$stage/archive.tar" "$target" || { msg_err "归档发布失败；旧目标保留"; return 1; }
+)
+
 panels_docker_backup() {
   _require_root
   if ! command -v docker &>/dev/null; then
@@ -812,31 +779,33 @@ panels_docker_backup() {
   read -p "请选择: " dbk_choice
 
   local backup_dir="/root/docker_backups"
-  mkdir -p "$backup_dir"
+  (umask 077; mkdir -p "$backup_dir") || return 1
   local date_str=$(date '+%Y%m%d_%H%M%S')
 
   case "$dbk_choice" in
     1)
-      msg_info "正在备份所有容器..."
-      for container in $(docker ps -a --format '{{.Names}}' 2>/dev/null); do
-        docker export "$container" > "$backup_dir/${container}_${date_str}.tar" 2>/dev/null && \
-          msg "  已导出: $container"
+      local containers container
+      containers=$(docker ps -a --format '{{.Names}}') || { msg_err "容器列表读取失败"; return 1; }
+      for container in $containers; do
+        [[ "$container" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 1
+        _panels_docker_archive "$backup_dir/${container}_${date_str}.tar" export "$container" || return 1
       done
-      msg_ok "所有容器已备份到 $backup_dir"
-      _log_write "Docker 容器已全部备份"
+      msg_ok "列出的容器文件系统已导出到 $backup_dir（不含卷/运行配置）"
       ;;
     2)
-      read -p "容器名称: " c
-      if [[ -n "$c" ]]; then
-        docker export "$c" > "$backup_dir/${c}_${date_str}.tar" 2>/dev/null
-        msg_ok "容器 '$c' 已备份"
-      fi
+      read -r -p "容器名称: " c
+      [[ "$c" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 1
+      _panels_docker_archive "$backup_dir/${c}_${date_str}.tar" export "$c" || return 1
+      msg_ok "容器文件系统已导出（不含卷/运行配置）"
       ;;
     3)
-      local img_file="$backup_dir/all_images_${date_str}.tar"
-      msg_info "正在备份所有镜像..."
-      docker save $(docker images -q 2>/dev/null) -o "$img_file" 2>/dev/null
-      msg_ok "所有镜像已备份: $img_file ($(du -h "$img_file" | cut -f1))"
+      local images
+      images=$(docker images -q) || { msg_err "镜像列表读取失败"; return 1; }
+      [[ -n "$images" ]] || { msg_err "没有镜像可导出"; return 1; }
+      local -a image_ids
+      mapfile -t image_ids <<< "$images"
+      _panels_docker_archive "$backup_dir/all_images_${date_str}.tar" save "${image_ids[@]}" || return 1
+      msg_ok "镜像归档已发布"
       ;;
     4)
       local action project source
@@ -872,13 +841,14 @@ panels_docker_backup() {
     6)
       read -p "容器名称: " c
       read -p "远程主机 (user@host): " remote_host
-      if [[ -n "$c" && -n "$remote_host" ]]; then
-        local img_file="$backup_dir/${c}_${date_str}.tar"
-        docker export "$c" > "$img_file" 2>/dev/null
-        scp "$img_file" "${remote_host}:/tmp/" 2>/dev/null && \
-          msg_ok "已传输到 $remote_host:/tmp/$(basename "$img_file")" || msg_err "传输失败"
-        msg "在远程运行: docker import /tmp/$(basename "$img_file") $c"
-      fi
+      [[ "$c" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 1
+      [[ "$remote_host" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { msg_err "远程地址必须为 user@host"; return 1; }
+      local img_file="$backup_dir/${c}_${date_str}.tar"
+      _panels_docker_archive "$img_file" export "$c" || return 1
+      # Strict host checking; no transfer is attempted after a failed export.
+      scp -o StrictHostKeyChecking=yes -- "$img_file" "${remote_host}:/tmp/" || { msg_err "传输失败；本地归档保留"; return 1; }
+      msg_ok "文件系统归档已传输（不是完整备份/迁移）"
+      msg "在远程审查后运行: docker import /tmp/$(basename "$img_file") $c"
       ;;
   esac
   pause

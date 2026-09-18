@@ -4,6 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 bash tests/test_basic.sh
 if command -v python >/dev/null 2>&1; then
+  python tests/test_system_safety.py
   python tests/test_docker_diagnostics.py
   python tests/test_archive_transfer.py
   python tests/test_cluster_nodes.py
@@ -17,6 +18,7 @@ if command -v python >/dev/null 2>&1; then
   python tests/test_installer.py
   python tests/test_proxy_lifecycle.py
 else
+  python3 tests/test_system_safety.py
   python3 tests/test_docker_diagnostics.py
   python3 tests/test_archive_transfer.py
   python3 tests/test_cluster_nodes.py

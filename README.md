@@ -4,6 +4,17 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.12.1 审计安全修复
+
+- SSH 授权密钥使用 ssh-keygen 验证，显示/删除使用相同物理行号；注释、无效和带选项的密钥不作为禁用密码的依据。密码开关仅修改 PasswordAuthentication，不宣称禁用 PAM/交互式认证。必须先在独立连接验证密钥登录。
+- SSH 配置保留权限/归属与私有备份，校验 sshd -t/-T 后重载，失败恢复；Include 生效值不符、Match 或 socket activation 要求人工处理。不会修改 root 登录策略。
+- Swap 删除仅针对明确确认归属、非链接、私有的 /swapfile；验证活动路径和 swapoff 成功后原子修改 fstab，保留其他条目。失败不自动 swapon，备份保留。
+- Fail2Ban 仅写自有 jail.d/99-fusionbox-sshd.local，拒绝未知同名文件和无效数值；暂存/整体校验及重载失败回滚。不覆盖 jail.local，不改变启用状态/端口/后端；更晚配置可能覆盖参数。
+- 旧 Docker export/save 使用私有暂存、校验与不覆盖发布；失败不传输、不报成功。export 仅容器文件系统，不含卷或运行配置。**旧 Docker 端口开关已禁用**：DNAT 后不能按宿主端口正确匹配；请明确设置 Compose 宿主 IP 绑定并验证，容器+原始目标地址规则仍待实现。
+- Nginx/PHP-FPM 旧优化入口检查校验和重载结果，失败恢复配置，双重失败明确报告运行状态未知；备份保留。
+
+依赖 Python 3、OpenSSH 工具及对应已安装服务。操作期间须暂停外部配置写入；断电/进程强杀与回滚失败需根据备份人工恢复。这不是全部待办完成声明。Linux 验证目标：42 基础 + 202 行为（新增 25），SSH 21、Compose 13、Docker 诊断 15、市场 20、TLS 34；真实 sshd 和 Fail2Ban 仅临时配置校验，服务重载/Swap/防火墙失败路径使用模拟。ACME/Cloudflare/Telegram 仍待真实凭据验证。
+
 ## v1.12.0 Docker 只读诊断（G26/G31 限定范围）
 
 ```bash
@@ -331,7 +342,7 @@ fusionbox network port <ip> <端口> # 端口检测
 
 **站点数据管理 (`fusionbox web sitedata`)：**
 - 一键备份/恢复站点数据
-- 定时远程备份 (Rclone/SCP/rsync)
+- 本地配置定时归档；旧远程全量任务新建入口禁用，现有任务需人工审查
 
 ```bash
 fusionbox web lnmp               # 安装 LNMP 环境
@@ -349,10 +360,10 @@ fusionbox web sitedata           # 站点数据管理
 服务器面板和常用工具管理：
 
 **Docker 完整管理 (`fusionbox panels docker`)：**
-- 安装/卸载 Docker
+- Docker 安装入口；完整 Docker 卸载尚未实现
 - 容器管理 (启动/停止/重启/删除/日志/终端/资源占用)
 - 镜像管理、Docker Compose 项目管理
-- 容器端口访问控制、IPv6 网络配置
+- 旧容器端口开关已禁用（DNAT 映射缺失）；IPv6 网络配置入口保留
 - daemon.json 编辑 (镜像加速/日志限制/DNS)
 - 备份/迁移/恢复 (容器/镜像/Compose项目)
 - 网络管理/卷管理/垃圾清理

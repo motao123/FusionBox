@@ -26,6 +26,9 @@ jobs:
           done
           echo "All syntax checks passed"
 
+      - name: Prepare isolated SSH configuration checks
+        run: sudo install -d -m 0755 /run/sshd
+
       - name: Run safe regression suite
         run: bash tests/comprehensive_test.sh
 

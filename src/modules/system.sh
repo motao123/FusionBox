@@ -1001,7 +1001,7 @@ system_swap() {
 
   msg ""
   msg "  1) 创建 Swap 文件 (自定义大小)"
-  msg "  2) 删除所有 Swap"
+  msg "  2) 仅删除明确确认归属的 /swapfile（保留其他 Swap）"
   msg "  0) 返回"
   read -p "请选择: " sw_choice
 
@@ -1063,12 +1063,9 @@ system_swap() {
       fi
       ;;
     2)
-      if confirm "警告：将删除所有 Swap，确认继续？"; then
-        swapoff -a 2>/dev/null || true
-        rm -f /swapfile 2>/dev/null || true
-        sed -i '/swapfile/d' /etc/fstab
-        msg_ok "Swap 已删除"
-        _log_write "Swap 已删除"
+      if confirm "确认 /swapfile 为你拥有并允许删除的 Swap 文件？仅停用并删除此文件，保留其他 Swap"; then
+        python3 "$FUSION_SRC/lib/system_safety.py" swap || return 1
+        msg_ok "仅 /swapfile 已删除"
       fi
       ;;
   esac
@@ -1173,18 +1170,8 @@ system_security() {
           confirm "已完成手动放行，是否继续修改 SSH 端口？" && fw_ok=1
         fi
         if [[ $fw_ok -eq 1 ]]; then
-          if grep -q "^#\?Port " /etc/ssh/sshd_config 2>/dev/null; then
-            sed -i "s/^#\?Port .*/Port $new_port/" /etc/ssh/sshd_config
-          else
-            echo "Port $new_port" >> /etc/ssh/sshd_config
-          fi
-          if systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null; then
-            msg_ok "SSH 端口已修改为 $new_port"
-            _log_write "SSH 端口已更改为 $new_port"
-            msg_warn "请先用新端口开新连接测试，确认能登录后再关闭当前会话"
-          else
-            msg_err "sshd 重启失败，请检查 /etc/ssh/sshd_config；防火墙已放行 $new_port 与 $old_port"
-          fi
+          python3 "$FUSION_SRC/lib/system_safety.py" ssh Port "$new_port" || return 1
+          msg_warn "配置已验证并重载；请先用新端口建立连接，确认后再关闭当前会话。防火墙放行规则保留。"
         else
           msg_err "防火墙未放行端口 $new_port，已取消修改 SSH 端口"
         fi
@@ -1202,15 +1189,7 @@ system_sshkey() {
 
   msg "  ${F_BOLD}当前授权密钥:${F_RESET}"
   if [[ -f ~/.ssh/authorized_keys ]]; then
-    local key_count=0
-    while IFS= read -r line; do
-      [[ -z "$line" || "$line" == "#"* ]] && continue
-      key_count=$((key_count+1))
-      local key_type=$(echo "$line" | awk '{print $1}')
-      local key_comment=$(echo "$line" | awk '{print $NF}')
-      msg "  $key_count) [$key_type] $key_comment"
-    done < ~/.ssh/authorized_keys
-    [[ $key_count -eq 0 ]] && msg "    暂无授权密钥"
+    python3 "$FUSION_SRC/lib/system_safety.py" keys-list || return 1
   else
     msg "    暂无授权密钥"
   fi
@@ -1235,10 +1214,7 @@ system_sshkey() {
         return 1
       fi
       if [[ -n "$pubkey" ]]; then
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        echo "$pubkey" >> ~/.ssh/authorized_keys
-        chmod 600 ~/.ssh/authorized_keys
+        python3 "$FUSION_SRC/lib/system_safety.py" keys-add <<< "$pubkey" || return 1
         msg_ok "公钥已添加"
         _log_write "SSH 公钥已添加"
       fi
@@ -1266,30 +1242,16 @@ system_sshkey() {
       if [[ -f ~/.ssh/authorized_keys ]]; then
         read -p "输入要删除的密钥行号: " line_num
         if [[ -n "$line_num" ]]; then
-          local ak_total; ak_total=$(wc -l < ~/.ssh/authorized_keys | tr -d ' ')
-          if ! [[ "$line_num" =~ ^[0-9]+$ ]] || [[ "$line_num" -lt 1 || "$line_num" -gt "$ak_total" ]]; then
-            msg_err "无效行号: $line_num（有效范围 1-$ak_total）"
-            pause
-            return 1
-          fi
-          sed -i "${line_num}d" ~/.ssh/authorized_keys
-          msg_ok "密钥已删除"
+          python3 "$FUSION_SRC/lib/system_safety.py" keys-delete "$line_num" || return 1
+          msg_ok "密钥已删除（显示编号对应物理行号）"
         fi
       fi
       ;;
     4)
-      local ak_lines=0
-      [[ -f ~/.ssh/authorized_keys ]] && ak_lines=$(wc -l < ~/.ssh/authorized_keys | tr -d ' ')
-      if [[ "$ak_lines" -eq 0 ]]; then
-        msg_err "~/.ssh/authorized_keys 不存在或为空，禁用密码登录可能导致无法登录"
-        pause
-        return 1
-      fi
-      if confirm "确认禁用密码登录？请确保已配置密钥！"; then
-        sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-        systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
-        msg_ok "密码登录已禁用，仅允许密钥登录"
-        _log_write "SSH 密码登录已禁用"
+      python3 "$FUSION_SRC/lib/system_safety.py" keys-check || return 1
+      if confirm "确认已在独立连接中验证密钥登录，并禁用 PasswordAuthentication？其他认证策略不变"; then
+        python3 "$FUSION_SRC/lib/system_safety.py" ssh PasswordAuthentication no || return 1
+        msg_ok "PasswordAuthentication 已设为 no；PAM/交互式认证等策略未更改"
       fi
       ;;
   esac
@@ -1409,20 +1371,8 @@ system_firewall() {
         max_retry=${max_retry:-5}
         read -p "封禁时间（秒，默认 3600）: " ban_time
         ban_time=${ban_time:-3600}
-        cat > /etc/fail2ban/jail.local << FEOF
-[DEFAULT]
-bantime = $ban_time
-findtime = 600
-maxretry = $max_retry
-
-[sshd]
-enabled = true
-port = ssh
-logpath = %(sshd_log)s
-backend = %(sshd_backend)s
-FEOF
-        systemctl restart fail2ban 2>/dev/null
-        msg_ok "Fail2Ban 已配置: $max_retry 次失败后封禁 $ban_time 秒"
+        python3 "$FUSION_SRC/lib/system_safety.py" fail2ban "$max_retry" "$ban_time" || return 1
+        msg_ok "Fail2Ban 自有 sshd 参数已保存并重载；启用状态、端口和后端保持原策略，后续配置可能覆盖参数"
       fi
       ;;
     9)

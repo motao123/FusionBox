@@ -766,30 +766,36 @@ web_optimize() {
   if command -v nginx &>/dev/null; then
     msg_info "正在优化 Nginx..."
     local nginx_conf="/etc/nginx/nginx.conf"
-    local conf_bak="$nginx_conf.fb-bak-$(date +%s)"
-    cp "$nginx_conf" "$conf_bak" 2>/dev/null
+    [[ -f "$nginx_conf" && ! -L "$nginx_conf" ]] || return 1
+    local backup_dir
+    backup_dir=$(mktemp -d "${nginx_conf}.fb-backup.XXXXXX") || return 1
+    local conf_bak="$backup_dir/nginx.conf"
+    cp -p "$nginx_conf" "$conf_bak" || return 1
 
     # Optimize worker processes
-    local cpu_count; cpu_count=$(nproc --all)
-    sed -i "s/worker_processes .*/worker_processes $cpu_count;/" "$nginx_conf" 2>/dev/null
+    local edit_failed=0
+    local cpu_count; cpu_count=$(nproc --all) || return 1
+    sed -i "s/worker_processes .*/worker_processes $cpu_count;/" "$nginx_conf" 2>/dev/null || edit_failed=1
 
     # Optimize worker connections
-    sed -i "s/worker_connections .*/worker_connections 10240;/" "$nginx_conf" 2>/dev/null
+    sed -i "s/worker_connections .*/worker_connections 10240;/" "$nginx_conf" 2>/dev/null || edit_failed=1
 
     # Add gzip settings
     grep -q "gzip_vary" "$nginx_conf" 2>/dev/null || \
-      sed -i '/http {/a\    gzip on;\n    gzip_vary on;\n    gzip_min_length 1024;\n    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;' "$nginx_conf" 2>/dev/null
+      sed -i '/http {/a\    gzip on;\n    gzip_vary on;\n    gzip_min_length 1024;\n    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;' "$nginx_conf" 2>/dev/null || edit_failed=1
 
     # Enable sendfile and tcp_nopush
-    sed -i 's/# tcp_nopush/tcp_nopush/' "$nginx_conf" 2>/dev/null
-    sed -i 's/# tcp_nodelay/tcp_nodelay/' "$nginx_conf" 2>/dev/null
+    sed -i 's/# tcp_nopush/tcp_nopush/' "$nginx_conf" 2>/dev/null || edit_failed=1
+    sed -i 's/# tcp_nodelay/tcp_nodelay/' "$nginx_conf" 2>/dev/null || edit_failed=1
 
-    if ! nginx -t 2>/dev/null; then
-      cp "$conf_bak" "$nginx_conf" 2>/dev/null
-      msg_err "nginx 配置校验失败，已回滚"
-      pause; return 1
+    if [[ "$edit_failed" == 1 ]] || ! nginx -t 2>/dev/null || ! nginx -s reload 2>/dev/null; then
+      if cp -p "$conf_bak" "$nginx_conf" && nginx -t 2>/dev/null && nginx -s reload 2>/dev/null; then
+        msg_err "Nginx 校验/重载失败，已恢复原配置并重载；备份: $conf_bak"
+      else
+        msg_err "Nginx 优化失败，回滚/重载也失败；运行状态未知，请使用备份人工恢复: $conf_bak"
+      fi
+      return 1
     fi
-    nginx -s reload 2>/dev/null || true
     msg_ok "Nginx 已优化: $cpu_count 个 worker，gzip 已启用"
     _log_write "Nginx 优化完成"
   fi
@@ -797,17 +803,30 @@ web_optimize() {
   # PHP-FPM optimization
   if command -v php-fpm8.2 &>/dev/null || command -v php-fpm &>/dev/null; then
     msg_info "正在优化 PHP-FPM..."
-    local php_conf
-    for conf in /etc/php/*/fpm/pool.d/www.conf; do
-      if [[ -f "$conf" ]]; then
-        sed -i 's/pm.max_children = .*/pm.max_children = 50/' "$conf"
-        sed -i 's/pm.start_servers = .*/pm.start_servers = 5/' "$conf"
-        sed -i 's/pm.min_spare_servers = .*/pm.min_spare_servers = 5/' "$conf"
-        sed -i 's/pm.max_spare_servers = .*/pm.max_spare_servers = 15/' "$conf"
+    local php_conf php_version php_bin php_service php_backup
+    for php_conf in /etc/php/*/fpm/pool.d/www.conf; do
+      [[ -f "$php_conf" ]] || continue
+      [[ ! -L "$php_conf" ]] || return 1
+      php_version="${php_conf%/fpm/pool.d/www.conf}"; php_version="${php_version##*/}"
+      php_bin="php-fpm${php_version}"
+      command -v "$php_bin" >/dev/null || { msg_err "缺少 $php_bin，未修改此配置"; return 1; }
+      php_service="php${php_version}-fpm"
+      php_backup=$(mktemp -d "${php_conf}.fb-backup.XXXXXX") || return 1
+      cp -p "$php_conf" "$php_backup/www.conf" || return 1
+      if ! sed -i -e 's/pm.max_children = .*/pm.max_children = 50/' \
+        -e 's/pm.start_servers = .*/pm.start_servers = 5/' \
+        -e 's/pm.min_spare_servers = .*/pm.min_spare_servers = 5/' \
+        -e 's/pm.max_spare_servers = .*/pm.max_spare_servers = 15/' "$php_conf" || \
+        ! "$php_bin" -t 2>/dev/null || ! systemctl reload "$php_service"; then
+        if cp -p "$php_backup/www.conf" "$php_conf" && "$php_bin" -t 2>/dev/null && systemctl reload "$php_service"; then
+          msg_err "PHP-FPM 优化失败，已恢复并重载原配置"
+        else
+          msg_err "PHP-FPM 回滚/重载失败，运行状态未知；备份: $php_backup/www.conf"
+        fi
+        return 1
       fi
+      msg_ok "$php_service 配置已验证并重载"
     done
-    systemctl reload php*-fpm 2>/dev/null || true
-    msg_ok "PHP-FPM 优化完成"
   fi
 
   pause
