@@ -4,6 +4,26 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.6.0 受管应用生命周期基础
+
+新增独立的 `market managed` 入口，首批只支持低占用 Nginx 静态站点。既有软件包/第三方安装入口保持独立，不自动接管。复用 Compose 注册表 `/var/lib/fusionbox/compose-projects`、全局 flock 与原子 0600 写入，目录 0700；生成固定结构 Compose JSON，不 source/eval 注册数据。安装检查端口与注册表/Docker 数据盘至少 256 MiB 可用空间；仅绑定 localhost，64 MiB 内存、0.5 CPU、64 PID、日志大小有限制。
+
+```bash
+fusionbox market managed catalog
+fusionbox market managed install nginx --port 8080 --confirm
+fusionbox market managed status nginx
+fusionbox market managed update nginx --confirm
+fusionbox market managed uninstall nginx --confirm
+# 已生成的项目也可使用现有备份入口（需确认停写）
+fusionbox panels compose-backup backup fb-market-nginx /root/nginx.tar.gz --confirm-stop-writers
+```
+
+安装必须通过容器健康检查才成功；状态显示归属类型、事务状态、健康与本地地址。更新拉取固定目录中的 `nginx:stable-alpine`，比较实际 image ID；保留前一镜像记录，用不可变本地 image ID 部署，失败尝试回滚并返回失败。内容卷以只读方式挂入 Nginx，更新不会执行内容迁移。卸载只停止/删除经过归属检查的容器，**保留具名数据卷、配置与登记**，无自动数据删除。数据目录为 `fb-market-nginx_data`，可通过 Docker volume inspect 定位并人工部署静态内容；默认首页为 Nginx 欢迎页。
+
+失败安装保留创建的资源与私有恢复记录，使用 status 检查后确认 uninstall；不会报告成功或删除未知资源。卸载后不自动重新安装/认领保留卷，需人工恢复；配置漂移、未知归属、共享卷拒绝更新。更新/回滚双重失败返回人工恢复要求，保留旧镜像记录和数据，不保证服务可用。进程被强杀或断电后检查登记状态、Compose 与 `.previous.json`，不得与外部 Docker/Compose 操作并发。锁只协调 FusionBox；端口预检后仍可能发生竞争，最终以 Docker 和健康结果为准。仅支持本机 Docker socket、Linux/Python 3/Compose v2+；尚无自动端口分配、远程部署、域名/证书接入或任意应用迁移。
+
+验证结果见本版本实施跟踪。真实 ACME、Cloudflare、Telegram 仍未验证。
+
 ## v1.5.1 恢复双重失败停机保护
 
 修复 v1.5.0 的不安全默认：恢复和回滚同时失败时，登记项目保持停止，不执行任何 start，返回失败并报告安全归档路径和人工干预要求。备份失败/恢复前安全备份失败（未改数据）仍恢复原运行状态；恢复失败且回滚成功才允许恢复原运行状态。部分容器重启失败会继续尝试其他原运行容器，但整体返回失败，明确报告失败数量与可能部分运行，不宣称恢复成功。安全归档路径在变更前输出，重启失败时仍可定位。

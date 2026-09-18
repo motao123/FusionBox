@@ -93,6 +93,7 @@ market_main() {
   local cmd="${1:-menu}"; shift || true
 
   case "$cmd" in
+    managed)          _require_root; python3 "$FUSION_SRC/lib/market_apps.py" "$@" ;;
     list|l)           market_list "$@" ;;
     search|s)         market_search "$@" ;;
     install|i)        market_install "$@" ;;
@@ -497,6 +498,7 @@ market_category() {
 market_help() {
   msg_title "应用市场 帮助"
   msg ""
+  msg "  fusionbox market managed          受管 Nginx catalog/install/status/update/uninstall（--help）"
   msg "  fusionbox market list             列出所有可用应用"
   msg "  fusionbox market search <关键词>  搜索应用"
   msg "  fusionbox market install <应用>   安装应用"

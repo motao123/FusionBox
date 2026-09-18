@@ -29,6 +29,11 @@ jobs:
       - name: Run safe regression suite
         run: bash tests/comprehensive_test.sh
 
+      - name: Run isolated Docker lifecycle fixtures
+        run: |
+          sudo python3 tests/compose_docker_fixture.py --run
+          sudo python3 tests/market_docker_fixture.py --run
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
     needs: test

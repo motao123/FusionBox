@@ -137,9 +137,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.5.1 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.6.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖常见运维场景，一行命令安装。v1.5.1 提供受管本机 Compose 登记、具名卷备份/同项目校验恢复与失败回滚；恢复和回滚双重失败保持项目停止并要求人工恢复，部分重启失败明确返回失败。拒绝 bind/external/匿名/共享卷。Linux 42 基础 + 96 行为测试通过，真实隔离 Compose 双容器夹具 13 断言通过并清理；数据库语义与远端迁移仍待实现。配置任务保留策略默认不删除；依赖 Python 3，计划任务还需 cron。备份需 Python 3，拒绝旧无清单归档与链接，操作前需停止写入服务。ACME 与 Cloudflare/TG 真实账户能力尚未验证。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
+        <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖常见运维场景，一行命令安装。v1.6.0 新增受管 Nginx 静态站点生命周期：复用 Compose 私有登记与全局锁，端口/磁盘预检、健康验证、镜像更新失败回滚、卸载保留数据。默认 localhost，限制 CPU/内存/PID/日志，不接管旧安装。Linux 42 基础 + 111 行为测试；真实隔离市场与 Compose 夹具验证。只支持此小目录，自动端口分配、域名访问、更多应用和迁移仍待实现。既有 Compose 恢复与回滚双重失败保持停止；真实 ACME、Cloudflare/TG 未验证。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>
