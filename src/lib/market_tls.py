@@ -1,5 +1,9 @@
 """Validate explicitly supplied local PEM files; never issue or copy certificates."""
 import datetime
+import hashlib
+import socket
+import ssl
+import time
 import os
 from pathlib import Path
 import re
@@ -53,3 +57,37 @@ def validate(domain, settings):
     if public != actual:
         raise ValueError('Certificate and private key do not match')
     return parsed[1].isoformat()
+
+
+def fingerprint(settings):
+    cert = file_path(settings['cert'])
+    return hashlib.sha256(openssl('x509', '-in', cert, '-outform', 'DER')).hexdigest()
+
+
+def served(domain, port):
+    # Diagnostic identity comparison only, NOT a CA/hostname trust check.
+    # Connect locally with SNI; never follow DNS to a remote endpoint.
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    with socket.create_connection(('127.0.0.1', port), timeout=2) as connection:
+        with context.wrap_socket(connection, server_hostname=domain) as stream:
+            return hashlib.sha256(stream.getpeercert(binary_form=True)).hexdigest()
+
+
+def wait_served(domain, port, expected):
+    for attempt in range(20):
+        try:
+            if served(domain, port) == expected:
+                return
+        except (OSError, ValueError):
+            pass
+        if attempt != 19:
+            time.sleep(0.25)
+    raise RuntimeError('Expected certificate not observed on local TLS listener')
+
+
+def remaining_days(expiry, now=None):
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    # Floor, including negative fractions: an expired certificate is never 0 days.
+    return (datetime.datetime.fromisoformat(expiry) - now).days

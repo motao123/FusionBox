@@ -200,6 +200,47 @@ def change(registry, record, domain=None, listen=80, enabled=True, tls='retain')
           'Domain mapping removed; app remains localhost-only')
 
 
+def refresh(registry, record):
+    """Revalidate external files without copying keys or claiming file rollback.
+
+    Caller holds the registry lock and has paused external certificate writers.
+    A failed/interrupted reload is retried explicitly with this same command.
+    """
+    import json
+    owned(record)
+    mapping = record['market'].get('domain', {})
+    tls = mapping.get('tls')
+    if not tls or not mapping['enabled']:
+        raise ValueError('Refresh requires an enabled owned TLS mapping')
+    journal = cb.BASE / (record['project'] + '.tls-refresh.json')
+    cb.no_links(journal)
+    identity = {'operation': 'tls-refresh', 'record': record}
+    if journal.exists() and json.loads(journal.read_text()) != identity:
+        raise ValueError('Unknown TLS refresh journal; manual recovery required')
+    # Invalid/unreadable input must never trigger a reload or mutate configuration.
+    market_tls.validate(mapping['name'], tls)
+    expected = market_tls.fingerprint(tls)
+    nginx('-t')
+    atomic(journal, json.dumps(identity) + '\n')
+    try:
+        owned(record)
+        market_tls.validate(mapping['name'], tls)
+        if market_tls.fingerprint(tls) != expected:
+            raise ValueError('Certificate changed during refresh')
+        nginx('-s', 'reload')
+        market_tls.wait_served(mapping['name'], tls['listen'], expected)
+        market_tls.validate(mapping['name'], tls)
+        if market_tls.fingerprint(tls) != expected:
+            raise ValueError('Certificate changed during refresh')
+    except BaseException:
+        raise RuntimeError('TLS refresh failed; runtime state unknown; journal retained. '
+                           'No certificate/key files copied or restored. Repair supplied files, '
+                           'pause external writers and retry tls-refresh --confirm') from None
+    journal.unlink()
+    print('TLS refresh verified: local SNI listener serves supplied certificate SHA256=' + expected)
+    print('No ACME issuance/renewal or public CA/reachability verification')
+
+
 def status(record):
     owned(record)
     mapping = record['market'].get('domain')
@@ -209,7 +250,16 @@ def status(record):
               'redirect=' + str(tls['redirect']), 'enabled=' + str(mapping['enabled']))
         try:
             expiry = market_tls.validate(mapping['name'], tls)
-            print('Local PEM/key/SAN/time validation passed; expires ' + expiry)
+            print('Local PEM/key/SAN/time validation passed; expires ' + expiry,
+                  'remaining full days=' + str(market_tls.remaining_days(expiry)))
+            expected = market_tls.fingerprint(tls)
+            try:
+                active = market_tls.served(mapping['name'], tls['listen'])
+                print('Local SNI certificate: ' + ('matches supplied PEM' if active == expected else
+                                                  'DIFFERS from supplied PEM; refresh required'))
+                print('Served certificate SHA256=' + active)
+            except (OSError, ValueError):
+                print('WARNING: local TLS listener unavailable; active certificate unknown')
         except (ValueError, OSError, subprocess.SubprocessError):
             print('WARNING: TLS file validation failed; configured runtime may differ')
         print('Public CA trust, DNS and public reachability unverified; no ACME issuance or renewal')
@@ -220,5 +270,7 @@ def status(record):
     else:
         print('Access: localhost-direct; no public direct port or domain mapping')
     print('Localhost upstream remains accessible locally; no firewall isolation is claimed')
+    if (cb.BASE / (record['project'] + '.tls-refresh.json')).exists():
+        print('WARNING: pending TLS refresh; runtime state unknown; repair files and retry tls-refresh --confirm')
     if (cb.BASE / (record['project'] + '.domain-recovery.json')).exists():
         print('WARNING: pending domain recovery journal; runtime state unknown; manual recovery required')

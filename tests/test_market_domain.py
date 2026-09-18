@@ -97,6 +97,90 @@ class DomainTransactions(unittest.TestCase):
         self.assertEqual(before, (self.registry.read_bytes(), self.target.read_bytes()))
         self.assertTrue((self.base / 'fixture.domain-recovery.json').exists())
 
+    def prepare_refresh(self):
+        tls = {'cert': '/tmp/cert', 'key': '/tmp/key', 'listen': 443, 'redirect': True}
+        with patch.object(d.market_tls, 'validate'):
+            d.change(self.registry, self.record, 'test.local', tls=tls)
+        self.record = json.loads(self.registry.read_text())
+        self.nginx.reset_mock()
+        patch.object(d.market_tls, 'validate', return_value='2027-01-01T00:00:00+00:00').start()
+        patch.object(d.market_tls, 'fingerprint', return_value='a' * 64).start()
+        self.probe = patch.object(d.market_tls, 'wait_served').start()
+        return self.base / 'fixture.tls-refresh.json'
+
+    def test_refresh_preserves_config_and_registry(self):
+        journal = self.prepare_refresh()
+        before = self.registry.read_bytes(), self.target.read_bytes()
+        d.refresh(self.registry, self.record)
+        self.assertEqual(before, (self.registry.read_bytes(), self.target.read_bytes()))
+        self.assertFalse(journal.exists())
+        self.probe.assert_called_once_with('test.local', 443, 'a' * 64)
+
+    def test_refresh_invalid_or_unreadable_input_never_reloads(self):
+        journal = self.prepare_refresh()
+        for error in (ValueError('expired'), ValueError('wrong key'), PermissionError('read failure')):
+            with patch.object(d.market_tls, 'validate', side_effect=error):
+                with self.assertRaises(type(error)): d.refresh(self.registry, self.record)
+        self.nginx.assert_not_called()
+        self.assertFalse(journal.exists())
+
+    def test_refresh_double_failure_then_explicit_retry(self):
+        journal = self.prepare_refresh()
+        before = self.registry.read_bytes(), self.target.read_bytes()
+        for unused in range(2):
+            self.nginx.side_effect = ['', RuntimeError('reload')]
+            with self.assertRaisesRegex(RuntimeError, 'runtime state unknown'):
+                d.refresh(self.registry, self.record)
+            self.assertTrue(journal.exists())
+            self.assertEqual(before, (self.registry.read_bytes(), self.target.read_bytes()))
+        self.nginx.side_effect = None
+        d.refresh(self.registry, self.record)
+        self.assertFalse(journal.exists())
+
+    def test_refresh_async_failure_retains_journal(self):
+        journal = self.prepare_refresh()
+        self.probe.side_effect = RuntimeError('old certificate still served')
+        with self.assertRaisesRegex(RuntimeError, 'No certificate/key files copied or restored'):
+            d.refresh(self.registry, self.record)
+        self.assertTrue(journal.exists())
+
+    def test_refresh_rejects_unknown_journal_and_changed_input(self):
+        journal = self.prepare_refresh()
+        journal.write_text('{}')
+        with self.assertRaisesRegex(ValueError, 'Unknown'):
+            d.refresh(self.registry, self.record)
+        self.nginx.assert_not_called()
+        journal.unlink()
+        with patch.object(d.market_tls, 'fingerprint', side_effect=['a', 'b']):
+            with self.assertRaisesRegex(RuntimeError, 'runtime state unknown'):
+                d.refresh(self.registry, self.record)
+        self.assertTrue(journal.exists())
+        self.assertEqual(self.nginx.call_count, 1)  # validation only, no reload
+
+    def test_status_reports_runtime_mismatch_and_unavailable(self):
+        import io
+        self.prepare_refresh()
+        for result in ('b' * 64, OSError('offline')):
+            output = io.StringIO()
+            with patch.object(d.market_tls, 'served', side_effect=result if isinstance(result, Exception) else None,
+                              return_value=result), patch('sys.stdout', output):
+                d.status(self.record)
+            self.assertIn('active certificate unknown' if isinstance(result, Exception) else 'DIFFERS', output.getvalue())
+
+    def test_remaining_days_boundaries(self):
+        import datetime
+        now = datetime.datetime(2026, 9, 18, tzinfo=datetime.timezone.utc)
+        for seconds, days in ((86400, 1), (86399, 0), (1, 0), (0, 0), (-1, -1)):
+            expiry = (now + datetime.timedelta(seconds=seconds)).isoformat()
+            self.assertEqual(d.market_tls.remaining_days(expiry, now), days)
+
+    def test_refresh_wait_is_bounded_and_retries_socket_failure(self):
+        with patch.object(d.market_tls, 'served', side_effect=[OSError(), 'old', 'new']), patch.object(d.market_tls.time, 'sleep'):
+            d.market_tls.wait_served('test.local', 443, 'new')
+        with patch.object(d.market_tls, 'served', return_value='old') as probe, patch.object(d.market_tls.time, 'sleep'):
+            with self.assertRaises(RuntimeError): d.market_tls.wait_served('test.local', 443, 'new')
+            self.assertEqual(probe.call_count, 20)
+
     def test_success_and_remove(self):
         d.change(self.registry, self.record, 'app.example.com')
         record = json.loads(self.registry.read_text())

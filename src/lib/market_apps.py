@@ -227,8 +227,13 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             record = load(registry, project)
             if action != 'status' and (cb.BASE / (project + '.domain-recovery.json')).exists():
                 raise ValueError('Pending domain recovery journal; manual recovery required')
+            if action not in ('status', 'tls-refresh') and (cb.BASE / (project + '.tls-refresh.json')).exists():
+                raise ValueError('Pending TLS refresh; repair supplied files and retry tls-refresh --confirm')
             if 'domain' in record['market']:
                 market_domain.owned(record)
+            if action == 'tls-refresh':
+                market_domain.refresh(registry, record)
+                return
             if action == 'reinstall':
                 if not reuse:
                     raise ValueError('Explicit --reuse-data required for retained content')
@@ -307,7 +312,7 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
 def main():
     os.umask(0o077)
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls'))
+    p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls', 'tls-refresh'))
     p.add_argument('app', nargs='?', default='nginx', choices=tuple(CATALOG))
     p.add_argument('--port', type=int, help='Preferred port; default 8080 or retained port for reinstall')
     p.add_argument('--auto-port', action='store_true', help='Probe at most 20 localhost ports; not a reservation')

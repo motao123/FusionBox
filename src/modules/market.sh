@@ -502,6 +502,7 @@ market_help() {
   msg "  fusionbox market managed domain nginx --remove-domain --confirm  remove owned mapping"
   msg "  fusionbox market managed tls nginx --cert /path/fullchain.pem --key /path/key.pem --confirm"
   msg "  fusionbox market managed tls nginx --disable-tls --confirm  仅停用 TLS，保留证书文件"
+  msg "  fusionbox market managed tls-refresh nginx --confirm  校验并重载已更新 PEM，验证本机实际证书"
   msg "  fusionbox market managed status nginx  查看本地证书校验与入口状态"
   msg "  reinstall nginx --confirm --reuse-data  确认复用卸载保留数据"
   msg "  install/reinstall --auto-port     最多探测 20 个 localhost 端口（不预留）"
@@ -520,8 +521,11 @@ market_managed_menu() {
   _require_root
   local action port domain cert key
   local -a args=()
-  read -r -p "操作 catalog/status/install/reinstall/update/uninstall/domain/tls: " action || return 1
+  read -r -p "操作 catalog/status/install/reinstall/update/uninstall/domain/tls/tls-refresh: " action || return 1
   case "$action" in
+    tls-refresh)
+      confirm "暂停外部证书写入者后校验并重载？不复制私钥；已覆盖原文件无法回滚，失败需修复后重试" || return 1
+      args+=(--confirm) ;;
     tls)
       msg_warn "仅使用已有 PEM 文件；不签发证书。默认 HTTPS 443 并重定向 HTTP；key 需 0600/0400。"
       read -r -p "证书绝对路径（留空停用 TLS）: " cert || return 1

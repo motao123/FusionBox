@@ -148,6 +148,51 @@ def run():
                 wrong_host = subprocess.run(['curl', '-sS', '--noproxy', '*', '--cacert', good['cert'], '--resolve',
                                              'wrong.local:' + str(tls_port) + ':127.0.0.1', 'https://wrong.local:' + str(tls_port)], capture_output=True)
                 assert wrong_host.returncode == 60
+                # External rotation: never ask FusionBox to write or copy PEM/key files.
+                old_fingerprint = d.market_tls.served('test.local', tls_port)
+                renewed = pem('renewed', 'test.local')
+                import shutil
+                shutil.copyfile(renewed['cert'], good['cert'])
+                shutil.copyfile(renewed['key'], good['key'])
+                assert d.market_tls.fingerprint(good) != old_fingerprint
+                assert d.market_tls.served('test.local', tls_port) == old_fingerprint
+                before = registry.read_bytes(), d.path(record()).read_bytes()
+                calls.clear()
+                with patch.object(d, 'nginx', side_effect=failed_reload):
+                    try:
+                        m.operate('tls-refresh', accepted=True, project=project)
+                    except RuntimeError as error:
+                        assert 'runtime state unknown' in str(error)
+                    else:
+                        raise AssertionError('Refresh reload failure expected')
+                assert (m.cb.BASE / (project + '.tls-refresh.json')).exists()
+                assert d.market_tls.served('test.local', tls_port) == old_fingerprint
+                try:
+                    m.operate('update', accepted=True, project=project)
+                except ValueError as error:
+                    assert 'Pending TLS refresh' in str(error)
+                else:
+                    raise AssertionError('Pending refresh must block other mutations')
+                m.operate('tls-refresh', accepted=True, project=project)
+                assert not (m.cb.BASE / (project + '.tls-refresh.json')).exists()
+                assert b'Welcome to nginx' in secure()
+                assert before == (registry.read_bytes(), d.path(record()).read_bytes())
+                for bad in (expired, dict(good, key=wrong['key'])):
+                    cert_bytes, key_bytes = Path(good['cert']).read_bytes(), Path(good['key']).read_bytes()
+                    if bad['cert'] != good['cert']:
+                        shutil.copyfile(bad['cert'], good['cert'])
+                    if bad['key'] != good['key']:
+                        shutil.copyfile(bad['key'], good['key'])
+                    try:
+                        m.operate('tls-refresh', accepted=True, project=project)
+                    except ValueError:
+                        pass
+                    else:
+                        raise AssertionError('Refresh accepted expired/mismatched material')
+                    finally:
+                        Path(good['cert']).write_bytes(cert_bytes)
+                        Path(good['key']).write_bytes(key_bytes)
+                    assert b'Welcome to nginx' in secure()
                 before = registry.read_bytes(), d.path(record()).read_bytes()
                 calls.clear()
                 with patch.object(d, 'nginx', side_effect=failed_reload):
@@ -189,7 +234,7 @@ def run():
                 m.operate('domain', accepted=True, project=project)
                 assert 'domain' not in record()['market']
                 assert not d.path(record()).exists()
-                print('REAL DOMAIN/TLS: 24 checks passed; HTTP routing/rollback, verified self-signed TLS, redirect, SAN/expiry/key rejection, lifecycle persistence and disable')
+                print('REAL DOMAIN/TLS: 34 checks passed; external rotation, refresh failure/retry and invalid refresh rejection; HTTP routing/rollback, verified self-signed TLS, redirect, SAN/expiry/key rejection, lifecycle persistence and disable')
         finally:
             if proxy_started:
                 m.cb.docker('rm', '-f', proxy)
