@@ -42,6 +42,7 @@ jobs:
         run: |
           sudo python3 tests/compose_docker_fixture.py --run
           sudo python3 tests/market_docker_fixture.py --run
+          sudo python3 tests/ntfy_docker_fixture.py --run
           sudo python3 tests/domain_docker_fixture.py --run
 
   release:

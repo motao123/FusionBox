@@ -4,7 +4,29 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
-## v1.12.1 审计安全修复
+## v1.13.0 受管 ntfy 通知服务（限定目录扩容）
+
+复用原有注册表、flock、归属检查、端口探测及 Compose 备份，不新增第二套生命周期。新增 [ntfy 官方镜像](https://docs.ntfy.sh/install/) `binwiederhier/ntfy:v2.28.0`，固定官方 manifest digest `sha256:6ef4b819f722fccdc036af611c4774cfdc2de821ab74fdd48bbf4c9d6f8973da`，部署登记实际本地 image ID。不是任意镜像安装器。
+
+```bash
+fusionbox market managed catalog
+fusionbox market managed install ntfy --confirm
+curl -d 'hello' http://127.0.0.1:8081/demo
+curl 'http://127.0.0.1:8081/demo/json?poll=1&since=all'
+fusionbox market managed status ntfy
+fusionbox panels compose-backup backup fb-market-ntfy /root/ntfy.tar.gz --confirm-stop-writers
+fusionbox market managed uninstall ntfy --confirm
+fusionbox market managed reinstall ntfy --confirm --reuse-data
+```
+
+- 默认仅 `127.0.0.1:8081`，UID/GID `65534:65534`、全部 capabilities 删除、no-new-privileges，无 Docker socket、无特权模式。内存上限 128 MiB、0.5 CPU、64 PID，日志 2×5 MiB；注册表与 Docker 数据盘各需 512 MiB 空闲（最低预检，不是磁盘配额；镜像现场约 115 MiB，缓存随流量增长）。
+- 本机通知 publish/poll 与 SQLite 24 小时消息缓存，卷 `fb-market-ntfy_data` 挂载 `/tmp`，缓存文件 `/tmp/ntfy-cache.db`。**无认证，所有本机可访问者能发布/读取话题，不用于敏感数据或不可信多用户环境。**无需初始化密码，不生成或输出凭据；未启用附件、外部推送或公开入口。
+- 实际 `/v1/health` JSON 必须 `healthy: true`，不以“容器运行”代替健康。卸载保留数据/配置/登记，重装只使用原 image ID。`update` 仅检查固定版本；候选 image ID 不同即拒绝，不会把迁移后的数据库盲目回滚到旧镜像。跨版本迁移需另行设计；重装失败只清理新建自有容器，不承诺回滚应用本身可能写入的数据。
+- 备份/恢复复用 `panels compose-backup`，必须确认停写，实际停止本项目容器后复制 SQLite；不是在线数据库一致性承诺。仅同一登记/配置/镜像项目恢复，外部写入者须暂停；不支持跨机重建。`domain/tls/tls-refresh ntfy` 明确拒绝，原 Nginx 域名/TLS 能力保持不变。
+
+Linux 验证目标：42 基础 + 209 行为，SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。ntfy 真实夹具覆盖发布/读取、离线备份与恢复、保留卷重装/重启、版本升级拒绝、健康失败清理与重试；只操作专用夹具，结束证明容器/卷/网络清理。ACME/Cloudflare/Telegram 仍缺真实凭据；全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
+## v1.12.1 审计安全修复（历史）
 
 - SSH 授权密钥使用 ssh-keygen 验证，显示/删除使用相同物理行号；注释、无效和带选项的密钥不作为禁用密码的依据。密码开关仅修改 PasswordAuthentication，不宣称禁用 PAM/交互式认证。必须先在独立连接验证密钥登录。
 - SSH 配置保留权限/归属与私有备份，校验 sshd -t/-T 后重载，失败恢复；Include 生效值不符、Match 或 socket activation 要求人工处理。不会修改 root 登录策略。

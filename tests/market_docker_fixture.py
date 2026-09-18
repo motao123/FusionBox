@@ -93,8 +93,8 @@ def run():
                 with socket.socket() as unused:
                     unused.bind(('127.0.0.1', 0)); race_port = unused.getsockname()[1]
                 with socket.socket() as racer:
-                    def race(preferred, automatic):
-                        chosen = real_select(preferred, automatic)
+                    def race(preferred, automatic, **options):
+                        chosen = real_select(preferred, automatic, **options)
                         racer.bind(('127.0.0.1', chosen)); racer.listen()
                         return chosen
                     with patch.object(m, 'select_port', side_effect=race):

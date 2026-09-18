@@ -155,6 +155,49 @@ class Market(unittest.TestCase):
             self.assertFalse(any(c.args[0] in ('stop', 'rm') for c in docker.call_args_list))
         self.assertEqual(before, (self.registry.read_bytes(), Path(r['compose']).read_bytes()))
 
+    def test_ntfy_metadata_runtime_and_identity(self):
+        m.operate('install', app='ntfy', accepted=True)
+        registry = self.base / 'fb-market-ntfy.json'
+        r = m.load(registry, 'fb-market-ntfy')
+        service = m.document(r)['services']['app']
+        self.assertEqual(service['user'], '65534:65534')
+        self.assertEqual(service['ports'], ['127.0.0.1:8081:8080'])
+        self.assertEqual(service['cap_drop'], ['ALL'])
+        self.assertEqual(service['volumes'], ['data:/tmp'])
+        with self.assertRaisesRegex(ValueError, 'identity mismatch'):
+            m.operate('uninstall', app='nginx', project='fb-market-ntfy', accepted=True)
+
+    def test_ntfy_changed_image_refused_before_mutation(self):
+        m.operate('install', app='ntfy', accepted=True)
+        registry = self.base / 'fb-market-ntfy.json'
+        r = m.load(registry, 'fb-market-ntfy')
+        before = registry.read_bytes(), Path(r['compose']).read_bytes()
+        self.up.reset_mock()
+        with patch.object(m, 'resources', return_value=[]), patch.object(m, 'health', return_value='healthy'), patch.object(m, 'pull', return_value='sha256:' + 'b' * 64):
+            with self.assertRaisesRegex(ValueError, 'upgrade refused'):
+                m.operate('update', app='ntfy', accepted=True)
+        self.up.assert_not_called()
+        self.assertEqual(before, (registry.read_bytes(), Path(r['compose']).read_bytes()))
+
+    def test_ntfy_domain_and_invalid_action_rejected_before_docker(self):
+        for action in ('domain', 'tls', 'tls-refresh', 'invalid'):
+            with self.assertRaises(ValueError): m.operate(action, app='ntfy', accepted=True)
+        self.docker.assert_not_called()
+
+    def test_invalid_metadata_rejected_before_docker(self):
+        for field, value in [('bytes', -1), ('port', 0), ('target', '80'), ('image', 'evil;command'), ('readonly', 'yes')]:
+            with patch.dict(m.CATALOG['ntfy'], {field: value}):
+                with self.assertRaisesRegex(ValueError, 'metadata'):
+                    m.operate('install', app='ntfy', accepted=True)
+        self.docker.assert_not_called()
+
+    def test_ntfy_unknown_container_owner_rejected(self):
+        m.operate('install', app='ntfy', accepted=True)
+        r = m.load(self.base / 'fb-market-ntfy.json', 'fb-market-ntfy')
+        self.docker.return_value = b'unknown'
+        with patch.object(m.cb, 'js', return_value=[{'Config': {'Labels': {}}, 'HostConfig': {}}]):
+            with self.assertRaisesRegex(ValueError, 'ownership'): m.resources(r)
+
     def test_unhealthy_update_blocked(self):
         self.install()
         with patch.object(m, 'resources', return_value=[]), patch.object(m, 'health', return_value='unhealthy'):
@@ -185,6 +228,23 @@ class Preflight(unittest.TestCase):
             disk.return_value.free = 0
             with self.assertRaisesRegex(ValueError, 'disk'): m.preflight(8080)
             with self.assertRaisesRegex(ValueError, 'Port'): m.preflight(0)
+
+    def test_ntfy_disk_threshold(self):
+        with patch.object(m.cb, 'docker'), patch.object(m.cb, 'js', return_value='/'), patch.object(m.shutil, 'disk_usage') as disk:
+            disk.return_value.free = 300 * 1024 * 1024
+            m.preflight(8080, False)
+            with self.assertRaisesRegex(ValueError, '512 MiB'): m.preflight(8081, False, 'ntfy')
+
+    def test_ntfy_health_requires_true_json(self):
+        r = {'market': {'app': 'ntfy', 'port': 8081}}
+        with patch.object(m, 'resources', return_value=[{'State': {'Running': True, 'Health': {'Status': 'healthy'}}}]), patch.object(m.urllib.request, 'build_opener') as opener:
+            response = opener.return_value.open.return_value.__enter__.return_value
+            response.status = 200
+            for body in (b'{}', b'{"healthy":false}', b'not JSON', b'{"healthy":"true"}'):
+                response.read.return_value = body
+                self.assertEqual(m.health(r), 'unhealthy')
+            response.read.return_value = b'{"healthy":true}'
+            self.assertEqual(m.health(r), 'healthy')
 
     def test_health_failure_after_compose_success(self):
         with patch.object(m.cb, 'docker'), patch.object(m, 'health', return_value='unhealthy'):

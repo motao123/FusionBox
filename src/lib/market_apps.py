@@ -8,28 +8,63 @@ import shutil
 import socket
 import sys
 import uuid
+import urllib.request
+
 
 import compose_backup as cb
 from backup_jobs import atomic
 import market_domain
 
 OWNER = 'fusionbox-market-v1'
-CATALOG = {'nginx': {'image': 'nginx:stable-alpine', 'port': 8080, 'bytes': 256 * 1024 * 1024}}
+CATALOG = {
+    'nginx': {'image': 'nginx:stable-alpine', 'port': 8080, 'bytes': 256 * 1024 * 1024,
+              'target': 80, 'mount': '/usr/share/nginx/html', 'readonly': True,
+              'memory': '64m', 'health': ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/'],
+              'domain': True, 'description': 'static web server; read-only persistent content'},
+    'ntfy': {'image': 'binwiederhier/ntfy:v2.28.0@sha256:6ef4b819f722fccdc036af611c4774cfdc2de821ab74fdd48bbf4c9d6f8973da',
+             'port': 8081, 'bytes': 512 * 1024 * 1024, 'target': 8080,
+             'mount': '/tmp', 'readonly': False, 'memory': '128m', 'user': '65534:65534',
+             'command': ['serve', '--listen-http', ':8080', '--cache-file', '/tmp/ntfy-cache.db', '--cache-duration', '24h'],
+             'health': ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:8080/v1/health | grep -q \'"healthy":true\''],
+             'health_json': '/v1/health', 'domain': False,
+             'description': 'local notification server; 24h SQLite message cache; no auth; local users can publish/read; no attachments or domain/TLS; image upgrades refused'},
+}
+
+
+def metadata(app):
+    if app not in CATALOG:
+        raise ValueError('Unsupported managed application')
+    spec = CATALOG[app]
+    if (type(spec.get('bytes')) is not int or spec['bytes'] <= 0 or
+            type(spec.get('target')) is not int or not 1 <= spec['target'] <= 65535 or
+            type(spec.get('port')) is not int or not 1024 <= spec['port'] <= 65535 or
+            type(spec.get('readonly')) is not bool or not spec.get('mount', '').startswith('/') or
+            not re.fullmatch(r'[a-z0-9./:_@-]+', spec.get('image', '')) or
+            not re.fullmatch(r'[1-9][0-9]*m', spec.get('memory', '')) or
+            not isinstance(spec.get('health'), list) or not spec['health']):
+        raise ValueError('Invalid catalog metadata')
+    return spec
 
 
 def document(record, image=None):
     m = record['market']
+    spec = metadata(m['app'])
     labels = {'io.fusionbox.market': m['token']}
-    return {'services': {'app': {
+    result = {'services': {'app': {
         'image': image or m['image'], 'container_name': record['project'] + '-app',
         'network_mode': 'bridge', 'restart': 'unless-stopped',
-        'ports': ['127.0.0.1:%s:80' % m['port']],
-        'volumes': ['data:/usr/share/nginx/html:ro'], 'labels': labels,
-        'mem_limit': '64m', 'cpus': '0.50', 'pids_limit': 64,
+        'ports': ['127.0.0.1:%s:%s' % (m['port'], spec['target'])],
+        'volumes': ['data:' + spec['mount'] + (':ro' if spec['readonly'] else '')], 'labels': labels,
+        'mem_limit': spec['memory'], 'cpus': '0.50', 'pids_limit': 64,
         'logging': {'driver': 'json-file', 'options': {'max-size': '5m', 'max-file': '2'}},
-        'healthcheck': {'test': ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/'],
+        'healthcheck': {'test': spec['health'],
                         'interval': '2s', 'timeout': '2s', 'retries': 10}}},
         'volumes': {'data': {'name': record['project'] + '_data', 'labels': labels}}}
+    service = result['services']['app']
+    if 'user' in spec:
+        service.update(user=spec['user'], command=spec['command'], init=True,
+                       cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
+    return result
 
 
 def save(path, record):
@@ -58,6 +93,7 @@ def load(path, project):
 def resources(record):
     """Check exact resource names and labels before any stop/remove/recreate."""
     project, token = record['project'], record['market']['token']
+    spec = metadata(record['market']['app'])
     ids = cb.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project).decode().split()
     named = cb.docker('ps', '-aq', '--filter', 'name=^/' + project + '-app$').decode().split()
     if set(ids) != set(named) or len(ids) > 1:
@@ -71,9 +107,11 @@ def resources(record):
                 c['HostConfig'].get('NetworkMode') != 'bridge' or
                 c['HostConfig'].get('Privileged')):
             raise ValueError('Unknown container ownership/type')
+        if 'user' in spec and c['Config'].get('User') != spec['user']:
+            raise ValueError('Unexpected application runtime user')
         for mount in c.get('Mounts', []):
             if (mount['Type'] != 'volume' or mount.get('Name') != project + '_data' or
-                    mount.get('Destination') != '/usr/share/nginx/html' or mount.get('RW')):
+                    mount.get('Destination') != spec['mount'] or mount.get('RW') != (not spec['readonly'])):
                 raise ValueError('Unexpected application storage')
     volumes = cb.docker('volume', 'ls', '-q').decode().split()
     if project + '_data' in volumes:
@@ -91,16 +129,19 @@ def resources(record):
     return containers
 
 
-def preflight(port, check_port=True):
+def preflight(port, check_port=True, app='nginx'):
     if type(port) is not int or not 1024 <= port <= 65535:
         raise ValueError('Port must be 1024-65535')
     cb.docker('compose', 'version')
     root = Path(cb.js('info', '--format', '{{json .DockerRootDir}}'))
+    required = metadata(app)['bytes']
     for path in (cb.BASE, root):
-        if shutil.disk_usage(path).free < CATALOG['nginx']['bytes']:
-            raise ValueError('Insufficient disk space (256 MiB required on registry and Docker storage)')
+        if shutil.disk_usage(path).free < required:
+            raise ValueError('Insufficient disk space (%s MiB required on registry and Docker storage)' % (required // 1024 // 1024))
     if check_port:
         with socket.socket() as probe:
+            # Ignore closed HTTP connection TIME_WAIT, never an active listener.
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe.bind(('127.0.0.1', port))
         # Docker may publish without a userspace listening socket.
         ids = cb.docker('ps', '-q').decode().split()
@@ -110,15 +151,15 @@ def preflight(port, check_port=True):
                     raise ValueError('Port already published by Docker')
 
 
-def select_port(preferred=8080, automatic=False):
+def select_port(preferred=8080, automatic=False, app='nginx'):
     if not automatic:
-        preflight(preferred)
+        preflight(preferred, app=app)
         return preferred
     if not 1024 <= preferred <= 65535:
         raise ValueError('Port must be 1024-65535')
     for port in range(preferred, min(preferred + 20, 65536)):
         try:
-            preflight(port)
+            preflight(port, app=app)
             return port
         except OSError as error:
             import errno
@@ -147,7 +188,7 @@ def reinstall(registry, record, port, automatic):
         market_domain.owned(record)
         if automatic or (port is not None and port != record['market']['port']):
             raise ValueError('Remove domain mapping before changing its retained upstream port or using --auto-port')
-    record['market']['port'] = select_port(record['market']['port'] if port is None else port, automatic)
+    record['market']['port'] = select_port(record['market']['port'] if port is None else port, automatic, app=record['market']['app'])
     try:
         write_compose(record)
         up(record)
@@ -155,7 +196,7 @@ def reinstall(registry, record, port, automatic):
         save(registry, record)
     except BaseException:
         # The preflight proved this namespace empty. Revalidate labels before cleanup.
-        # No volume is removed, and the app has read-only access to retained content.
+        # No volume is removed. Writable apps may have committed data; no data rollback is claimed.
         try:
             for container in resources(record):
                 cb.docker('stop', container['Id'])
@@ -171,8 +212,8 @@ def reinstall(registry, record, port, automatic):
     print('Reinstall completed; healthy; localhost port ' + str(record['market']['port']))
 
 
-def pull():
-    image = CATALOG['nginx']['image']
+def pull(app='nginx'):
+    image = metadata(app)['image']
     cb.docker('pull', image)
     return cb.js('image', 'inspect', image)[0]['Id']
 
@@ -191,12 +232,25 @@ def health(record):
     state = containers[0]['State']
     if not state['Running']:
         return 'stopped'
-    return state.get('Health', {}).get('Status', 'unknown')
+    status = state.get('Health', {}).get('Status', 'unknown')
+    spec = metadata(record['market']['app'])
+    if status == 'healthy' and spec.get('health_json'):
+        try:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open('http://127.0.0.1:%s%s' % (record['market']['port'], spec['health_json']), timeout=3) as response:
+                if response.status != 200 or json.loads(response.read(4096)).get('healthy') is not True:
+                    return 'unhealthy'
+        except Exception:
+            return 'unhealthy'
+    return status
 
 
 def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False, domain=None, listen=80, tls=None):
-    if app not in CATALOG:
-        raise ValueError('Unsupported managed application')
+    spec = metadata(app)
+    if action not in ('install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls', 'tls-refresh'):
+        raise ValueError('Unsupported managed action')
+    if action in ('domain', 'tls', 'tls-refresh') and not spec['domain']:
+        raise ValueError('Domain/TLS unsupported for this application; localhost only')
     project = project or 'fb-market-' + app
     if action != 'status' and not accepted:
         raise ValueError('Explicit --confirm required (update/uninstall cause downtime; data retained)')
@@ -205,14 +259,14 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             compose = cb.BASE / (project + '.compose.json')
             if registry.exists() or registry.is_symlink() or compose.exists() or compose.is_symlink():
                 raise ValueError('Existing registry/configuration; refusing adoption')
-            port = select_port(8080 if port is None else port, automatic)
+            port = select_port(spec['port'] if port is None else port, automatic, app=app)
             if (cb.docker('ps', '-aq', '--filter', 'name=^/' + project + '-app$').strip() or
                     cb.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project).strip() or
                     project + '_data' in cb.docker('volume', 'ls', '-q').decode().split()):
                 raise ValueError('Existing unmanaged Docker resources; refusing adoption')
             record = {'owner': cb.OWNER, 'project': project, 'compose': str(compose.absolute()),
                       'market': {'owner': OWNER, 'app': app, 'token': uuid.uuid4().hex,
-                                 'port': port, 'image': pull(), 'state': 'installing'}}
+                                 'port': port, 'image': pull(app), 'state': 'installing'}}
             write_compose(record)
             save(registry, record)
             try:
@@ -225,6 +279,8 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             if not registry.exists():
                 raise ValueError('Not managed; legacy/native/unknown installations are never adopted')
             record = load(registry, project)
+            if record['market']['app'] != app:
+                raise ValueError('Registered application identity mismatch')
             if action != 'status' and (cb.BASE / (project + '.domain-recovery.json')).exists():
                 raise ValueError('Pending domain recovery journal; manual recovery required')
             if action not in ('status', 'tls-refresh') and (cb.BASE / (project + '.tls-refresh.json')).exists():
@@ -245,7 +301,7 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                       'http://127.0.0.1:' + str(record['market']['port']))
                 market_domain.status(record)
                 if record['market']['state'] == 'uninstalled':
-                    print('Retained data: reinstall nginx --confirm --reuse-data [--auto-port]')
+                    print('Retained data: reinstall ' + app + ' --confirm --reuse-data [--auto-port]')
                 return
             if action == 'tls':
                 mapping = record['market'].get('domain')
@@ -276,11 +332,13 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 raise ValueError('Update requires healthy managed app; manual recovery required')
             # Reject drift in mounts, Compose identity and shared storage before recreation.
             cb.inspect(record)
-            preflight(record['market']['port'], False)
-            candidate = pull()
+            preflight(record['market']['port'], False, app=app)
+            candidate = pull(app)
             if candidate == record['market']['image']:
                 print('Already using current catalog image')
                 return
+            if not spec['readonly']:
+                raise ValueError('Image upgrade refused: writable database migration/rollback unsupported; retained image and data unchanged')
             # Nginx serves the data mount read-only: update cannot migrate or rewrite content.
             recovery = cb.BASE / (project + '.previous.json')
             cb.no_links(recovery)
@@ -314,7 +372,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls', 'tls-refresh'))
     p.add_argument('app', nargs='?', default='nginx', choices=tuple(CATALOG))
-    p.add_argument('--port', type=int, help='Preferred port; default 8080 or retained port for reinstall')
+    p.add_argument('--port', type=int, help='Preferred port; catalog default (nginx 8080, ntfy 8081) or retained port for reinstall')
     p.add_argument('--auto-port', action='store_true', help='Probe at most 20 localhost ports; not a reservation')
     p.add_argument('--reuse-data', action='store_true', help='Explicitly reuse owned retained data on reinstall')
     p.add_argument('--confirm', action='store_true')
@@ -336,7 +394,10 @@ def main():
     elif args.cert or args.key or args.disable_tls or args.no_redirect or args.tls_port != 443:
         p.error('TLS options apply only to tls action')
     if args.action == 'catalog':
-        print('nginx: static web server; managed Compose; localhost only; persistent read-only content; 256 MiB free disk; Docker Compose v2/Python 3/Linux required')
+        for app in CATALOG:
+            spec = metadata(app)
+            print('%s: %s; image=%s; localhost port %s; RAM limit %s / CPU 0.50 / PIDs 64; %s MiB minimum free disk (not a quota); Docker Compose v2/Python 3/Linux required' %
+                  (app, spec['description'], spec['image'], spec['port'], spec['memory'], spec['bytes'] // 1024 // 1024))
         return
     if (args.auto_port or args.port is not None) and args.action not in ('install', 'reinstall'):
         p.error('Port options apply only to install/reinstall')

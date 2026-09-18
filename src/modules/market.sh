@@ -498,6 +498,8 @@ market_category() {
 market_help() {
   msg_title "应用市场 帮助"
   msg ""
+  msg "  fusionbox market managed catalog  查看真实受管目录与资源/更新限制"
+  msg "  fusionbox market managed install ntfy --confirm  本机通知服务；无认证/域名/TLS；版本升级拒绝"
   msg "  fusionbox market managed domain nginx --domain example.com --confirm   HTTP-only owned host mapping"
   msg "  fusionbox market managed domain nginx --remove-domain --confirm  remove owned mapping"
   msg "  fusionbox market managed tls nginx --cert /path/fullchain.pem --key /path/key.pem --confirm"
@@ -519,8 +521,11 @@ market_help() {
 # ---- Interactive Menu ----
 market_managed_menu() {
   _require_root
-  local action port domain cert key
+  local action port domain cert key app
   local -a args=()
+  read -r -p "受管应用 nginx/ntfy（默认 nginx）: " app || return 1
+  app="${app:-nginx}"
+  case "$app" in nginx|ntfy) ;; *) msg_err "不支持的受管应用"; return 1 ;; esac
   read -r -p "操作 catalog/status/install/reinstall/update/uninstall/domain/tls/tls-refresh: " action || return 1
   case "$action" in
     tls-refresh)
@@ -556,7 +561,7 @@ market_managed_menu() {
       fi ;;
     *) msg_err "无效操作"; return 1 ;;
   esac
-  python3 "$FUSION_SRC/lib/market_apps.py" "$action" nginx "${args[@]}"
+  python3 "$FUSION_SRC/lib/market_apps.py" "$action" "$app" "${args[@]}"
 }
 
 market_menu() {
@@ -570,7 +575,7 @@ market_menu() {
     msg "  ${F_GREEN}3${F_RESET}) 搜索"
     msg "  ${F_GREEN}4${F_RESET}) 安装应用"
     msg "  ${F_GREEN}5${F_RESET}) 移除应用"
-    msg "  ${F_GREEN}6${F_RESET}) 受管 Nginx 生命周期（状态/安装/复用数据重装/更新/卸载）"
+    msg "  ${F_GREEN}6${F_RESET}) 受管 Nginx / ntfy 生命周期（localhost/保留数据）"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
     read -p "请选择 [0-6]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环

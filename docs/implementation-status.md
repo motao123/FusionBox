@@ -1,4 +1,17 @@
-# v1.12.1 审计安全修复
+# v1.13.0 受管 ntfy 小范围扩容
+
+新增 ntfy v2.28.0 官方 digest 固定镜像，复用数据驱动 Compose 生命周期；非 root、无特权/socket、localhost 默认、资源限额与每应用磁盘预检。SQLite 消息缓存 24h，非认证本机通知用途；不支持公开入口/域名/TLS，候选镜像改变拒绝升级，避免未经验证的数据库迁移回滚。实际 HTTP JSON 健康检查，卸载保留卷、同镜像重装；离线停容器备份/恢复与持久化通过专用夹具。详情与命令见 README。
+
+最终归档 Linux 验证目标：42 基础 + 209 行为（新增 7），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。新增真实 API 发布/读取、SQLite 停写快照/恢复、重装/重启持久化、拒绝迁移、失败清理/重试；不改生产服务。外部 ACME/CF/TG 凭据验证仍缺。
+
+当前优先剩余范围（不重开 v1.12.1 六项已修复问题）：
+1. P1 用户 CRUD/sudoers 授权回收、完整 SSH 密钥用户工作流、环境变量/网卡管理、Fail2Ban 完整日志/卸载面板；现有用户入口仅列表，SSH 安全校验不是完整工作流。
+2. P1 全量 Docker 卸载与容器原始目标防火墙规则；归档传输已有，目标机应用重建/迁移与数据库版本升级仍缺。
+3. P2 站点克隆/数据库域名替换、CF 缓存清理、GoAccess、运行时热升级/卸载；已有入口/局部校验不等于端到端完成。
+4. P2 现代应用各分类仍大部分缺失；ntfy 仅一个轻量运维通知模板，不声称完成 G51–G56。游戏定时备份/兼容矩阵、后台编号工作区/注入、自动更新仍待。
+5. 仅模拟/条件依赖：TG/CF 真账户、ACME 公共域名签发、上游代理安装器完整生命周期、真实集群批量操作及发行版矩阵。安全测试通过不等于这些外部集成完成。
+
+## v1.12.1 审计安全修复（历史）
 
 本批完成六项限定修复：SSH plain key 验证与物理行删除、sshd -t/-T/重载回滚；明确确认归属的 /swapfile 定向删除与 fstab 备份/原子写入；Fail2Ban 自有 jail.d 参数配置与验证/回滚；旧 Docker 导出暂存/发布/失败传播；禁用错误 DNAT 端口开关；Nginx/PHP-FPM 优化失败恢复。
 
@@ -98,7 +111,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G08 | 系统日志管理菜单（journalctl 查询/服务日志/secure 登录日志/实时跟踪/清理） | 已提供入口 | system log；未实测所有日志后端 |
 | G09 | 系统环境变量管理（查看/编辑 bashrc/profile/source 重载） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G10 | 网卡管理（ip link up/down、ethtool 详情） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G11 | fail2ban 完整面板（拦截记录/实时日志/参数配置/卸载） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G11 | fail2ban 完整面板（拦截记录/实时日志/参数配置/卸载） | 部分实现 | v1.12.1 自有参数配置/校验/回滚完成；完整日志与卸载面板仍缺 |
 | G12 | TG Bot 监控预警（CPU/内存/磁盘/流量阈值 + 登录通知） | 凭据依赖 | system notify；资源阈值与冷却，TG 仅 mock，SSH 登录通知未实现 |
 | G13 | 流量阈值自动关机（/proc/net/dev 统计超限关机） | 部分实现 | traffic-guard；默认 warn；shutdown 分支未执行，月统计从安装基线开始 |
 | G14 | 文件管理器（本地目录/文件增删改权限、压缩解压、跨机传文件） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
@@ -143,11 +156,11 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G53 | 网盘/同步类（Cloudreve/OpenList/小雅/immich/Syncthing/ZFile/FileCodeBox） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G54 | 媒体/影音类（Navidrome/LibreTV/MoonTV/SyncTV/Owncast/QB/迅雷/Gopeed） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G55 | 远程/安全/协作类（RustDesk/WireGuard/Webtop/Nexterm/JumpServer/雷池/ONLYOFFICE/RocketChat/VoceChat/2FAuth） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G56 | 运维工具类（Lucky/ddns-go/AllinSSL/searxng/Umami/Beszel/komari/思源/Wallos） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G56 | 运维工具类（Lucky/ddns-go/AllinSSL/searxng/Umami/Beszel/komari/思源/Wallos） | 部分扩容；列举应用后续 | v1.13.0 新增 ntfy 本机通知受管模板；原列举应用未实现，不等同整类完成 |
 | G57 | 市场机制：统一登记（appno.txt 原子写 0600）+ flock 并发锁 + 端口占用探测分配 + 已装检测 + 镜像更新检测 + 卸载清理 | 部分实现 | v1.6.1 复用 Compose JSON 登记/锁、20 端口有界探测、归属/健康、镜像 ID 更新与回滚；卸载保留数据并支持显式重装；旧安装迁移后续 |
 | G58 | 应用访问模式持久化（direct/domain_only 记录并在更新后恢复） | 部分实现 | v1.7.0 localhost-direct / HTTP 映射登记与更新/重装持久化；无 domain_only 防火墙隔离 |
 | G59 | 一键域名访问（应用=反代+证书一条龙） | 部分实现 | v1.8.1 自有宿主 HTTP/自备 PEM HTTPS、SAN/有效期/密钥校验与重载回滚；真实 ACME 后续 |
-| G60 | 磁盘空间预检（按应用体积校验 + NAS 路径软链） | 部分实现 | v1.6.0 受管 Nginx 检查注册表/Docker 数据盘各 256 MiB；NAS/任意应用体积估算后续 |
+| G60 | 磁盘空间预检（按应用体积校验 + NAS 路径软链） | 部分实现 | v1.13.0 每应用数据驱动最低预检：Nginx 256 MiB、ntfy 512 MiB，注册表/Docker 数据盘均检查；非配额，NAS/任意应用体积估算后续 |
 | G61 | 全量备份/还原（/home 打包 + 可 scp 异地） | 部分实现 | v1.11.1 完成现有 config/system/web 安全归档 SSH push/pull/status；单服务器隔离 SSH 验证；全量 /home、应用重建与两主机灾备仍后续 |
 | G62 | 后台工作区增强（编号会话 work1-10、会话注入命令、SSH 常驻模式） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G63 | 集群内置批量任务（18 项：update/clean/docker/swap/time/iptables…） | 部分实现 | cluster task；沿用密钥连接，未在生产节点批量执行 |
