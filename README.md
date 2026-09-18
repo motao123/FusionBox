@@ -24,9 +24,9 @@ fusionbox system sshkey                # 新增 5) 开启 root 密码登录  6) 
 - sudo 授权只写自有命名文件（marker 归属校验，拒绝覆盖同名未知文件），staged `visudo -c` 验证后安装 0440 root:root，目标验证失败回滚；不修改 sudoers 主文件、组成员或他人配置。
 - `PermitRootLogin` 仅接受 yes/prohibit-password/no；沿用 `sshd -t`/`sshd -T` 生效值校验、重载与失败回滚，socket activation 仍拒绝自动处理。
 - 加固向导在密钥登录验证通过（本机回环实测或人工独立确认）前绝不修改 root 策略；粘贴公钥场景本机无私钥，必须人工另行验证后再继续。
-- 真机验证为隔离范围：专用测试用户 + 独立临时 sshd 实例（高端口、独立配置目录）完成密钥登录与 PermitRootLogin 生效验证；生产 sshd 配置仅校验未重载，root 密码未改动。
+- 真机验证为隔离范围：密钥登录经生产 sshd 以专用测试用户实测（零配置改动，登录前后校验和一致）；PermitRootLogin 生效值仅在暂存配置副本上以 sshd -t/-T 验证，生产 sshd 未重载；root 密码未改动。
 
-Linux 验证目标：42 基础 + 229 行为（新增 20），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+Linux 验证目标：42 基础 + 231 行为（新增 22），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
 
 ## v1.13.0 受管 ntfy 通知服务（限定目录扩容）
 

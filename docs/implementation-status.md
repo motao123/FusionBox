@@ -2,9 +2,9 @@
 
 新增 G03/G04/G05 限定范围：用户创建/删除（拒绝 root 与 uid<1000，userdel -r 前置归属审查）、chpasswd 改密（stdin 传入，拒绝冒号/换行，不落 argv/日志）、受管 sudoers.d 授权/回收（marker 归属校验、staged visudo -c 验证、0440 root:root、目标校验失败回滚、不触碰 sudoers 主文件与他人文件）、`ssh PermitRootLogin yes|prohibit-password|no` 事务化切换（沿用 sshd -t/-T 生效值校验、重载回滚、socket activation 拒绝）。`system hardening` 向导：建用户→装公钥（粘贴或本机生成，authorized_keys 0600/.ssh 0700 归属校验）→sudo→验证密钥登录→收紧 root；验证未通过（回环实测失败或无法验证且未人工确认）绝不修改 root 策略。sshkey 菜单新增 root 密码登录开/关。
 
-真机隔离验证：专用测试用户全流程（创建/密码/sudo 授权回收/公钥安装/删除清理）+ 独立临时 sshd 实例（高端口、独立配置目录与主机密钥）实测密钥登录与 PermitRootLogin 生效；生产 sshd 配置仅校验未重载，root 密码未改动，sudoers 主文件未改动。sudoers 主文件全局语义、PAM 限策、SELinux 环境未验证。
+真机隔离验证：专用测试用户全流程（创建/密码/sudo 授权回收/公钥安装/删除清理）；密钥登录经生产 sshd 以测试用户实测（零配置改动，sshd_config 校验和登录前后一致）；PermitRootLogin 生效值仅在暂存配置副本以 sshd -t/-T 验证，生产 sshd 未重载；root 密码未改动，sudoers 主文件未改动。userdel 对残留登录会话（systemd user slice）可能暂时失败，已给出可操作错误信息。sudoers 主文件全局语义、PAM 限策、SELinux 环境未验证。
 
-最终归档 Linux 验证目标：42 基础 + 229 行为（新增 20），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。剩余优先范围调整：环境变量/网卡管理、Fail2Ban 完整面板（G09/G10/G11）；Docker 卸载与容器级防火墙（G27/G30）。
+最终归档 Linux 验证目标：42 基础 + 231 行为（新增 22），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。剩余优先范围调整：环境变量/网卡管理、Fail2Ban 完整面板（G09/G10/G11）；Docker 卸载与容器级防火墙（G27/G30）。
 
 ## v1.13.0 受管 ntfy 小范围扩容（历史）
 
