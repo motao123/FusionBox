@@ -34,6 +34,8 @@ panels_docker() {
     prune)        panels_docker_prune ;;
     compose|up)   panels_docker_compose "$@" ;;
     mirror|mirrors) panels_docker_mirror "${2:-}" ;;
+    port-block|pb)  shift; panels_docker_port_block "$@" ;;
+    uninstall)      panels_docker_uninstall ;;
     menu|"")      panels_docker_menu ;;
     *)            panels_docker_menu ;;
   esac
@@ -325,6 +327,224 @@ with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
       ;;
   esac
   pause
+}
+
+# ---- 容器名级端口开关 (G27)：DOCKER-USER + 原始目标（容器 IP）规则 ----
+# 规则带 fb-port-block comment 标记，只管理自有规则；不持久化（重启后失效），不支持 IPv6。
+
+_panels_pb_mark() { printf 'fb-port-block:%s:%s:%s' "$1" "$2" "$3"; }
+
+_panels_pb_validate() {
+  local container="$1" proto="$2" port="$3"
+  [[ "$container" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$ ]] || { msg_err "容器名无效: $container"; return 1; }
+  [[ "$proto" == "tcp" || "$proto" == "udp" ]] || { msg_err "协议仅支持 tcp/udp: $proto"; return 1; }
+  [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || { msg_err "端口必须是 1-65535: $port"; return 1; }
+}
+
+_panels_pb_chain_ok() {
+  iptables -nL DOCKER-USER &>/dev/null || { msg_err "iptables DOCKER-USER 链不可用（Docker 未安装或过旧，或当前 nftables 环境不支持）；不做任何更改"; return 1; }
+}
+
+_panels_pb_container_ips() {
+  docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$1" 2>/dev/null \
+    | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true
+}
+
+_panels_pb_rules_from_save() {
+  # 从 iptables-save 提取带指定标记的 DOCKER-USER 规则体（去掉 "-A DOCKER-USER " 与引号，
+  # 使输出可直接传给 `iptables -D DOCKER-USER`）
+  local mark="$1" line
+  iptables-save -t filter 2>/dev/null | while IFS= read -r line; do
+    case "$line" in
+      "-A DOCKER-USER "*--comment*"$mark"*)
+        printf '%s\n' "${line#-A DOCKER-USER }" | tr -d '"' ;;
+    esac
+  done
+}
+
+panels_docker_port_block() {
+  _require_root
+  local action="${1:-list}"
+  case "$action" in
+    list)
+      _panels_pb_chain_ok || return 1
+      local rules
+      rules=$(_panels_pb_rules_from_save "fb-port-block:")
+      if [[ -n "$rules" ]]; then
+        msg "  ${F_BOLD}FusionBox 受管 DOCKER-USER 规则:${F_RESET}"
+        printf '  %s\n' "$rules"
+      else
+        msg "  当前无 FusionBox 受管的容器端口封禁规则"
+      fi
+      ;;
+    add)
+      shift
+      local container="${1:-}" proto="${2:-tcp}" port="${3:-}" ip rc=0
+      [[ $# -eq 3 ]] || { msg_err "用法: fusionbox panels docker port-block add <容器名> <tcp|udp> <端口>"; return 2; }
+      _panels_pb_validate "$container" "$proto" "$port" || return 1
+      command -v docker &>/dev/null || { msg_err "Docker 未安装"; return 1; }
+      _panels_pb_chain_ok || return 1
+      local ips; ips=$(_panels_pb_container_ips "$container")
+      [[ -n "$ips" ]] || { msg_err "容器不存在或没有 IPv4 地址: $container"; return 1; }
+      msg_info "将封禁 容器=$container 协议=$proto 容器端口=$port 目标 IP: $(echo $ips | tr '\n' ' ')"
+      msg_warn "规则不持久（重启后失效）；不支持 IPv6；容器重建后 IP 变化需先 del 旧规则"
+      confirm "确认在 DOCKER-USER 插入 DROP 规则？" || { msg_info "已取消"; return 1; }
+      local mark; mark=$(_panels_pb_mark "$container" "$proto" "$port")
+      local -a rules_added=()
+      for ip in $ips; do
+        if iptables -I DOCKER-USER 1 -p "$proto" -d "$ip" --dport "$port" \
+             -m comment --comment "$mark" -j DROP; then
+          rules_added+=("$ip")
+        else
+          msg_err "iptables 插入失败（IP: $ip）"
+          rc=1
+          break
+        fi
+      done
+      if [[ $rc -ne 0 ]]; then
+        for ip in "${rules_added[@]}"; do
+          iptables -D DOCKER-USER -p "$proto" -d "$ip" --dport "$port" \
+            -m comment --comment "$mark" -j DROP 2>/dev/null || true
+        done
+        msg_err "已回滚本次已插入的规则"
+        return 1
+      fi
+      msg_ok "封禁规则已插入 DOCKER-USER 顶部"
+      _log_write "Docker 端口封禁: $container $proto $port ($ips)"
+      ;;
+    del)
+      shift
+      local container="${1:-}" proto="${2:-tcp}" port="${3:-}" mark spec removed=0
+      [[ $# -eq 3 ]] || { msg_err "用法: fusionbox panels docker port-block del <容器名> <tcp|udp> <端口>"; return 2; }
+      _panels_pb_validate "$container" "$proto" "$port" || return 1
+      _panels_pb_chain_ok || return 1
+      mark=$(_panels_pb_mark "$container" "$proto" "$port")
+      while IFS= read -r spec; do
+        [[ -n "$spec" ]] || continue
+        if iptables -D DOCKER-USER $spec; then
+          removed=$((removed + 1))
+        fi
+      done < <(_panels_pb_rules_from_save "$mark")
+      if [[ $removed -eq 0 ]]; then
+        msg_err "未找到匹配的受管规则（容器 IP 可能已变化；用 port-block list 查看现存规则）"
+        return 1
+      fi
+      msg_ok "已删除 $removed 条规则"
+      _log_write "Docker 端口解封: $container $proto $port"
+      ;;
+    menu)
+      panels_docker_port_block list
+      msg ""
+      msg "  1) 封禁容器端口"
+      msg "  2) 解封容器端口"
+      msg "  0) 返回"
+      read -p "请选择: " pb_choice || { msg ""; return; }
+      case "$pb_choice" in
+        1|2)
+          local pb_c pb_pr pb_po
+          read -r -p "容器名: " pb_c
+          read -r -p "协议 tcp/udp: " pb_pr
+          read -r -p "端口: " pb_po
+          if [[ "$pb_choice" == 1 ]]; then
+            panels_docker_port_block add "$pb_c" "$pb_pr" "$pb_po"
+          else
+            panels_docker_port_block del "$pb_c" "$pb_pr" "$pb_po"
+          fi
+          ;;
+      esac
+      ;;
+    *)
+      msg_err "未知子命令: $action（可用: list/menu/add/del）"; return 2 ;;
+  esac
+}
+
+# ---- Docker 一键卸载 (G30)：全部容器/镜像/卷/网络 + 包 + 数据目录（YES 门禁） ----
+
+_panels_docker_pkgs() {
+  printf '%s\n' docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-compose-plugin2 \
+    docker.io docker-doc docker-compose podman-docker containerd runc
+}
+
+panels_docker_uninstall() {
+  _require_root
+  command -v docker &>/dev/null || { msg_err "未安装 Docker"; return 1; }
+  command -v systemctl &>/dev/null || { msg_err "仅支持 systemd 环境"; return 1; }
+
+  msg_title "Docker 一键卸载"
+  msg ""
+  # 只读统计先行；失败不伪装为零
+  local c i v n du_stat
+  c=$(docker ps -aq 2>/dev/null | wc -l); i=$(docker images -aq 2>/dev/null | wc -l)
+  v=$(docker volume ls -q 2>/dev/null | wc -l); n=$(docker network ls -q 2>/dev/null | wc -l)
+  du_stat=$(du -sh /var/lib/docker 2>/dev/null | awk '{print $1}')
+  msg "  将删除的资源统计（当前）："
+  msg "    容器: $c    镜像: $i    卷: $v    自定义网络: $n"
+  msg "    数据目录 /var/lib/docker: ${du_stat:-未知或不存在}"
+  [[ -f /etc/docker/daemon.json ]] && msg "    /etc/docker/daemon.json 存在（将随卸载删除）"
+  msg ""
+  msg_warn "无论容器/镜像/卷由谁创建（包括 FusionBox 市场、Compose 项目、手工部署），全部删除且数据不可恢复"
+  msg_warn "依赖 Docker 的业务将立即中断；containerd 同时停用会影响本机其他容器运行时（如 Kubernetes）"
+  msg_info "如需保留数据，请先备份：fusionbox panels docker backup / compose-backup / market managed"
+  confirm "确认继续卸载 Docker？" || { msg_info "已取消"; return 1; }
+  local ans
+  read -r -p "请输入 YES 确认（其他输入取消）: " ans || { msg_info "已取消"; return 1; }
+  [[ "$ans" == "YES" ]] || { msg_info "已取消"; return 1; }
+
+  local wipe="yes"
+  read -r -p "是否删除数据目录 /var/lib/docker /var/lib/containerd /etc/docker？[yes/keep，默认 yes]: " ans || ans="yes"
+  [[ "$ans" == "keep" ]] && wipe="no"
+
+  msg_info "停止并删除全部容器..."
+  local ids; ids=$(docker ps -aq 2>/dev/null)
+  [[ -n "$ids" ]] && docker stop $ids >/dev/null 2>&1
+  [[ -n "$ids" ]] && docker rm -f $ids >/dev/null 2>&1
+  msg_info "清理网络/卷/镜像..."
+  docker network prune -f >/dev/null 2>&1
+  docker volume prune -af >/dev/null 2>&1
+  ids=$(docker images -aq 2>/dev/null)
+  [[ -n "$ids" ]] && docker rmi -f $ids >/dev/null 2>&1
+  docker system prune -af >/dev/null 2>&1
+
+  msg_info "停用 docker / docker.socket 服务..."
+  systemctl disable --now docker.service docker.socket >/dev/null 2>&1
+  systemctl disable --now containerd.service >/dev/null 2>&1
+
+  msg_info "按包管理器卸载软件包..."
+  local p
+  local -a installed_pkgs=()
+  while IFS= read -r p; do
+    case "$F_PKG_MGR" in
+      apt)  dpkg -s "$p" >/dev/null 2>&1 && installed_pkgs+=("$p") ;;
+      yum)  rpm -q "$p" >/dev/null 2>&1 && installed_pkgs+=("$p") ;;
+      apk)  apk info -e "$p" >/dev/null 2>&1 && installed_pkgs+=("$p") ;;
+      zypper) rpm -q "$p" >/dev/null 2>&1 && installed_pkgs+=("$p") ;;
+    esac
+  done < <(_panels_docker_pkgs)
+  if [[ ${#installed_pkgs[@]} -gt 0 ]]; then
+    case "$F_PKG_MGR" in
+      apt)    apt-get purge -y "${installed_pkgs[@]}" || { msg_err "软件包卸载失败"; return 1; } ;;
+      yum)    yum remove -y "${installed_pkgs[@]}" || { msg_err "软件包卸载失败"; return 1; } ;;
+      apk)    apk del "${installed_pkgs[@]}" || { msg_err "软件包卸载失败"; return 1; } ;;
+      zypper) zypper remove -y "${installed_pkgs[@]}" || { msg_err "软件包卸载失败"; return 1; } ;;
+      *)      msg_err "未知包管理器，请手动卸载软件包"; return 1 ;;
+    esac
+  else
+    msg_warn "未检测到已安装的 Docker 相关软件包"
+  fi
+
+  if [[ "$wipe" == "yes" ]]; then
+    msg_info "删除数据目录..."
+    rm -rf /var/lib/docker /var/lib/containerd /etc/docker
+  else
+    msg_warn "数据目录已保留：/var/lib/docker /var/lib/containerd /etc/docker（重装后可能恢复）"
+  fi
+
+  if command -v docker &>/dev/null; then
+    msg_warn "docker 命令仍存在，卸载可能不完整"
+    return 1
+  fi
+  msg_ok "Docker 已卸载"
+  _log_write "Docker 已卸载 (wipe=$wipe)"
 }
 
 # ---- Docker daemon.json 编辑 ----
@@ -1017,9 +1237,11 @@ panels_docker_menu() {
     msg "  ${F_GREEN}13${F_RESET}) 镜像加速 / 换源"
     msg "  ${F_GREEN}14${F_RESET}) 只读全局总览（含完整资源列表）"
     msg "  ${F_GREEN}15${F_RESET}) 只读容器详情（环境变量隐藏）"
+    msg "  ${F_GREEN}16${F_RESET}) 容器端口封禁（DOCKER-USER 按容器）"
+    msg "  ${F_GREEN}17${F_RESET}) Docker 一键卸载（YES 门禁）"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-15]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-17]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$dk_choice" in
       1) panels_docker_install; pause ;;
       2) panels_docker_ps ;;
@@ -1036,6 +1258,8 @@ panels_docker_menu() {
       13) panels_docker_mirror ;;
       14) panels_docker_summary --all; pause ;;
       15) local target; read -r -p "容器名称或 ID: " target; panels_docker_detail "$target"; pause ;;
+      16) panels_docker_port_block menu ;;
+      17) panels_docker_uninstall; pause ;;
       0) break ;;
     esac
   done
