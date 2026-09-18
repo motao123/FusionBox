@@ -113,6 +113,48 @@ class Market(unittest.TestCase):
         with patch.object(m.cb, 'js', return_value=[{'Labels': {}, 'Driver': 'local'}]):
             with self.assertRaisesRegex(ValueError, 'volume ownership'): m.resources(r)
 
+    def test_reinstall_reuses_image_and_data(self):
+        r = self.install()
+        r['market']['state'] = 'uninstalled'; m.save(self.registry, r)
+        with patch.object(m, 'resources', return_value=[]), patch.object(m.cb, 'js', return_value=[{'Id': r['market']['image']}]), patch.object(m.cb, 'docker', return_value=b'fb-market-nginx_data'):
+            m.operate('reinstall', accepted=True, reuse=True)
+        self.assertEqual(m.load(self.registry, r['project'])['market']['state'], 'healthy')
+
+    def test_reinstall_failure_preserves_original_and_cleans_only_new_container(self):
+        r = self.install()
+        r['market']['state'] = 'uninstalled'; m.save(self.registry, r)
+        before = self.registry.read_bytes(), Path(r['compose']).read_bytes()
+        self.up.side_effect = RuntimeError('port collision')
+        with patch.object(m, 'resources', side_effect=[[], [{'Id': 'new-owned'}]]), patch.object(m.cb, 'js', return_value=[{'Id': r['market']['image']}]), patch.object(m.cb, 'docker', return_value=b'fb-market-nginx_data') as docker:
+            with self.assertRaisesRegex(RuntimeError, 'original registry/config/data retained'):
+                m.operate('reinstall', accepted=True, reuse=True, port=8081)
+        self.assertEqual(before, (self.registry.read_bytes(), Path(r['compose']).read_bytes()))
+        self.assertEqual(docker.call_args_list[-2].args, ('stop', 'new-owned'))
+        self.assertEqual(docker.call_args_list[-1].args, ('rm', 'new-owned'))
+
+    def test_reinstall_missing_data_image_or_confirmation_refused(self):
+        r = self.install()
+        r['market']['state'] = 'uninstalled'; m.save(self.registry, r)
+        before = self.registry.read_bytes(), Path(r['compose']).read_bytes()
+        with self.assertRaisesRegex(ValueError, 'reuse-data'): m.operate('reinstall', accepted=True)
+        with patch.object(m, 'resources', return_value=[]):
+            with self.assertRaisesRegex(ValueError, 'volume missing'): m.operate('reinstall', accepted=True, reuse=True)
+            with patch.object(m.cb, 'docker', return_value=b'fb-market-nginx_data'), patch.object(m.cb, 'js', side_effect=RuntimeError('image absent')):
+                with self.assertRaises(RuntimeError): m.operate('reinstall', accepted=True, reuse=True)
+        self.assertEqual(before, (self.registry.read_bytes(), Path(r['compose']).read_bytes()))
+
+    def test_reinstall_conflict_and_cleanup_failure_preserve_recovery(self):
+        r = self.install()
+        r['market']['state'] = 'uninstalled'; m.save(self.registry, r)
+        before = self.registry.read_bytes(), Path(r['compose']).read_bytes()
+        with patch.object(m, 'resources', return_value=[{'Id': 'existing'}]):
+            with self.assertRaisesRegex(ValueError, 'no existing'): m.operate('reinstall', accepted=True, reuse=True)
+        self.up.side_effect = RuntimeError('health')
+        with patch.object(m, 'resources', side_effect=[[], ValueError('unknown intruder')]), patch.object(m.cb, 'js', return_value=[{'Id': r['market']['image']}]), patch.object(m.cb, 'docker', return_value=b'fb-market-nginx_data') as docker:
+            with self.assertRaisesRegex(RuntimeError, 'cleanup failed'): m.operate('reinstall', accepted=True, reuse=True, port=8081)
+            self.assertFalse(any(c.args[0] in ('stop', 'rm') for c in docker.call_args_list))
+        self.assertEqual(before, (self.registry.read_bytes(), Path(r['compose']).read_bytes()))
+
     def test_unhealthy_update_blocked(self):
         self.install()
         with patch.object(m, 'resources', return_value=[]), patch.object(m, 'health', return_value='unhealthy'):
@@ -120,6 +162,18 @@ class Market(unittest.TestCase):
 
 
 class Preflight(unittest.TestCase):
+    def test_auto_port_bounded_and_errors_not_hidden(self):
+        import errno
+        with patch.object(m, 'preflight', side_effect=[OSError(errno.EADDRINUSE, 'occupied'), None]) as probe:
+            self.assertEqual(m.select_port(8080, True), 8081)
+            self.assertEqual([c.args[0] for c in probe.call_args_list], [8080, 8081])
+        with patch.object(m, 'preflight', side_effect=ValueError('Port already published by Docker')) as probe:
+            with self.assertRaisesRegex(ValueError, '20-port'): m.select_port(8080, True)
+            self.assertEqual(probe.call_count, 20)
+        with patch.object(m, 'preflight', side_effect=ValueError('disk full')) as probe:
+            with self.assertRaisesRegex(ValueError, 'disk full'): m.select_port(8080, True)
+            self.assertEqual(probe.call_count, 1)
+
     def test_port_occupied(self):
         with socket.socket() as listener, tempfile.TemporaryDirectory() as root:
             listener.bind(('127.0.0.1', 0)); listener.listen()

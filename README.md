@@ -4,6 +4,18 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.6.1 保留数据重装与端口探测
+
+受管 Nginx 新增 `reinstall --confirm --reuse-data`，只接受已卸载且无容器、归属正确的保留卷、未改动配置与可用的原镜像 ID；不拉取新镜像、不新建替代数据卷。成功后恢复服务并保留静态内容；失败尝试清理本次创建且归属验证通过的容器，恢复原配置，保留原登记/数据。清理失败明确要求人工检查，不删除未知资源。强杀/断电仍需人工检查，不提供跨文件原子事务。
+
+```bash
+fusionbox market managed reinstall nginx --confirm --reuse-data
+fusionbox market managed install nginx --port 8080 --auto-port --confirm
+fusionbox market managed reinstall nginx --auto-port --confirm --reuse-data
+```
+
+`--auto-port` 从首选值起最多检查 20 个 localhost 端口（上限 65535）；重装默认使用原端口，首次安装默认 8080。占用时探测下一端口，磁盘/权限等错误不忽略。探测不是端口预留；Docker 实际绑定或健康失败仍返回失败。市场菜单选项 6、help 和卸载状态提示提供入口。此批仅完善原有生命周期，不扩展应用目录、公网/域名访问或数据库迁移。
+
 ## v1.6.0 受管应用生命周期基础
 
 新增独立的 `market managed` 入口，首批只支持低占用 Nginx 静态站点。既有软件包/第三方安装入口保持独立，不自动接管。复用 Compose 注册表 `/var/lib/fusionbox/compose-projects`、全局 flock 与原子 0600 写入，目录 0700；生成固定结构 Compose JSON，不 source/eval 注册数据。安装检查端口与注册表/Docker 数据盘至少 256 MiB 可用空间；仅绑定 localhost，64 MiB 内存、0.5 CPU、64 PID、日志大小有限制。

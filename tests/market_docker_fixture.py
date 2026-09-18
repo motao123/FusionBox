@@ -79,7 +79,38 @@ def run():
                 assert (volume / 'index.html').read_text() == 'FusionBox managed persistent content\n'
                 assert registry.exists() and Path(r['compose']).exists()
                 operation('status')
-                print('REAL MARKET: 14 assertions passed; install/HTTP/backup/update/health rollback/uninstall data retention')
+                # Preferred port occupied: bounded selection must choose the next free slot.
+                with socket.socket() as occupied:
+                    occupied.bind(('127.0.0.1', 0)); occupied.listen()
+                    preferred = occupied.getsockname()[1]
+                    m.operate('reinstall', port=preferred, accepted=True, project=project, automatic=True, reuse=True)
+                    assert preferred < record()['market']['port'] < preferred + 20
+                port = record()['market']['port']
+                assert b'FusionBox managed persistent content' in content()
+                operation('uninstall')
+                before = registry.read_bytes(), Path(r['compose']).read_bytes()
+                real_select = m.select_port
+                with socket.socket() as unused:
+                    unused.bind(('127.0.0.1', 0)); race_port = unused.getsockname()[1]
+                with socket.socket() as racer:
+                    def race(preferred, automatic):
+                        chosen = real_select(preferred, automatic)
+                        racer.bind(('127.0.0.1', chosen)); racer.listen()
+                        return chosen
+                    with patch.object(m, 'select_port', side_effect=race):
+                        try:
+                            m.operate('reinstall', port=race_port, accepted=True, project=project, reuse=True)
+                        except RuntimeError as error:
+                            assert 'original registry/config/data retained' in str(error)
+                        else:
+                            raise AssertionError('expected actual Docker bind collision')
+                assert before == (registry.read_bytes(), Path(r['compose']).read_bytes())
+                assert not m.resources(record())
+                assert (volume / 'index.html').read_text() == 'FusionBox managed persistent content\n'
+                m.operate('reinstall', accepted=True, project=project, reuse=True)
+                assert b'FusionBox managed persistent content' in content()
+                operation('uninstall')
+                print('REAL MARKET: 20 assertions passed; retained-data reinstall, occupied-port fallback, real bind race cleanup and retry')
             finally:
                 # Only fixture-owned image created above; remove after fixture containers.
                 for c in m.resources(record()):

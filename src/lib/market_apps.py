@@ -109,6 +109,58 @@ def preflight(port, check_port=True):
                     raise ValueError('Port already published by Docker')
 
 
+def select_port(preferred=8080, automatic=False):
+    if not automatic:
+        preflight(preferred)
+        return preferred
+    if not 1024 <= preferred <= 65535:
+        raise ValueError('Port must be 1024-65535')
+    for port in range(preferred, min(preferred + 20, 65536)):
+        try:
+            preflight(port)
+            return port
+        except OSError as error:
+            import errno
+            if error.errno != errno.EADDRINUSE:
+                raise
+        except ValueError as error:
+            if str(error) != 'Port already published by Docker':
+                raise
+    raise ValueError('No free localhost port in the bounded 20-port range')
+
+
+def reinstall(registry, record, port, automatic):
+    """Reuse only a fully owned, uninstalled volume. Never pull or migrate its data."""
+    if record['market']['state'] != 'uninstalled' or resources(record):
+        raise ValueError('Reinstall requires uninstalled state and no existing containers')
+    volume = record['project'] + '_data'
+    if volume not in cb.docker('volume', 'ls', '-q').decode().split():
+        raise ValueError('Retained data volume missing; refusing to create replacement')
+    image = record['market']['image']
+    if cb.js('image', 'inspect', image)[0]['Id'] != image:
+        raise ValueError('Retained image identity mismatch')
+    original = json.loads(json.dumps(record))
+    record['market']['port'] = select_port(record['market']['port'] if port is None else port, automatic)
+    try:
+        write_compose(record)
+        up(record)
+        record['market']['state'] = 'healthy'
+        save(registry, record)
+    except BaseException:
+        # The preflight proved this namespace empty. Revalidate labels before cleanup.
+        # No volume is removed, and the app has read-only access to retained content.
+        try:
+            for container in resources(record):
+                cb.docker('stop', container['Id'])
+                cb.docker('rm', container['Id'])
+        except BaseException:
+            raise RuntimeError('Reinstall failed and container cleanup failed; original registry/config/data retained; inspect owned resources before retry') from None
+        finally:
+            write_compose(original)
+        raise RuntimeError('Reinstall failed; newly created containers removed; original registry/config/data retained') from None
+    print('Reinstall completed; healthy; localhost port ' + str(record['market']['port']))
+
+
 def pull():
     image = CATALOG['nginx']['image']
     cb.docker('pull', image)
@@ -132,7 +184,7 @@ def health(record):
     return state.get('Health', {}).get('Status', 'unknown')
 
 
-def operate(action, app='nginx', port=8080, accepted=False, project=None):
+def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False):
     if app not in CATALOG:
         raise ValueError('Unsupported managed application')
     project = project or 'fb-market-' + app
@@ -143,7 +195,7 @@ def operate(action, app='nginx', port=8080, accepted=False, project=None):
             compose = cb.BASE / (project + '.compose.json')
             if registry.exists() or registry.is_symlink() or compose.exists() or compose.is_symlink():
                 raise ValueError('Existing registry/configuration; refusing adoption')
-            preflight(port)
+            port = select_port(8080 if port is None else port, automatic)
             if (cb.docker('ps', '-aq', '--filter', 'name=^/' + project + '-app$').strip() or
                     cb.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project).strip() or
                     project + '_data' in cb.docker('volume', 'ls', '-q').decode().split()):
@@ -163,10 +215,17 @@ def operate(action, app='nginx', port=8080, accepted=False, project=None):
             if not registry.exists():
                 raise ValueError('Not managed; legacy/native/unknown installations are never adopted')
             record = load(registry, project)
+            if action == 'reinstall':
+                if not reuse:
+                    raise ValueError('Explicit --reuse-data required for retained content')
+                reinstall(registry, record, port, automatic)
+                return
             containers = resources(record)
             if action == 'status':
                 print('managed-compose', app, record['market']['state'], health(record),
                       'http://127.0.0.1:' + str(record['market']['port']))
+                if record['market']['state'] == 'uninstalled':
+                    print('Retained data: reinstall nginx --confirm --reuse-data [--auto-port]')
                 return
             if action == 'uninstall':
                 for c in containers:
@@ -216,15 +275,21 @@ def operate(action, app='nginx', port=8080, accepted=False, project=None):
 def main():
     os.umask(0o077)
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=('catalog', 'install', 'status', 'update', 'uninstall'))
+    p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall'))
     p.add_argument('app', nargs='?', default='nginx', choices=tuple(CATALOG))
-    p.add_argument('--port', type=int, default=8080)
+    p.add_argument('--port', type=int, help='Preferred port; default 8080 or retained port for reinstall')
+    p.add_argument('--auto-port', action='store_true', help='Probe at most 20 localhost ports; not a reservation')
+    p.add_argument('--reuse-data', action='store_true', help='Explicitly reuse owned retained data on reinstall')
     p.add_argument('--confirm', action='store_true')
     args = p.parse_args()
     if args.action == 'catalog':
         print('nginx: static web server; managed Compose; localhost only; persistent read-only content; 256 MiB free disk; Docker Compose v2/Python 3/Linux required')
         return
-    operate(args.action, args.app, args.port, args.confirm)
+    if (args.auto_port or args.port is not None) and args.action not in ('install', 'reinstall'):
+        p.error('Port options apply only to install/reinstall')
+    if args.reuse_data and args.action != 'reinstall':
+        p.error('--reuse-data applies only to reinstall')
+    operate(args.action, args.app, args.port, args.confirm, automatic=args.auto_port, reuse=args.reuse_data)
 
 
 if __name__ == '__main__':

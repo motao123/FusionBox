@@ -498,7 +498,9 @@ market_category() {
 market_help() {
   msg_title "应用市场 帮助"
   msg ""
-  msg "  fusionbox market managed          受管 Nginx catalog/install/status/update/uninstall（--help）"
+  msg "  fusionbox market managed          受管 Nginx catalog/install/reinstall/status/update/uninstall（--help）"
+  msg "  reinstall nginx --confirm --reuse-data  确认复用卸载保留数据"
+  msg "  install/reinstall --auto-port     最多探测 20 个 localhost 端口（不预留）"
   msg "  fusionbox market list             列出所有可用应用"
   msg "  fusionbox market search <关键词>  搜索应用"
   msg "  fusionbox market install <应用>   安装应用"
@@ -510,6 +512,30 @@ market_help() {
 }
 
 # ---- Interactive Menu ----
+market_managed_menu() {
+  _require_root
+  local action port
+  local -a args=()
+  read -r -p "操作 catalog/status/install/reinstall/update/uninstall: " action || return 1
+  case "$action" in
+    catalog|status) ;;
+    install|reinstall|update|uninstall)
+      confirm "确认执行 $action？可能停机；卸载保留数据；失败需检查恢复状态" || return 1
+      args+=(--confirm)
+      if [[ "$action" == reinstall ]]; then
+        confirm "确认复用此受管项目原有具名卷与镜像？" || return 1
+        args+=(--reuse-data)
+      fi
+      if [[ "$action" == install || "$action" == reinstall ]]; then
+        read -r -p "首选 localhost 端口（留空使用默认/保留值）: " port || return 1
+        [[ -z "$port" ]] || args+=(--port "$port")
+        if confirm "占用时最多探测后续 20 个端口？探测不保证预留"; then args+=(--auto-port); fi
+      fi ;;
+    *) msg_err "无效操作"; return 1 ;;
+  esac
+  python3 "$FUSION_SRC/lib/market_apps.py" "$action" nginx "${args[@]}"
+}
+
 market_menu() {
   while true; do
     clear
@@ -521,15 +547,17 @@ market_menu() {
     msg "  ${F_GREEN}3${F_RESET}) 搜索"
     msg "  ${F_GREEN}4${F_RESET}) 安装应用"
     msg "  ${F_GREEN}5${F_RESET}) 移除应用"
+    msg "  ${F_GREEN}6${F_RESET}) 受管 Nginx 生命周期（状态/安装/复用数据重装/更新/卸载）"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-5]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-6]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) market_list; pause ;;
       2) market_category; pause ;;
       3) market_search; pause ;;
       4) market_install; pause ;;
       5) market_remove; pause ;;
+      6) market_managed_menu; pause ;;
       0) break ;;
     esac
   done
