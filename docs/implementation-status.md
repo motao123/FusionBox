@@ -1,4 +1,8 @@
-# v1.21.0 Web 调优档位与 brotli/WP-Redis
+# v1.22.0 rsync 任务、文件管理器与小工具
+
+G16/G14/G22 限定范围完成：`system rsync`（0600 持久化清单、端点严格校验、镜像模式确认、受管 cron.d 原子改写、rm 不删数据）；`system file`（ls/cat/mkdir/cp/mv/chmod/tar/untar/send，del 一律进回收站、拒绝删 /）；`system genpass`、`system gai`（前后自动备份）、`system locale`。真机验证 32 项全过：真实 rsync 同步、cron 写入/移除、文件管理器全操作（含回收站与拒绝删 /）、genpass、gai 往返。最终 Linux 验证目标：42 基础 + 576 行为（新增 59）。剩余：G66 自动更新、G51 NewAPI、G32-34（需 OCI 环境）、G52 其余（socket 依赖）。
+
+## v1.21.0 Web 调优档位与 brotli/WP-Redis（历史）
 
 G45/G46/G47/G48 限定范围完成：`web tune`（standard/high 档位事务化修改 nginx/PHP-FPM/MySQL，manifest 备份 + nginx -t/php-fpm -t 校验回滚 + restore；MySQL 仅写配置不自动重启数据库）、`web brotli`（Ubuntu brotli 模块包 + 自有 conf，nginx -t 回滚；zstd 无稳定包不提供）、`web wp-redis`（wp-config 锚点注入，幂等，php -l 校验回滚，Redis Object Cache 插件需用户自装）。真机验证 24 项全过：真实档位修改/备份/恢复、真实 brotli 模块 + Content-Encoding: br 响应实测、真实 redis + wp-config 注入。最终 Linux 验证目标：42 基础 + 517 行为（新增 61）。剩余：G16 rsync 任务、G14 文件管理器、G22 小工具、G66 自动更新、G51 NewAPI。
 
@@ -150,15 +154,15 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G11 | fail2ban 完整面板（拦截记录/实时日志/参数配置/卸载） | 面板范围完成 | v1.15.0 status/banned/unban/log/params/uninstall；真实 fail2ban 上验证状态/解封/日志；卸载仅 mock（不停用生产防护） |
 | G12 | TG Bot 监控预警（CPU/内存/磁盘/流量阈值 + 登录通知） | 凭据依赖 | system notify；资源阈值与冷却，TG 仅 mock，SSH 登录通知未实现 |
 | G13 | 流量阈值自动关机（/proc/net/dev 统计超限关机） | 部分实现 | traffic-guard；默认 warn；shutdown 分支未执行，月统计从安装基线开始 |
-| G14 | 文件管理器（本地目录/文件增删改权限、压缩解压、跨机传文件） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G14 | 文件管理器 | 受管范围完成 | v1.22.0 system file：全操作真机验证；del 进回收站；跨机 send 走 scp（真实远端未验证） |
 | G15 | SSH 出站连接工具（收藏与管理） | 受管范围完成 | v1.19.0 cluster sshout：0600 受管清单+严格校验+connect 直连；connect 真实目标需第二台主机，未验证 |
-| G16 | rsync 远程同步任务管理（持久化任务/密钥/定时/双向） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G16 | rsync 远程同步任务管理 | 受管范围完成 | v1.22.0 system rsync：任务清单+可选 cron 真机验证；远端执行依赖第二台主机未验证；密钥管理沿用 cluster 模型 |
 | G17 | 系统备份范围扩展 + 备份管理 | 部分实现 | 配置任务归属登记、完整性校验、显式保留/恢复；系统范围扩展与旧归档迁移仍后续 |
 | G18 | 内核参数优化面板（6 场景自适应 + 恢复） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G19 | 病毒扫描（ClamAV 全盘/指定目录+日志） | 受管范围完成 | v1.19.0 market clamav 扫描动作（按需安装、0600 日志、威胁 rc 传播）；真实扫描 mock 覆盖 |
 | G20 | 修复 OpenSSH 高危版本（源码编译升级） | 不建议源码替换 | 优先发行版安全更新，避免断开 SSH 管理通道 |
 | G21 | SSH 密钥远端导入（GitHub / URL 一键抓取） | 受管范围完成 | v1.19.0 sshkey 菜单 7：https 拉取+逐条校验确认；真机 GitHub 拉取验证，拒绝时零改动 |
-| G22 | 小工具集：主机名/hosts 解析/语言切换/PS1 美化/用户名密码生成器/命令收藏夹/重启入口/自定义快捷键/gai.conf 优先级 | 部分实现 | hostname/hosts 已加入；其他小工具仍后续 |
+| G22 | 小工具集 | 基本完成 | hostname/hosts/语言切换/密码生成器/gai.conf 已加入（v1.22.0）；命令收藏/快捷键由 cluster kcmd 覆盖；PS1 美化未做（低价值） |
 | G23 | 测试脚本合集（17 项评测矩阵，数据表驱动） | 部分实现 | network bench 列表及确认执行；未声称全部上游可用 |
 | G24 | 评测前自动补 Swap（小内存机器） | 不自动实施 | 低内存仅提示用户配置 Swap，避免评测自动改变内存策略 |
 | G25 | Docker 一键换源 + 内置国内加速源 | 部分实现 | Docker JSON 合并与回滚；失效预设移除，源须现场验证 |

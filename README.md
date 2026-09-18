@@ -4,6 +4,23 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.22.0 rsync 任务、文件管理器与小工具（G16/G14/G22）
+
+```bash
+fusionbox system rsync add|list|run|enable|disable|rm   # 同步任务（0600 清单，可选每日 03:30 cron，镜像模式需确认）
+fusionbox system file ls|cat|mkdir|cp|mv|del|chmod|tar|untar|send
+fusionbox system genpass [8-128]        # 随机密码生成
+fusionbox system gai status|v4-first|default   # IPv4/IPv6 优先级切换（自动备份 gai.conf）
+fusionbox system locale [语言]           # 查看或切换系统语言
+```
+
+- **rsync 任务**：端点严格校验（本地绝对路径 / user@host:/path）；默认安全同步（-a），`--delete` 镜像模式需显式确认；enable/disable 原子改写受管 `/etc/cron.d/fusionbox-rsync`；rm 仅删任务不删数据。
+- **文件管理器**：`del` 一律移入 `/root/.fusionbox_trash/files`（可经 system trash 管理），拒绝删除 `/`；send 走 scp 并校验目标格式；tar/untar 基于 basename 语义。
+- **小工具**：genpass 从 /dev/urandom 生成（8-128 位）；gai.conf 修改前后均自动备份；locale 走 locale-gen + update-locale（重新登录生效）。
+- 真机验证 32/32：真实 rsync 目录同步落盘、0600 清单与 cron 条目写入/移除、重复与非法名称拒绝、文件管理器全操作（含回收站与拒绝删 /）、真实 genpass 32 位、gai 往返。
+
+Linux 验证目标：42 基础 + 576 行为（新增 59），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 32/32。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.21.0 Web 调优档位与 brotli/WP-Redis（G45/G46/G47/G48）
 
 ```bash
@@ -464,6 +481,8 @@ fusionbox cluster sshout            # SSH 出站收藏 (add/list/rm/connect)
 fusionbox market managed install uptime-kuma / ddns-go   # 受管模板扩容
 fusionbox web tune                      # 调优档位 (standard/high/restore)
 fusionbox web brotli                    # brotli 压缩开关
+fusionbox system rsync                  # rsync 同步任务 (add/list/run/cron)
+fusionbox system file                   # 文件管理器 (ls/cat/cp/mv/del/tar/send)
 fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
 fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)
 fusionbox system sshkey          # SSH 密钥管理
