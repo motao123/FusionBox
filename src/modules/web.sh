@@ -23,6 +23,11 @@ web_main() {
     site-alias|alias)      web_site_alias "$@" ;;
     guard|cc)              web_guard "$@" ;;
     wordpress|wp)          web_wordpress "$@" ;;
+    clone)                 web_site_clone "$@" ;;
+    cache)                 web_cache "$@" ;;
+    goaccess|logstats)     web_goaccess "$@" ;;
+    upgrade|upgrade-comp)  web_upgrade "$@" ;;
+    uninstall-lnmp)        web_uninstall_lnmp ;;
     menu|main)             web_menu ;;
     help|h)                web_help ;;
     *)                     web_menu ;;
@@ -2075,6 +2080,295 @@ web_site_data() {
   pause
 }
 
+# ---- 站点克隆 (G39)：复制目录 + 生成新配置（+ 可选 WP 数据库克隆） ----
+_web_clone_source_conf() {
+  local domain="$1" f rp out=""
+  local tmp; tmp=$(mktemp) || return 1
+  for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do
+    [[ -f "$f" ]] || continue
+    rp=$(readlink -f "$f" 2>/dev/null || echo "$f")
+    grep -qF "$rp$" "$tmp" 2>/dev/null && continue
+    if _web_parse_server_blocks "$f" | awk -F'|' -v d="$domain" '$2 == d { found=1 } END { exit !found }'; then
+      _web_parse_server_blocks "$f" | awk -F'|' -v d="$domain" '$2 == d { print $1 "|" $4; exit }' >> "$tmp"
+      break
+    fi
+  done
+  out=$(tail -1 "$tmp" 2>/dev/null)
+  rm -f "$tmp"
+  printf '%s' "$out"
+}
+
+web_site_clone() {
+  _require_root
+  local src="${1:-}" new="${2:-}"
+  [[ $# -eq 2 ]] || { msg_err "用法: fusionbox web clone <源域名> <新域名>"; return 2; }
+  _web_validate_domain "$new" || return 1
+  [[ "$src" != "$new" ]] || { msg_err "新域名不能与源域名相同"; return 1; }
+
+  local info conf src_root
+  info=$(_web_clone_source_conf "$src")
+  [[ -n "$info" ]] || { msg_err "未找到源站点: $src（fusionbox web sites 查看）"; return 1; }
+  conf="${info%%|*}"; src_root="${info##*|}"
+  [[ -f "$conf" && -d "$src_root" ]] || { msg_err "源站点配置或根目录缺失"; return 1; }
+
+  local new_root
+  new_root="$(dirname "$src_root")/$new"   # 与源根目录同级；非 /var/www 布局同样成立
+  local conf_dir; conf_dir=$(dirname "$(readlink -f "$conf")")
+  local new_conf="$conf_dir/$new.conf"
+  local link_target=""
+  [[ -L "$conf" ]] && link_target=$(basename "$conf")   # sites-enabled 软链结构
+
+  [[ -e "$new_root" ]] && { msg_err "目标目录已存在: $new_root"; return 1; }
+  [[ -e "$new_conf" || -e "/etc/nginx/sites-available/$new" ]] && { msg_err "目标站点配置已存在"; return 1; }
+
+  msg_info "源: $src ($conf, $src_root)"
+  msg_info "目标: $new ($new_conf, $new_root)"
+  confirm "确认克隆站点？" || { msg_info "已取消"; return 1; }
+
+  if ! cp -a "$src_root" "$new_root"; then
+    msg_err "目录复制失败"
+    return 1
+  fi
+
+  local avail_conf="$new_conf"
+  if [[ -n "$link_target" ]]; then
+    avail_conf="/etc/nginx/sites-available/$new"
+  fi
+  sed -e "s/\b$src\b/$new/g" -e "s#$src_root#$new_root#g" "$conf" > "$avail_conf" || {
+    msg_err "配置生成失败"; rm -rf "$new_root"; return 1; }
+  [[ -n "$link_target" ]] && ln -s "$avail_conf" "$new_conf"
+
+  if ! nginx -t >/dev/null 2>&1; then
+    msg_err "nginx 配置校验失败，回滚本次克隆"
+    rm -f "$new_conf"; [[ -n "$link_target" ]] && rm -f "$avail_conf"
+    rm -rf "$new_root"
+    return 1
+  fi
+  if ! nginx -s reload 2>/dev/null; then
+    msg_warn "重载失败（配置已通过校验）；请手动 nginx -s reload"
+  fi
+  msg_ok "站点已克隆: $new (目录 $new_root, 配置 $new_conf)"
+  _log_write "站点克隆: $src -> $new"
+
+  # 可选：WP 数据库克隆（wp-config.php 存在且 mysql 可用时提供）
+  if [[ -f "$src_root/wp-config.php" ]] && command -v mysql &>/dev/null && command -v mysqldump &>/dev/null; then
+    if confirm "检测到 WordPress 配置，是否克隆数据库（含域名替换）？"; then
+      local db_name db_user db_pass
+      db_name=$(grep -oP "define\(\s*'DB_NAME',\s*'\K[^']+" "$src_root/wp-config.php" | tail -1)
+      db_user=$(grep -oP "define\(\s*'DB_USER',\s*'\K[^']+" "$src_root/wp-config.php" | tail -1)
+      db_pass=$(grep -oP "define\(\s*'DB_PASSWORD',\s*'\K[^']+" "$src_root/wp-config.php" | tail -1)
+      if [[ -n "$db_name" && -n "$db_user" ]]; then
+        local new_db="${db_name}_clone"
+        if MYSQL_PWD="$db_pass" mysql -u "$db_user" -e "CREATE DATABASE IF NOT EXISTS \`$new_db\`;" 2>/dev/null \
+          && MYSQL_PWD="$db_pass" mysqldump -u "$db_user" "$db_name" 2>/dev/null \
+             | sed -e "s/$src/$new/g" | MYSQL_PWD="$db_pass" mysql -u "$db_user" "$new_db"; then
+          msg_ok "数据库已克隆: $new_db（域名已替换）"
+        else
+          msg_warn "数据库克隆失败；文件层克隆不受影响"
+        fi
+      fi
+    fi
+  fi
+}
+
+# ---- 缓存清理 (G41)：重启 FPM/重载 Nginx + fastcgi_cache 目录 + 可选 CF purge ----
+web_cache() {
+  _require_root
+  command -v nginx &>/dev/null || { msg_err "Nginx 未安装"; return 1; }
+  confirm "清理站点缓存（重启 PHP-FPM、重载 Nginx、清 fastcgi_cache）？" || { msg_info "已取消"; return 1; }
+
+  local u cleared=0
+  while IFS= read -r u; do
+    [[ -n "$u" ]] || continue
+    systemctl restart "$u" 2>/dev/null && msg_ok "已重启 $u"
+  done < <(systemctl list-unit-files 'php*-fpm*' --no-legend 2>/dev/null | awk '{print $1}')
+
+  local path
+  while IFS= read -r path; do
+    [[ -d "$path" ]] || continue
+    find "$path" -mindepth 1 -delete 2>/dev/null && { msg_ok "已清空缓存目录 $path"; cleared=$((cleared+1)); }
+  done < <(grep -rhoP 'fastcgi_cache_path\s+\K[^; ]+' /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf 2>/dev/null | sort -u)
+
+  nginx -s reload 2>/dev/null && msg_ok "Nginx 已重载" || msg_warn "Nginx 重载失败"
+
+  local cf_conf="/etc/fusionbox/cloudflare.conf"
+  if [[ -f "$cf_conf" ]] && grep -qE '^CF_API_TOKEN=.+' "$cf_conf" && grep -qE '^CF_ZONE_ID=.+' "$cf_conf"; then
+    if confirm "已配置 Cloudflare，是否同时清理 CF 全域缓存（purge_everything）？"; then
+      local token zid resp
+      token=$(grep -E '^CF_API_TOKEN=' "$cf_conf" | tail -1 | cut -d= -f2-)
+      zid=$(grep -E '^CF_ZONE_ID=' "$cf_conf" | tail -1 | cut -d= -f2-)
+      resp=$(curl -s --max-time 15 -X POST "https://api.cloudflare.com/client/v4/zones/$zid/purge_cache" \
+        -H "Authorization: Bearer $token" -H "Content-Type: application/json" --data '{"purge_everything":true}' 2>/dev/null)
+      [[ "$resp" == *'"success":true'* ]] && msg_ok "CF 缓存已清理" || msg_warn "CF 缓存清理失败（凭据/网络/权限），本地缓存已清理"
+    fi
+  else
+    msg_info "未配置 Cloudflare 凭据，跳过 CF 端缓存清理"
+  fi
+  _log_write "站点缓存已清理"
+}
+
+# ---- GoAccess 访问日志分析 (G42) ----
+web_goaccess() {
+  _require_root
+  local domain="${1:-}"
+  if ! command -v goaccess &>/dev/null; then
+    confirm "goaccess 未安装，是否安装（约几十 MB）？" || return 1
+    _install_pkg goaccess || { msg_err "goaccess 安装失败"; return 1; }
+  fi
+  local log="/var/log/nginx/access.log"
+  if [[ -n "$domain" && -f "/var/log/nginx/$domain.access.log" ]]; then
+    log="/var/log/nginx/$domain.access.log"
+  fi
+  [[ -s "$log" ]] || { msg_err "日志为空或不存在: $log"; return 1; }
+
+  local tag; tag="${domain:-all}"
+  local outdir="/root/fusionbox-reports"
+  mkdir -p "$outdir" && chmod 700 "$outdir"
+  local out="$outdir/goaccess-$tag-$(date +%Y%m%d%H%M%S).html"
+  if goaccess "$log" -o "$out" --log-format=COMBINED 2>/dev/null; then
+    chmod 600 "$out"
+    msg_ok "报表已生成: $out"
+    msg_warn "报表含访问者 IP 等敏感信息，仅保存在 /root（0700），请勿放入 Web 目录"
+    _log_write "GoAccess 报表: $out"
+  else
+    msg_err "goaccess 分析失败（日志格式不是 COMBINED？）"
+    return 1
+  fi
+}
+
+# ---- 组件热升级 (G49)：nginx/php/mysql/redis 按包管理器升级 ----
+_web_upgrade_pkgs_for() {
+  local comp="$1"
+  case "$comp" in
+    nginx) printf '%s\n' nginx ;;
+    php)   dpkg -l 2>/dev/null | awk '/^ii  +php[0-9.]+-(fpm|common)$/{print $2}'; rpm -qa 2>/dev/null | grep -E '^php(-fpm)?[0-9.]*(-common)?$\|^php-fpm' | sort -u ;;
+    mysql) dpkg -l 2>/dev/null | awk '/^ii  +(mariadb-server|mysql-server)( |$)/{print $2}'; rpm -qa 2>/dev/null | grep -E '^(mariadb-server|mysql-server)$' ;;
+    redis) dpkg -l 2>/dev/null | awk '/^ii  +redis(-server)?$/{print $2}'; rpm -qa 2>/dev/null | grep -E '^redis$' ;;
+  esac
+}
+
+web_upgrade() {
+  _require_root
+  local comp="${1:-all}"
+  command -v nginx &>/dev/null || { msg_err "Nginx 未安装（先 fusionbox web lnmp）"; return 1; }
+
+  local targets=()
+  case "$comp" in
+    nginx|php|mysql|redis) targets+=("$comp") ;;
+    all) targets=(nginx php mysql redis) ;;
+    *) msg_err "未知组件: $comp（可用: nginx/php/mysql/redis/all）"; return 2 ;;
+  esac
+
+  msg_info "当前版本:"
+  nginx -v 2>&1 | sed 's/^/  /'
+  command -v php &>/dev/null && php -v 2>/dev/null | head -1 | sed 's/^/  /'
+  command -v mysqld &>/dev/null && mysqld --version 2>/dev/null | sed 's/^/  /'
+  command -v mariadbd &>/dev/null && mariadbd --version 2>/dev/null | sed 's/^/  /'
+  command -v redis-server &>/dev/null && redis-server --version 2>/dev/null | sed 's/^/  /'
+  msg ""
+
+  local t pkgs p
+  for t in "${targets[@]}"; do
+    pkgs=$(_web_upgrade_pkgs_for "$t")
+    [[ -n "$pkgs" ]] || { msg_info "$t: 未检测到相关包，跳过"; continue; }
+    confirm "升级 $t（$pkgs）？" || { msg_info "跳过 $t"; continue; }
+    case "$F_PKG_MGR" in
+      apt)  apt-get install --only-upgrade -y $pkgs || { msg_err "$t 升级失败（保持原版本；包管理器路径不提供降级）"; return 1; } ;;
+      yum)  yum update -y $pkgs || { msg_err "$t 升级失败（保持原版本）"; return 1; } ;;
+      zypper) zypper update -y $pkgs || { msg_err "$t 升级失败（保持原版本）"; return 1; } ;;
+      apk)  apk upgrade "${pkgs[@]}" || { msg_err "$t 升级失败（保持原版本）"; return 1; } ;;
+      *) msg_err "未知包管理器"; return 1 ;;
+    esac
+  done
+
+  msg_info "重启相关服务..."
+  systemctl restart nginx 2>/dev/null || msg_warn "nginx 重启失败"
+  local u
+  while IFS= read -r u; do
+    [[ -n "$u" ]] && systemctl restart "$u" 2>/dev/null && msg_ok "已重启 $u"
+  done < <(systemctl list-unit-files 'php*-fpm*' --no-legend 2>/dev/null | awk '{print $1}')
+  systemctl is-active mysql >/dev/null 2>&1 && systemctl restart mysql 2>/dev/null
+  systemctl is-active mariadb >/dev/null 2>&1 && systemctl restart mariadb 2>/dev/null
+  systemctl is-active redis-server >/dev/null 2>&1 && systemctl restart redis-server 2>/dev/null
+  msg_ok "组件升级流程完成"
+  msg_info "升级后版本:"
+  nginx -v 2>&1 | sed 's/^/  /'
+  _log_write "Web 组件升级: $comp"
+}
+
+# ---- LNMP 环境卸载 (G50)：YES 门禁 + 配置备份 + 可选数据删除 ----
+web_uninstall_lnmp() {
+  _require_root
+  msg_title "LNMP/LAMP 环境卸载"
+  msg ""
+
+  local -a comps=()
+  command -v nginx &>/dev/null && comps+=(nginx)
+  dpkg -l 2>/dev/null | grep -q '^ii  +php[0-9.]*-fpm' || rpm -qa 2>/dev/null | grep -q '^php-fpm' && comps+=(php)
+  command -v mysql &>/dev/null || command -v mariadb &>/dev/null && comps+=(mysql)
+  command -v redis-server &>/dev/null && comps+=(redis)
+  [[ ${#comps[@]} -eq 0 ]] && { msg_err "未检测到 LNMP 组件"; return 1; }
+
+  msg "  将卸载: ${comps[*]}"
+  msg_warn "站点配置会先备份到 /root；数据库与站点数据默认保留，选择 'wipe' 才删除"
+  confirm "确认继续卸载 LNMP？" || { msg_info "已取消"; return 1; }
+  local ans
+  read -r -p "请输入 YES 确认（其他输入取消）: " ans || { msg_info "已取消"; return 1; }
+  [[ "$ans" == "YES" ]] || { msg_info "已取消"; return 1; }
+  read -r -p "是否同时删除站点与数据库数据 (/var/www /var/lib/mysql /var/lib/redis)？[keep/wipe，默认 keep]: " ans || ans="keep"
+  local wipe="keep"; [[ "$ans" == "wipe" ]] && wipe="wipe"
+
+  local ts; ts=$(date +%Y%m%d%H%M%S)
+  local -a conf_dirs=()
+  [[ -d /etc/nginx ]] && conf_dirs+=(/etc/nginx)
+  [[ -d /etc/php ]] && conf_dirs+=(/etc/php)
+  [[ -d /etc/mysql ]] && conf_dirs+=(/etc/mysql)
+  [[ -d /etc/redis ]] && conf_dirs+=(/etc/redis)
+  if [[ ${#conf_dirs[@]} -gt 0 ]]; then
+    if tar czf "/root/lnmp-conf-bak-$ts.tar.gz" "${conf_dirs[@]}" 2>/dev/null; then
+      chmod 600 "/root/lnmp-conf-bak-$ts.tar.gz"
+      msg_ok "配置已备份: /root/lnmp-conf-bak-$ts.tar.gz"
+    else
+      msg_err "配置备份失败，中止卸载"
+      return 1
+    fi
+  fi
+
+  msg_info "停止服务..."
+  systemctl disable --now nginx 2>/dev/null
+  local u
+  while IFS= read -r u; do systemctl disable --now "$u" 2>/dev/null; done \
+    < <(systemctl list-unit-files 'php*-fpm*' --no-legend 2>/dev/null | awk '{print $1}')
+  systemctl disable --now mysql 2>/dev/null; systemctl disable --now mariadb 2>/dev/null
+  systemctl disable --now redis-server 2>/dev/null
+
+  msg_info "按包管理器卸载..."
+  local -a pkgs=()
+  local p
+  for p in nginx php-fpm libapache2-mod-php mariadb-server mariadb-client mysql-server mysql-client redis-server redis; do
+    dpkg -s "$p" >/dev/null 2>&1 2>/dev/null && pkgs+=("$p")
+    rpm -q "$p" >/dev/null 2>&1 && pkgs+=("$p")
+  done
+  dpkg -l 2>/dev/null | awk '/^ii  +php[0-9.]+-(fpm|common|cli)$/{print $2}' | while read -r p; do pkgs+=("$p"); done
+  if [[ ${#pkgs[@]} -gt 0 ]]; then
+    case "$F_PKG_MGR" in
+      apt)    apt-get purge -y "${pkgs[@]}" || { msg_err "包卸载失败"; return 1; } ;;
+      yum)    yum remove -y "${pkgs[@]}" || { msg_err "包卸载失败"; return 1; } ;;
+      zypper) zypper remove -y "${pkgs[@]}" || { msg_err "包卸载失败"; return 1; } ;;
+      apk)    apk del "${pkgs[@]}" || { msg_err "包卸载失败"; return 1; } ;;
+    esac
+  fi
+
+  if [[ "$wipe" == "wipe" ]]; then
+    msg_info "删除数据目录..."
+    rm -rf /var/www /var/lib/mysql /var/lib/redis
+  else
+    msg_info "数据已保留：/var/www /var/lib/mysql /var/lib/redis"
+  fi
+  msg_ok "LNMP 卸载完成"
+  _log_write "LNMP 卸载完成 (wipe=$wipe)"
+}
+
 # ---- 站点清单 ----
 # 解析 nginx server 块（容错，按行 + 花括号深度），输出 "文件|域名|端口|root|proxy|cert"
 _web_parse_server_blocks() {
@@ -2984,6 +3278,13 @@ web_help() {
   msg "  fusionbox web sites             站点清单（端口/类型/证书/占用）"
   msg "  fusionbox web site-del [domain] 删除站点（配置备份 + 回滚）"
   msg "  fusionbox web site-alias        关联多域名（server_name 别名）"
+  msg "  fusionbox web clone <src> <new> 克隆站点（目录+配置，WP 可选克隆库）"
+  msg "  fusionbox web cache             清理站点缓存（FPM/缓存目录/可选 CF）"
+  msg "  fusionbox web goaccess [domain] GoAccess 访问日志分析报表"
+  msg ""
+  msg "  ${F_BOLD}[组件运维]${F_RESET}"
+  msg "  fusionbox web upgrade [comp]    组件热升级（nginx/php/mysql/redis/all）"
+  msg "  fusionbox web uninstall-lnmp    卸载 LNMP（YES 门禁+配置备份）"
   msg ""
   msg "  ${F_BOLD}[反向代理]${F_RESET}"
   msg "  fusionbox web proxy             HTTP/HTTPS 反向代理"
