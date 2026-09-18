@@ -5,6 +5,7 @@ panels_main() {
   local cmd="${1:-menu}"; shift || true
 
   case "$cmd" in
+    compose-backup)       _require_root; python3 "$FUSION_SRC/lib/compose_backup.py" "$@" ;;
     docker|dk)            panels_docker "$@" ;;
     mirror|mirrors)       panels_docker_mirror "${1:-}" ;;
     bt|baota)             panels_bt ;;
@@ -714,7 +715,7 @@ panels_docker_backup() {
   msg "  1) 导出所有容器文件系统（不含卷/运行配置）"
   msg "  2) 导出指定容器文件系统（不含卷/运行配置）"
   msg "  3) 备份所有镜像"
-  msg "  4) Compose 完整备份状态"
+  msg "  4) 受管 Compose 登记/具名卷备份/原项目恢复"
   msg "  5) 导入文件系统镜像/加载镜像"
   msg "  6) 传输容器文件系统（不是完整迁移）"
   msg_warn "docker export 不包含卷、挂载数据、网络或运行配置，不能用于完整应用恢复。"
@@ -749,8 +750,20 @@ panels_docker_backup() {
       msg_ok "所有镜像已备份: $img_file ($(du -h "$img_file" | cut -f1))"
       ;;
     4)
-      msg_warn "完整 Compose 备份尚待项目登记、卷与运行元数据支持；不会打包整个 /opt/docker 冒充完整备份。"
-      return 1
+      local action project source
+      msg_warn "仅本机已创建的单 Compose 文件项目、本地具名卷；拒绝 bind/external/匿名卷。归档含私密元数据，请妥善保管。"
+      read -r -p "操作 register / backup / restore: " action
+      read -r -p "Compose 项目名: " project
+      read -r -p "Compose 文件（登记）或归档绝对路径: " source
+      case "$action" in
+        register)
+          confirm "确认拥有该项目并授权导入管理？" || return 1
+          python3 "$FUSION_SRC/lib/compose_backup.py" register "$project" "$source" --confirm-owned-import || return 1 ;;
+        backup|restore)
+          confirm "确认允许停机且所有外部写入者已停止？仅停止本项目原运行容器，完成/失败后尝试恢复原状态" || return 1
+          python3 "$FUSION_SRC/lib/compose_backup.py" "$action" "$project" "$source" --confirm-stop-writers || return 1 ;;
+        *) return 1 ;;
+      esac
       ;;
     5)
       ls -lh "$backup_dir"/*.tar "$backup_dir"/*.tar.gz 2>/dev/null
@@ -1203,6 +1216,7 @@ panels_nezha() {
 panels_help() {
   msg_title "面板与工具 帮助"
   msg ""
+  msg "  fusionbox panels compose-backup   受管 Compose register/backup/restore（--help）"
   msg "  fusionbox panels docker           Docker 管理"
   msg "  fusionbox panels docker mirror    Docker 镜像加速 / 换源"
   msg "  fusionbox panels mirror           Docker 镜像加速 / 换源"

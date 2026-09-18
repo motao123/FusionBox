@@ -4,6 +4,22 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.5.0 受管 Compose 项目备份与恢复
+
+Docker 菜单的 Compose 入口现在支持显式登记本机单文件 Compose 项目，然后执行受管备份/同项目恢复。登记需要确认项目归属，使用规范化 Compose 路径和项目名；注册表与全局 `flock` 使用 0700/0600 私有权限。操作只允许本机 Docker socket、已有 Compose 容器、local named volumes；拒绝 bind、external、anonymous、共享到其他项目、非 local driver、特权/设备/secret/config/tmpfs 等不受支持资源，不把任意宿主路径打进归档。
+
+备份/恢复前必须确认所有外部写入者已停止。程序仅停止该登记项目原本运行的容器，记住原本停止的容器并保持停止；成功、校验失败和异常路径均尝试恢复原运行状态。备份包含 Compose 文件、解析后的配置、容器运行元数据和具名卷内容，带 SHA-256 manifest。恢复在停写前完整校验归档、项目身份、Compose 内容、卷范围和压缩尾部；停写后先保留安全备份，失败尝试回滚并保留安全归档及错误状态。恢复不自动执行任意 Compose 文件，不删除项目外资源，不输出元数据内容或 Docker 错误正文。
+
+```bash
+fusionbox panels compose-backup register <project> <compose.yaml> --confirm-owned-import
+fusionbox panels compose-backup backup <project> <archive.tar.gz> --confirm-stop-writers
+fusionbox panels compose-backup restore <project> <archive.tar.gz> --confirm-stop-writers
+```
+
+Linux 验证：42 项基础检查 + 95 项行为测试全通过、零跳过；真实隔离 Compose 夹具包含两个容器（一个初始运行、一个初始停止）和具名卷，成功备份/恢复、注入备份失败、注入恢复失败并成功回滚、原状态/内容/安全副本共 10 项断言通过；回滚失败另有隔离单元测试，容器、卷、网络已确认清理。此范围不宣称数据库一致性、bind/external 卷、远端 Docker、两主机迁移或任意 Compose 应用支持。真实 ACME/Cloudflare/Telegram 仍待凭据验证。
+
+恢复仅限原登记项目与未变更的 Compose/resolved 配置，不重建容器或镜像；不包含容器可写层、镜像包、ACL/xattr，不能当作整机迁移。卷文件仅支持目录和常规文件（链接/特殊文件拒绝）。归档可能含密码，必须私密保存；SHA-256 不是签名。需预留归档与安全副本空间；SIGKILL/断电不能保证自动重启或原子恢复，应人工检查项目状态与注册表目录下安全归档。恢复与回滚同时失败会仍尝试重启原运行容器并返回失败，应立即人工检查数据完整性。不要与外部 Compose 操作并行；锁只协调 FusionBox。
+
 ## v1.4.4 备份保留与校验恢复
 
 网站数据菜单 → 每日配置任务新增立即快照、登记归档列表、保留数量预览/确认执行和校验恢复。默认不删除，cron 也不自动清理。只有本版本任务成功写入 `inventory.json` 的归档才受保留策略管理；删除前检查所有登记归档 SHA-256、范围和压缩完整性，至少保留最新 1 份。未知文件、旧版本归档和手动备份不自动认领、不按通配符删除。中断可能留下未登记归档或失效记录，需人工检查；校验失败会阻止后续清理。
