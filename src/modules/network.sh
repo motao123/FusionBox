@@ -38,6 +38,7 @@ network_main() {
     mtr)              network_mtr "$@" ;;
     port|portcheck)   network_port_check "$@" ;;
     bench|benchmark)  network_bench "$@" ;;
+    nic|iface)        network_nic "$@" ;;
     menu|main)        network_menu ;;
     help|h)           network_help ;;
     *)                network_menu ;;
