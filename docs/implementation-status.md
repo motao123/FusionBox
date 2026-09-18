@@ -1,4 +1,8 @@
-# v1.19.0 运维小工具合集
+# v1.20.0 受管市场模板扩容（部分）
+
+G51/G52 限定范围部分完成：受管目录新增 `uptime-kuma`（监控面板，1.5GiB 预检，镜像自带 node healthcheck——实测镜像无 wget 后纠正）与 `ddns-go`（DDNS 更新器，512MiB 预检）。两者均为单具名卷、localhost 发布、digest 固定镜像（实拉验证）、domain 映射明确拒绝。真机验证：两类应用各一轮完整生命周期（安装/健康/状态/HTTP 服务重定向语义/重复与端口占用拒绝/卸载保留卷）共 13 项，测试产物（卷/登记）已清理。最终 Linux 验证目标：42 基础 + 456 行为。剩余：G51-G56 其余应用逐项扩容、Oracle 生态（G32-34）、rsync 任务/文件管理器（G16/G14）、工作区 SSH 常驻模式。
+
+## v1.19.0 运维小工具合集（历史）
 
 G68/G21/G15/G62/G19 限定范围完成：`_psabi_from_flags`（v1-v4 依据 CPU flags）并入 system info；`system sshkey` 选项 7 从 GitHub/https URL 拉取公钥（逐条 ssh-keygen 校验+确认，拒绝时不改动）；`cluster sshout`（add/list/rm/connect，0600 清单、严格校验）；`workspace work`（tmux work1-10 编号会话、首条命令与 send-keys 注入、重复/越界拒绝）；`market clamav <路径>`（按需安装、摘要+0600 日志、威胁 rc=1）。真机验证 25 项全过：真实 CPU v4 识别、GitHub 真实拉取（拒绝时零改动）、sshout 文件往返、tmux 会话注入执行并清理、clamav 拒绝路径；完整扫描 mock 覆盖。最终 Linux 验证目标：42 基础 + 455 行为（新增 85）。剩余：市场受管模板扩容（G51-G56 逐项）、Oracle 生态（G32-34，需真实 OCI 环境）、rsync 任务/文件管理器（G16/G14）、工作区 SSH 常驻模式剩余细节。
 
@@ -179,12 +183,12 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G48 | 运行时调优模板注入（opcache/JIT、MySQL 4096M、PHP-FPM 池、valkey） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G49 | 组件热更新（单独升级 nginx/mysql/php/redis） | 受管范围完成 | v1.18.0 web upgrade：真机 nginx 升级路径验证；失败保持原版本，不提供降级 |
 | G50 | LDNMP 环境卸载 | 受管范围完成 | v1.18.0 uninstall-lnmp：真机完整卸载（备份/purge/wipe），验证后恢复原状 |
-| G51 | AI/LLM 类应用（13 个：LobeChat/llama3/DeepSeek/Dify/OpenWebUI/RAGFlow/NewAPI/n8n/AstrBot/LangBot…） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G52 | 面板类应用（1Panel/NPM/Dockge/DPanel/AcePanel/Sun-Panel） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G51 | AI/LLM 类应用 | 未实现 | 仍为 0；模板扩容先覆盖监控/DDNS 类，AI 类需逐项镜像与资源评估 |
+| G52 | 面板类应用 | 部分扩容 | v1.20.0 uptime-kuma 监控面板受管模板（真机全生命周期）；1Panel/Dockge 等未实现（Dockge 需 Docker socket，与受管安全模型冲突） |
 | G53 | 网盘/同步类（Cloudreve/OpenList/小雅/immich/Syncthing/ZFile/FileCodeBox） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G54 | 媒体/影音类（Navidrome/LibreTV/MoonTV/SyncTV/Owncast/QB/迅雷/Gopeed） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G55 | 远程/安全/协作类（RustDesk/WireGuard/Webtop/Nexterm/JumpServer/雷池/ONLYOFFICE/RocketChat/VoceChat/2FAuth） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G56 | 运维工具类（Lucky/ddns-go/AllinSSL/searxng/Umami/Beszel/komari/思源/Wallos） | 部分扩容；列举应用后续 | v1.13.0 新增 ntfy 本机通知受管模板；原列举应用未实现，不等同整类完成 |
+| G56 | 运维工具类（Lucky/ddns-go/AllinSSL/searxng/Umami/Beszel/komari/思源/Wallos） | 部分扩容 | v1.13.0 ntfy + v1.20.0 ddns-go 受管模板；其余列举应用未实现 |
 | G57 | 市场机制：统一登记（appno.txt 原子写 0600）+ flock 并发锁 + 端口占用探测分配 + 已装检测 + 镜像更新检测 + 卸载清理 | 部分实现 | v1.6.1 复用 Compose JSON 登记/锁、20 端口有界探测、归属/健康、镜像 ID 更新与回滚；卸载保留数据并支持显式重装；旧安装迁移后续 |
 | G58 | 应用访问模式持久化（direct/domain_only 记录并在更新后恢复） | 部分实现 | v1.7.0 localhost-direct / HTTP 映射登记与更新/重装持久化；无 domain_only 防火墙隔离 |
 | G59 | 一键域名访问（应用=反代+证书一条龙） | 部分实现 | v1.8.1 自有宿主 HTTP/自备 PEM HTTPS、SAN/有效期/密钥校验与重载回滚；真实 ACME 后续 |

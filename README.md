@@ -4,6 +4,24 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.20.0 受管市场模板扩容：Uptime-Kuma 与 ddns-go（G51/G52 部分）
+
+在受管市场（`market managed`）新增两个单卷、localhost 发布的模板，沿用既有登记/锁/端口预检/健康检查/回滚框架：
+
+```bash
+fusionbox market managed install uptime-kuma --confirm   # 监控面板，127.0.0.1:8082 -> 3001，1.5GiB 磁盘预检
+fusionbox market managed install ddns-go --confirm       # DDNS 更新器，127.0.0.1:8083 -> 9876，512MiB 预检
+fusionbox market managed status <app>
+fusionbox market managed uninstall <app> --confirm       # 保留数据卷；显式重装沿用原镜像
+```
+
+- 镜像以官方 manifest digest 固定（uptime-kuma:1 `sha256:70233f4a…`、ddns-go `sha256:0336e6ed…`，测试服务器实拉验证），候选 digest 变更即拒绝升级。
+- 真实健康检查：kuma 使用镜像自带 `extra/healthcheck.js`（镜像无 wget，实测纠正）；ddns-go 用 wget 探测 9876。两者均以容器默认 root 用户运行（镜像默认），localhost only，`domain` 明确不支持。
+- 首次访问为重定向语义：kuma `/`→302 `/dashboard`、ddns-go `/`→307 `/login`，属预期而非故障。
+- 真机验证：真实部署/健康/状态/对外 HTTP 服务（重定向确认）/重复安装与占用端口拒绝/卸载保留卷/清理核对，共 13 项；两类应用各一轮完整生命周期。
+
+Linux 验证目标：42 基础 + 456 行为（新增 1），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；受管应用真实部署 13/13。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.19.0 运维小工具合集（G68/G21/G15/G62/G19）
 
 ```bash
@@ -426,6 +444,7 @@ fusionbox panels docker port-block  # 容器端口封禁 (DOCKER-USER, list/add/
 fusionbox panels docker uninstall   # Docker 一键卸载 (YES 门禁)
 fusionbox workspace work            # 编号工作区 (tmux work1-10, 命令注入)
 fusionbox cluster sshout            # SSH 出站收藏 (add/list/rm/connect)
+fusionbox market managed install uptime-kuma / ddns-go   # 受管模板扩容
 fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
 fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)
 fusionbox system sshkey          # SSH 密钥管理
