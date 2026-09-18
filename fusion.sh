@@ -82,8 +82,9 @@ route() {
       msg "版本: $FUSION_VER"
       ;;
     update|up)
-      if [[ "$2" == "--cron" ]]; then
-        self_update_cron "${3:-status}"
+      if [[ "${1:-}" == "--cron" ]]; then
+        shift || true
+        self_update_cron "${1:-status}"
       else
         self_update
       fi
