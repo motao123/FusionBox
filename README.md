@@ -4,6 +4,25 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.15.0 Fail2Ban 管理面板（G11）
+
+`fusionbox system fail2ban`（别名 `f2b`）补齐 Fail2Ban 完整运维面板：状态总览、封禁清单、解封、日志、SSH 防护参数与卸载。系统工具菜单选项 11 提供相同入口。
+
+```bash
+fusionbox system fail2ban status        # jails 总览 + sshd jail 详情（只读）
+fusionbox system fail2ban banned        # 当前封禁 IP 清单
+fusionbox system fail2ban unban 192.0.2.1   # 解封（IPv4/IPv6 严格校验后调用 fail2ban-client）
+fusionbox system fail2ban log 50        # 日志尾部 N 行（上限 500；无文件时回退 journalctl）
+fusionbox system fail2ban params 5 600  # maxretry/bantime（沿用 v1.12.1 受管事务：staged 校验+回滚）
+fusionbox system fail2ban uninstall     # 停用服务 + 移除自有参数文件 + 按包管理器 purge
+```
+
+- 解封/状态/日志为只读或幂等操作：unban 对未封禁 IP 同样返回成功语义（地址不再在封禁清单）。
+- 卸载仅移除 FusionBox 受管的 `jail.d/99-fusionbox-sshd.local`（marker 归属校验，未知文件拒绝删除）；jail.local 等自有配置保留；服务 `systemctl disable --now` 后按 apt/yum/apk/zypper 卸载软件包，卸载后校验二进制消失。
+- 卸载会使 SSH 暴力破解防护消失，需显式确认；真机验证仅覆盖 status/banned/ban-unban 循环/日志（测试服务器 fail2ban 正在防护 SSH，不实际停用），卸载与 params 事务由 mock 覆盖。
+
+Linux 验证目标：42 基础 + 247 行为（新增 16），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 14/14。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.14.0 用户管理与 SSH 加固工作流（G03/G04/G05）
 
 新增用户全生命周期与登录策略管理。危险操作沿用 `system_safety.py` 事务模式：暂存 + 备份 + 校验（visudo/sshd -t/-T）+ 失败回滚，拒绝软链接与未知归属文件。
@@ -330,6 +349,7 @@ fusionbox system clean           # 系统清理
 fusionbox system tools           # 系统工具子菜单
 fusionbox system users           # 用户管理 (list/add/del/sudo/unsudo/passwd)
 fusionbox system hardening       # SSH 加固：新建密钥用户并收紧 root 登录
+fusionbox system fail2ban        # Fail2Ban 面板 (状态/解封/日志/参数/卸载)
 fusionbox system sshkey          # SSH 密钥管理
 fusionbox system firewall        # 防火墙管理
 fusionbox system cron            # 定时任务管理
