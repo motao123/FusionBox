@@ -1,4 +1,6 @@
-# v1.5.0 候选需求实施跟踪
+# v1.5.1 候选需求实施跟踪
+
+v1.5.1 安全修复：恢复与回滚同时失败不再重启容器，项目保持停止，返回失败并报告安全归档与人工干预要求。备份失败和成功回滚仍恢复原运行状态；部分重启失败继续尝试剩余容器，报告失败数量/可能部分运行，绝不报告成功。安全路径在变更前打印。Linux 42 基础 + 96 行为测试全通过、零跳过；真实隔离 Compose 13 断言包括双重失败保持停止与安全副本保留，确认清理夹具容器/卷/网络。下面 v1.5.0 为历史记录，异常重启行为以此修复为准。
 
 v1.5.0 新增受管 Compose 注册表与本机备份/恢复：项目归属显式确认，规范化 Compose 路径/项目身份，0700/0600 权限与全局 flock；只允许固定本机 Docker socket、已创建的本项目容器和 local named volumes。拒绝 bind/external/anonymous/共享卷、非 local driver、privileged/devices/secrets/configs/tmpfs、paused/restarting/auto-remove 容器及远端/alternate Docker endpoint。归档包含 compose、resolved config、容器元数据、卷数据和 SHA-256 manifest，不输出密钥或 Docker 错误正文。
 

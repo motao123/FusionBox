@@ -760,7 +760,7 @@ panels_docker_backup() {
           confirm "确认拥有该项目并授权导入管理？" || return 1
           python3 "$FUSION_SRC/lib/compose_backup.py" register "$project" "$source" --confirm-owned-import || return 1 ;;
         backup|restore)
-          confirm "确认允许停机且所有外部写入者已停止？仅停止本项目原运行容器，完成/失败后尝试恢复原状态" || return 1
+          confirm "确认允许停机且所有外部写入者已停止？仅停止本项目原运行容器；恢复与回滚双重失败保持停止并需人工恢复" || return 1
           python3 "$FUSION_SRC/lib/compose_backup.py" "$action" "$project" "$source" --confirm-stop-writers || return 1 ;;
         *) return 1 ;;
       esac

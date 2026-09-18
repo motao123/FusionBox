@@ -104,13 +104,28 @@ class ComposeBackup(unittest.TestCase):
         self.assertEqual(len(list(self.base.glob('*safety*'))), 1)
 
     @unittest.skipIf(os.name == 'nt', 'POSIX flock')
-    def test_rollback_failure_reports_retained_artifact_and_restarts(self):
+    def test_rollback_failure_reports_retained_artifact_and_never_starts(self):
         cb.package(self.backup, self.record, self.data, self.containers, self.paths)
         with patch.object(cb, 'inspect', return_value=(self.data, self.containers, self.paths)), patch.object(cb, 'docker') as command, patch.object(cb, 'apply', side_effect=OSError('failed')):
-            with self.assertRaisesRegex(RuntimeError, 'AND rollback failed'):
+            with self.assertRaisesRegex(RuntimeError, 'project left stopped; manual intervention required'):
                 cb.operate('fixture', 'restore', self.backup, True)
-            self.assertEqual(command.call_args_list[-1].args, ('start', 'running'))
-        self.assertEqual(len(list(self.base.glob('*safety*'))), 1)
+            self.assertEqual([call.args for call in command.call_args_list], [('stop', 'running')])
+        safety = list(self.base.glob('*safety*'))
+        self.assertEqual(len(safety), 1)
+        self.assertTrue(cb.verify(safety[0], self.record, self.data, self.paths))
+
+    def test_partial_restart_attempts_remaining_and_reports_failure(self):
+        containers = self.containers + [{'Id': 'second', 'State': {'Running': True}}]
+        calls = []
+        def command(*args):
+            calls.append(args)
+            if args == ('start', 'running'):
+                raise RuntimeError('injected restart failure')
+        with patch.object(cb, 'docker', side_effect=command):
+            with self.assertRaisesRegex(RuntimeError, '1 of 2 containers; project may be partially running'):
+                with cb.stopped(containers):
+                    pass
+        self.assertEqual(calls, [('stop', 'running'), ('stop', 'second'), ('start', 'running'), ('start', 'second')])
 
     @unittest.skipIf(os.name == 'nt', 'POSIX flock')
     def test_invalid_restore_never_stops_and_safety_failure_never_applies(self):

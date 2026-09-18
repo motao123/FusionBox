@@ -153,6 +153,7 @@ def load(path, project):
 @contextlib.contextmanager
 def stopped(containers):
     running = [c['Id'] for c in containers if c['State']['Running']]
+    recovery = {'restart_safe': True}
     try:
         # finally also covers partially successful stop commands.
         for identity in running:
@@ -160,16 +161,16 @@ def stopped(containers):
         # A successful stop command alone is insufficient if another actor restarts it.
         if running and any(c['State']['Running'] for c in js('inspect', *running)):
             raise RuntimeError('Project writers did not remain stopped')
-        yield
+        yield recovery
     finally:
         failures = []
-        for identity in running:
+        for identity in running if recovery['restart_safe'] else []:
             try:
                 docker('start', identity)
             except Exception:
                 failures.append(identity)
         if failures:
-            raise RuntimeError('Original container restart failed; inspect project state manually; inspect registry safety archives after restore')
+            raise RuntimeError(f'Original container restart failed for {len(failures)} of {len(running)} containers; project may be partially running; manual intervention required; inspect registry safety archives after restore')
 
 
 def sha(stream):
@@ -298,17 +299,20 @@ def operate(project, action, filename, accepted):
                 shutil.copyfile(filename, source)
                 verify(source, record, data, paths)
                 safety = BASE / (project + '-safety-' + Path(stage).name + '.tar.gz')
-                with stopped(containers):
+                with stopped(containers) as recovery:
                     package(safety, record, data, containers, paths)
+                    print('Safety archive retained:', safety)
+                    recovery['restart_safe'] = False
                     try:
                         apply(source, paths)
                     except BaseException:
                         try:
                             apply(safety, paths)
                         except BaseException:
-                            raise RuntimeError('Restore AND rollback failed; safety archive retained: ' + str(safety)) from None
+                            raise RuntimeError('Restore AND rollback failed; project left stopped; manual intervention required; safety archive retained: ' + str(safety)) from None
+                        recovery['restart_safe'] = True
                         raise RuntimeError('Restore failed; original data rolled back; safety archive retained: ' + str(safety)) from None
-                print('Safety archive retained:', safety)
+                    recovery['restart_safe'] = True
         print(action.capitalize() + ' completed; original running state restored')
 
 
