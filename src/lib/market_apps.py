@@ -40,6 +40,12 @@ CATALOG = {
                 'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:9876/ || exit 1'],
                 'domain': False,
                 'description': 'DDNS updater with web UI; runs as container root user (image default); config in named volume; localhost only; no domain/TLS; image upgrades refused'},
+    'new-api': {'image': 'calciumion/new-api:latest@sha256:0a4d62b1b2b796a43a5e0ef92d49f12e0f229ab206b8f5a3a4cd42990121bfe1',
+                'port': 8084, 'bytes': 1024 * 1024 * 1024, 'target': 3000,
+                'mount': '/data', 'readonly': False, 'memory': '512m',
+                'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/status || exit 1'],
+                'domain': False,
+                'description': 'LLM API gateway and billing panel (new-api); SQLite in named volume; runs as container root user (image default); no auth on first setup, set admin password immediately; localhost only; no domain/TLS; image upgrades refused'},
 }
 
 

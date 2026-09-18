@@ -157,7 +157,8 @@ class Market(unittest.TestCase):
 
     def test_new_catalog_entries_validate(self):
         for app, target, min_bytes in (('uptime-kuma', 3001, 1024 * 1024 * 1024),
-                                       ('ddns-go', 9876, 256 * 1024 * 1024)):
+                                       ('ddns-go', 9876, 256 * 1024 * 1024),
+                                       ('new-api', 3000, 512 * 1024 * 1024)):
             spec = m.metadata(app)
             self.assertEqual(spec['target'], target)
             self.assertGreaterEqual(spec['bytes'], min_bytes)

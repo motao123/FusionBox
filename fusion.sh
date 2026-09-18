@@ -82,7 +82,11 @@ route() {
       msg "版本: $FUSION_VER"
       ;;
     update|up)
-      self_update
+      if [[ "$2" == "--cron" ]]; then
+        self_update_cron "${3:-status}"
+      else
+        self_update
+      fi
       ;;
     help|h)
       show_help "$@"
@@ -193,6 +197,44 @@ self_update() (
   fusion_deploy "$tmpdir/FusionBox-main" "$FUSION_BASE" || return 1
   msg_ok "更新完成，重新运行 fusionbox 生效"
 )
+
+# ---- 自动更新开关 (G66)：受管 cron 条目，仅调用既有带校验的 self_update ----
+_UPDATE_CRON_FILE="/etc/cron.d/fusionbox-update"
+
+self_update_cron() {
+  [[ $EUID -eq 0 ]] || { echo "需要 root 权限"; return 1; }
+  local action="${1:-status}"
+  case "$action" in
+    status)
+      if [[ -f "$_UPDATE_CRON_FILE" ]]; then
+        msg_ok "自动更新: 已启用（每周日 03:07）"
+        cat "$_UPDATE_CRON_FILE"
+      else
+        msg "  自动更新: 未启用（fusionbox update --cron on 开启）"
+      fi
+      ;;
+    on)
+      [[ -x /usr/local/bin/fusionbox ]] || { msg_err "仅支持已安装到 /usr/local/bin/fusionbox 的部署"; return 1; }
+      if confirm "启用每周自动更新（周日 03:07 自动运行 fusionbox update 并写日志）？"; then
+        printf '7 3 * * 0 root /usr/local/bin/fusionbox update >> /root/.config/fusionbox/logs/auto-update.log 2>&1\n' > "$_UPDATE_CRON_FILE"
+        chmod 600 "$_UPDATE_CRON_FILE"
+        msg_ok "自动更新已启用（cron.d/fusionbox-update）"
+        _log_write "自动更新已启用"
+      fi
+      ;;
+    off)
+      if [[ -f "$_UPDATE_CRON_FILE" ]]; then
+        rm -f "$_UPDATE_CRON_FILE"
+        msg_ok "自动更新已关闭"
+        _log_write "自动更新已关闭"
+      else
+        msg_info "本就未启用"
+      fi
+      ;;
+    *)
+      msg_err "未知参数: $action（可用: status/on/off）"; return 2 ;;
+  esac
+}
 
 # ---- Self Uninstall ----
 self_uninstall() {
