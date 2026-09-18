@@ -4,6 +4,21 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.17.0 Docker 一键卸载与容器端口封禁（G30/G27）
+
+```bash
+fusionbox panels docker port-block add <容器名> <tcp|udp> <端口>   # DOCKER-USER DROP（原始目标=容器 IP）
+fusionbox panels docker port-block list                            # 列出受管规则
+fusionbox panels docker port-block del <容器名> <tcp|udp> <端口>    # 按 comment 标记删除
+fusionbox panels docker uninstall                                  # 一键卸载（YES 门禁）
+```
+
+- **端口封禁（G27）**：规则插入 `DOCKER-USER` 链顶部，按 `容器 IP + 容器端口`（DNAT 后的原始目标）匹配，带 `fb-port-block:容器:协议:端口` comment 标记；只增删自有规则，不触碰他人配置。严格校验容器名/协议/端口；插入失败自动回滚已插规则；容器多网络时逐 IP 出规则。限制：IPv4 only、规则不持久（重启失效）、容器重建后 IP 变化需先 del 旧规则。
+- **一键卸载（G30）**：先展示只读资源统计（容器/镜像/卷/网络计数与数据目录体积，失败不伪装为零）→ 双重确认（confirm + 输入 `YES`）→ 可选保留数据目录（`keep`）→ 停止并删除全部容器/网络/卷/镜像 → 停用 docker/docker.socket/containerd → 按 apt/yum/apk/zypper 逐包检测并 purge → 校验 docker 命令消失。无论资源由谁创建（市场/Compose/手工）全部删除，数据不可恢复；containerd 停用影响本机其他容器运行时。
+- 真机验证（20/20）：临时 netns + veth 产生真实转发流量——基线可达已发布端口 → 加规则后 DOCKER-USER DROP 生效（curl 超时）→ del 后恢复 → iptables-save 零残留；卸载仅验证拒绝路径（YES 门禁取消后容器数量不变），完整卸载由 36 项 mock 测试覆盖（测试服务器需保留 Docker 环境供后续夹具使用）。
+
+Linux 验证目标：42 基础 + 333 行为（新增 36），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 20/20。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.16.0 环境变量与网卡管理（G09/G10）
 
 ```bash
@@ -371,6 +386,8 @@ fusionbox system users           # 用户管理 (list/add/del/sudo/unsudo/passwd
 fusionbox system hardening       # SSH 加固：新建密钥用户并收紧 root 登录
 fusionbox system fail2ban        # Fail2Ban 面板 (状态/解封/日志/参数/卸载)
 fusionbox system env             # 环境变量管理 (list/show/check/edit)
+fusionbox panels docker port-block  # 容器端口封禁 (DOCKER-USER, list/add/del)
+fusionbox panels docker uninstall   # Docker 一键卸载 (YES 门禁)
 fusionbox system sshkey          # SSH 密钥管理
 fusionbox system firewall        # 防火墙管理
 fusionbox system cron            # 定时任务管理
