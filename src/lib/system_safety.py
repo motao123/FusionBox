@@ -339,7 +339,8 @@ def sudo_grant(name, sudo_dir=Path('/etc/sudoers.d'), nopasswd=False):
     try:
         replace(target, content, saved)
         os.chmod(target, 0o440)
-        os.chown(target, 0, 0)
+        if os.geteuid() == 0:
+            os.chown(target, 0, 0)
         run('visudo', '-c', '-f', str(target))
     except Exception:
         if original is None:
@@ -347,7 +348,8 @@ def sudo_grant(name, sudo_dir=Path('/etc/sudoers.d'), nopasswd=False):
         else:
             replace(target, original, saved)
             os.chmod(target, 0o440)
-            os.chown(target, 0, 0)
+            if os.geteuid() == 0:
+                os.chown(target, 0, 0)
         raise
     print('Managed sudoers entry installed and validated; sudo group membership untouched.')
 
