@@ -28,6 +28,9 @@ web_main() {
     goaccess|logstats)     web_goaccess "$@" ;;
     upgrade|upgrade-comp)  web_upgrade "$@" ;;
     uninstall-lnmp)        web_uninstall_lnmp ;;
+    tune)                  web_tune "$@" ;;
+    brotli)                web_brotli "$@" ;;
+    wp-redis)              web_wp_redis "$@" ;;
     menu|main)             web_menu ;;
     help|h)                web_help ;;
     *)                     web_menu ;;
@@ -2757,6 +2760,248 @@ web_site_alias() {
   pause
 }
 
+# ---- 调优档位 (G45/G48)：standard/high 两档，事务化修改 nginx/PHP-FPM/MySQL，支持恢复 ----
+_WEB_TUNE_BACKUP_BASE="/etc/fusionbox/tune-backups"
+
+_web_tune_backup_file() {
+  local f="$1" dir="$_WEB_TUNE_BACKUP_BASE/latest" name
+  [[ -f "$f" && ! -L "$f" ]] || { printf ''; return 0; }
+  mkdir -p "$dir"
+  name="$(printf '%s' "$f" | md5sum | cut -c1-12)_$(basename "$f")"
+  cp -p "$f" "$dir/$name" || return 1
+  grep -qF "$name $f" "$dir/manifest" 2>/dev/null || printf '%s %s\n' "$name" "$f" >> "$dir/manifest"
+  printf '%s' "$dir/$name"
+}
+
+_web_tune_total_mem_mb() {
+  awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 2048
+}
+
+_web_tune_php_bins() {
+  ls /usr/sbin/php-fpm* 2>/dev/null || true
+}
+
+_web_tune_nginx() {
+  local mode="$1" conf="/etc/nginx/nginx.conf"
+  [[ -f "$conf" && ! -L "$conf" ]] || { msg_info "nginx.conf 不存在，跳过 nginx 档位"; return 0; }
+  local bak; bak=$(_web_tune_backup_file "$conf") || { msg_err "nginx.conf 备份失败，跳过"; return 1; }
+  local conn=1024
+  [[ "$mode" == "high" ]] && conn=4096
+  if ! sed -i "s/worker_connections .*/worker_connections $conn;/" "$conf"; then
+    cp -p "$bak" "$conf"; msg_err "worker_connections 修改失败，已回滚"; return 1
+  fi
+  if [[ "$mode" == "high" ]] && ! grep -q "gzip_vary" "$conf"; then
+    sed -i '/http {/a\    gzip on;\n    gzip_vary on;\n    gzip_min_length 1024;' "$conf"
+  fi
+  if ! nginx -t >/dev/null 2>&1; then
+    cp -p "$bak" "$conf"; nginx -t >/dev/null 2>&1
+    msg_err "nginx 档位修改未通过校验，已回滚"
+    return 1
+  fi
+  nginx -s reload >/dev/null 2>&1 || msg_warn "nginx 重载失败（配置将在下次重启生效）"
+  msg_ok "nginx 档位已应用（$mode, worker_connections=$conn）"
+  _log_write "web tune nginx $mode"
+}
+
+_web_tune_php() {
+  local mode="$1" pools mem children bin
+  pools=$(ls /etc/php/*/fpm/pool.d/www.conf 2>/dev/null || true)
+  [[ -n "$pools" ]] || { msg_info "未找到 PHP-FPM 池配置，跳过 PHP 档位"; return 0; }
+  mem=$(_web_tune_total_mem_mb)
+  children=$(( mem / 80 )); [[ "$mode" == "high" ]] && children=$(( mem / 40 ))
+  [ "$children" -lt 5 ] && children=5
+  for pool in $pools; do
+    local bak; bak=$(_web_tune_backup_file "$pool") || { msg_warn "$pool 备份失败，跳过"; continue; }
+    sed -i -e "s/^pm.max_children = .*/pm.max_children = $children/" \
+           -e "s/^pm.start_servers = .*/pm.start_servers = 4/" \
+           -e "s/^pm.min_spare_servers = .*/pm.min_spare_servers = 2/" \
+           -e "s/^pm.max_spare_servers = .*/pm.max_spare_servers = $(( children > 6 ? 6 : children ))/" "$pool"
+  done
+  local validated=0
+  for bin in $(_web_tune_php_bins); do
+    if "$bin" -t >/dev/null 2>&1; then validated=1; break; fi
+  done
+  if [[ $validated -eq 0 ]]; then
+    for pool in $pools; do
+      local name; name="$(printf '%s' "$pool" | md5sum | cut -c1-12)_$(basename "$pool")"
+      cp -p "$_WEB_TUNE_BACKUP_BASE/latest/$name" "$pool" 2>/dev/null || true
+    done
+    msg_err "PHP-FPM 校验失败（无可用的 php-fpm -t），已回滚池配置"
+    return 1
+  fi
+  systemctl list-unit-files 'php*-fpm*' --no-legend 2>/dev/null | awk '{print $1}' | while IFS= read -r u; do
+    systemctl reload "$u" 2>/dev/null && msg_ok "已重载 $u"
+  done
+  msg_ok "PHP-FPM 档位已应用（$mode, pm.max_children=$children）"
+  _log_write "web tune php $mode"
+}
+
+_web_tune_mysql() {
+  local mode="$1" conf="" size="128M"
+  [[ "$mode" == "high" ]] && size="1G"
+  for conf in /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mariadb.conf.d/50-server.cnf; do
+    [[ -f "$conf" && ! -L "$conf" ]] && break
+    conf=""
+  done
+  [[ -n "$conf" ]] || { msg_info "未找到 MySQL/MariaDB 服务端配置，跳过 MySQL 档位"; return 0; }
+  local bak; bak=$(_web_tune_backup_file "$conf") || { msg_err "$conf 备份失败，跳过"; return 1; }
+  if grep -qE '^innodb_buffer_pool_size' "$conf"; then
+    sed -i "s/^innodb_buffer_pool_size.*/innodb_buffer_pool_size = $size/" "$conf"
+  else
+    printf '\ninnodb_buffer_pool_size = %s\n' "$size" >> "$conf"
+  fi
+  msg_ok "MySQL 档位已写入（$mode, innodb_buffer_pool_size=$size）——需重启 mysql/mariadb 服务后生效，FusionBox 不自动重启数据库"
+  _log_write "web tune mysql $mode"
+}
+
+web_tune() {
+  _require_root
+  local mode="${1:-show}"
+  case "$mode" in
+    show)
+      msg_title "调优档位"
+      msg "  当前 nginx: $(grep -oP 'worker_connections\s+\K[0-9]+' /etc/nginx/nginx.conf 2>/dev/null || echo 未知)"
+      msg "  当前 PHP-FPM: $(grep -h '^pm.max_children' /etc/php/*/fpm/pool.d/www.conf 2>/dev/null | head -1 | grep -oP '[0-9]+' || echo 未安装)"
+      msg "  当前 MySQL buffer: $(grep -hE '^innodb_buffer_pool_size' /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mariadb.conf.d/50-server.cnf 2>/dev/null | head -1 | sed 's/^[^=]*= *//' || echo 未安装)"
+      msg ""
+      msg "  档位说明: standard=保守（connections 1024 / 内存÷80 每子进程）；high=高性能（connections 4096 / 内存÷40 + gzip）"
+      msg "  恢复: fusionbox web tune restore（恢复最近一次修改前备份）"
+      ;;
+    standard|high)
+      confirm "应用 $mode 调优档位（修改前自动备份，可 restore 恢复）？" || { msg_info "已取消"; return 1; }
+      local rc=0
+      _web_tune_nginx "$mode" || rc=1
+      _web_tune_php "$mode" || rc=1
+      _web_tune_mysql "$mode" || rc=1
+      [[ $rc -eq 0 ]] && msg_ok "调优档位 $mode 应用完成"
+      return $rc
+      ;;
+    restore)
+      local dir="$_WEB_TUNE_BACKUP_BASE/latest"
+      [[ -f "$dir/manifest" ]] || { msg_err "无备份可恢复"; return 1; }
+      confirm "恢复最近一次调优备份并重载 nginx？" || { msg_info "已取消"; return 1; }
+      local name dest
+      while IFS=' ' read -r name dest; do
+        [[ -n "$name" && -n "$dest" ]] || continue
+        cp -p "$dir/$name" "$dest" && msg_ok "已恢复 $dest"
+      done < "$dir/manifest"
+      nginx -t >/dev/null 2>&1 && nginx -s reload >/dev/null 2>&1
+      msg_ok "恢复完成"
+      _log_write "web tune restore"
+      ;;
+    *)
+      msg_err "未知档位: $mode（可用: show/standard/high/restore）"; return 2 ;;
+  esac
+}
+
+# ---- brotli 压缩开关 (G46)：Ubuntu 打包的 brotli 模块，自有 conf 文件管理 ----
+_WEB_BROTLI_PKG="libnginx-mod-http-brotli-filter"
+_WEB_BROTLI_CONF="/etc/nginx/conf.d/fusionbox-brotli.conf"
+
+web_brotli() {
+  _require_root
+  local action="${1:-status}"
+  command -v nginx &>/dev/null || { msg_err "Nginx 未安装"; return 1; }
+
+  case "$action" in
+    status)
+      if dpkg -s "$_WEB_BROTLI_PKG" >/dev/null 2>&1; then
+        msg "  brotli 模块: 已安装（$_WEB_BROTLI_PKG）"
+      else
+        msg "  brotli 模块: 未安装"
+      fi
+      if [[ -f "$_WEB_BROTLI_CONF" ]]; then
+        msg "  brotli 压缩: 已启用（$_WEB_BROTLI_CONF）"
+      else
+        msg "  brotli 压缩: 未启用"
+      fi
+      msg "  说明: zstd 需第三方 nginx 模块（无稳定发行版包），FusionBox 不提供"
+      ;;
+    on)
+      if ! dpkg -s "$_WEB_BROTLI_PKG" >/dev/null 2>&1; then
+        confirm "安装 brotli 模块包（$_WEB_BROTLI_PKG）？" || { msg_info "已取消"; return 1; }
+        _install_pkg "$_WEB_BROTLI_PKG" || { msg_err "模块安装失败"; return 1; }
+      fi
+      if [[ -f "$_WEB_BROTLI_CONF" ]]; then
+        msg_info "brotli 已启用"
+        return 0
+      fi
+      cat > "$_WEB_BROTLI_CONF" << 'BREOF'
+# FusionBox managed brotli compression
+brotli on;
+brotli_comp_level 5;
+brotli_types text/plain text/css application/json application/javascript
+    application/x-javascript text/xml application/xml application/xml+rss
+    text/javascript image/svg+xml;
+BREOF
+      if ! nginx -t >/dev/null 2>&1; then
+        rm -f "$_WEB_BROTLI_CONF"
+        msg_err "brotli 配置未通过校验，已移除（模块与 nginx 不兼容？）"
+        return 1
+      fi
+      nginx -s reload >/dev/null 2>&1 || msg_warn "重载失败（配置将在下次重启生效）"
+      msg_ok "brotli 压缩已启用"
+      _log_write "brotli 已启用"
+      ;;
+    off)
+      [[ -f "$_WEB_BROTLI_CONF" ]] || { msg_info "brotli 本就未启用"; return 0; }
+      rm -f "$_WEB_BROTLI_CONF"
+      nginx -t >/dev/null 2>&1 && nginx -s reload >/dev/null 2>&1
+      msg_ok "brotli 压缩已关闭（模块包保留）"
+      _log_write "brotli 已关闭"
+      ;;
+    *)
+      msg_err "未知子命令: $action（可用: status/on/off）"; return 2 ;;
+  esac
+}
+
+# ---- WordPress Redis 预配置 (G47)：wp-config 注入 + php -l 校验 + 回滚 ----
+web_wp_redis() {
+  _require_root
+  local domain="${1:-}"
+  [[ $# -eq 1 && -n "$domain" ]] || { msg_err "用法: fusionbox web wp-redis <域名>"; return 2; }
+  local info conf root
+  info=$(_web_clone_source_conf "$domain")
+  [[ -n "$info" ]] || { msg_err "未找到站点: $domain"; return 1; }
+  conf="${info%%|*}"; root="${info##*|}"
+  local wpc="$root/wp-config.php"
+  [[ -f "$wpc" ]] || { msg_err "$domain 不是 WordPress 站点（无 wp-config.php）"; return 1; }
+
+  if grep -q "WP_REDIS_HOST" "$wpc"; then
+    msg_info "wp-config.php 已包含 Redis 配置"
+    return 0
+  fi
+
+  if ! command -v redis-cli &>/dev/null; then
+    confirm "未检测到 Redis，安装 redis-server？" || { msg_info "已取消"; return 1; }
+    _install_pkg redis-server || { msg_err "Redis 安装失败"; return 1; }
+    systemctl enable --now redis-server 2>/dev/null || systemctl enable --now redis 2>/dev/null
+  fi
+  redis-cli ping 2>/dev/null | grep -q PONG || { msg_err "Redis 未运行（redis-cli ping 失败）"; return 1; }
+  if command -v php &>/dev/null && ! php -m 2>/dev/null | grep -qi '^redis$'; then
+    msg_warn "PHP redis 扩展未安装（php-redis 包）；对象缓存需该扩展 + Redis Object Cache 插件"
+    confirm "安装 php-redis？" || true
+    _install_pkg php-redis 2>/dev/null || msg_warn "php-redis 安装失败，请手动安装"
+  fi
+
+  local anchor="That's all, stop editing"
+  if ! grep -qF "$anchor" "$wpc"; then
+    msg_err "wp-config.php 缺少标准锚点注释，注入需人工处理"
+    return 1
+  fi
+
+  local bak; bak=$(_web_tune_backup_file "$wpc") || { msg_err "备份失败"; return 1; }
+  sed -i "/${anchor}/i define( 'WP_REDIS_HOST', '127.0.0.1' );\ndefine( 'WP_CACHE', true );" "$wpc"
+  if command -v php &>/dev/null && ! php -l "$wpc" >/dev/null 2>&1; then
+    cp -p "$bak" "$wpc"
+    msg_err "php -l 校验失败，已回滚 wp-config.php"
+    return 1
+  fi
+  msg_ok "Redis 缓存常量已注入 wp-config.php"
+  msg_warn "激活对象缓存还需在 WP 内安装并启用 Redis Object Cache 插件（FusionBox 不代装插件）"
+  _log_write "WP Redis 预配置: $domain"
+}
+
 # ---- WordPress 快速部署 (快捷) ----
 web_wordpress() {
   _deploy_wordpress
@@ -3285,6 +3530,11 @@ web_help() {
   msg "  ${F_BOLD}[组件运维]${F_RESET}"
   msg "  fusionbox web upgrade [comp]    组件热升级（nginx/php/mysql/redis/all）"
   msg "  fusionbox web uninstall-lnmp    卸载 LNMP（YES 门禁+配置备份）"
+  msg ""
+  msg "  ${F_BOLD}[调优]${F_RESET}"
+  msg "  fusionbox web tune show|standard|high|restore   调优档位（nginx/PHP/MySQL）"
+  msg "  fusionbox web brotli status|on|off              brotli 压缩开关"
+  msg "  fusionbox web wp-redis <domain>                 WordPress Redis 预配置"
   msg ""
   msg "  ${F_BOLD}[反向代理]${F_RESET}"
   msg "  fusionbox web proxy             HTTP/HTTPS 反向代理"
