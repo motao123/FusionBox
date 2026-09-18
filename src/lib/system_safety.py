@@ -441,10 +441,39 @@ def user_key_install(name, key_line):
     print('Public key installed for ' + name + ' (authorized_keys 0600, .ssh 0700).')
 
 
+def f2b_unban(ip):
+    import ipaddress
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        raise ValueError('Invalid IP address: ' + ip)
+    try:
+        run('fail2ban-client', 'set', 'sshd', 'unbanip', ip)
+    except subprocess.CalledProcessError:
+        raise ValueError('fail2ban rejected unban for ' + ip +
+                         ' (not banned, or sshd jail missing)')
+    print('Unban processed for ' + ip + ' (no longer in the banned list).')
+
+
+def f2b_uninstall(directory=Path('/etc/fail2ban')):
+    target = Path(directory) / 'jail.d/99-fusionbox-sshd.local'
+    if target.exists():
+        regular(target)
+        if not target.read_text().startswith('# FusionBox managed sshd parameters v1\n'):
+            raise ValueError('Unknown jail.d file; refusing removal')
+    subprocess.run(['systemctl', 'disable', '--now', 'fail2ban'], check=False,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if target.exists():
+        target.unlink()
+    print('Service disabled and FusionBox jail parameters removed; '
+          'package removal and remaining /etc/fail2ban files are handled separately.')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['keys-add', 'keys-list', 'keys-check', 'keys-delete', 'ssh', 'swap', 'fail2ban',
-                                           'user-add', 'user-del', 'passwd-set', 'sudo-grant', 'sudo-revoke', 'user-key-install'])
+                                           'user-add', 'user-del', 'passwd-set', 'sudo-grant', 'sudo-revoke', 'user-key-install',
+                                           'f2b-unban', 'f2b-uninstall'])
     parser.add_argument('values', nargs='*')
     args = parser.parse_args()
     try:
@@ -482,6 +511,12 @@ def main():
             if len(args.values) != 1:
                 raise ValueError('user-key-install takes exactly one username')
             user_key_install(args.values[0], sys.stdin.readline().rstrip('\n'))
+        elif args.action == 'f2b-unban':
+            if len(args.values) != 1:
+                raise ValueError('f2b-unban takes exactly one IP address')
+            f2b_unban(args.values[0])
+        elif args.action == 'f2b-uninstall':
+            f2b_uninstall()
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         # Do not print command output; daemon diagnostics may contain secrets.
         print('Operation failed: ' + (str(error) if not isinstance(error, subprocess.SubprocessError) else 'command validation/activation failed'))

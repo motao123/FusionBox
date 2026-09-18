@@ -31,6 +31,7 @@ system_main() {
     traffic-guard)    system_traffic_guard "$@" ;;
     notify)           system_notify "$@" ;;
     netopt)           system_netopt "$@" ;;
+    fail2ban|f2b)     system_fail2ban "$@" ;;
     settings)         system_settings_menu ;;
     tools)            system_tools_menu ;;
     menu|main)        system_menu ;;
@@ -3713,9 +3714,10 @@ system_tools_menu() {
     msg "  ${F_GREEN} 8${F_RESET}) 安全审计"
     msg "  ${F_GREEN} 9${F_RESET}) SSH 加固向导（密钥用户+锁定 root）"
     msg "  ${F_GREEN}10${F_RESET}) Swap 管理"
+    msg "  ${F_GREEN}11${F_RESET}) Fail2Ban 面板"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-10]: " tools_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-11]: " tools_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$tools_choice" in
       1) system_sshkey ;;
       2) system_firewall ;;
@@ -3727,9 +3729,121 @@ system_tools_menu() {
       8) system_security ;;
       9) system_hardening ;;
       10) system_swap ;;
+      11) system_fail2ban ;;
       0) break ;;
     esac
   done
+}
+
+# ---- Fail2Ban 管理面板 (G11)：状态/解封/日志/参数/卸载 ----
+
+_f2b_status() {
+  command -v fail2ban-client &>/dev/null || { msg_err "未安装 Fail2Ban（system security 或 system firewall 菜单可安装）"; return 1; }
+  msg "  ${F_BOLD}jails:${F_RESET}"
+  fail2ban-client status 2>/dev/null || msg "  服务未运行"
+  msg ""
+  msg "  ${F_BOLD}sshd jail:${F_RESET}"
+  fail2ban-client status sshd 2>/dev/null || msg "  sshd jail 未启用"
+}
+
+_f2b_banned() {
+  command -v fail2ban-client &>/dev/null || { msg_err "未安装 Fail2Ban"; return 1; }
+  local out
+  out=$(fail2ban-client status sshd 2>/dev/null | awk -F'Banned IP list:' '/Banned IP list/{print $2}' | xargs) || return 1
+  if [[ -n "$out" ]]; then
+    msg "  $out"
+  else
+    msg "  当前无封禁 IP"
+  fi
+}
+
+_f2b_unban_cmd() {
+  local ip="${1:-}"
+  [[ -n "$ip" ]] || { msg_err "用法: fusionbox system fail2ban unban <IP>"; return 1; }
+  python3 "$FUSION_SRC/lib/system_safety.py" f2b-unban "$ip" || return 1
+  _log_write "Fail2Ban 解封: $ip"
+}
+
+_f2b_log() {
+  local n="${1:-50}"
+  [[ "$n" =~ ^[0-9]+$ ]] || { msg_err "行数必须是数字"; return 1; }
+  [ "$n" -gt 500 ] && n=500
+  if [[ -f /var/log/fail2ban.log ]]; then
+    tail -n "$n" /var/log/fail2ban.log
+  elif command -v journalctl &>/dev/null && systemctl cat fail2ban.service &>/dev/null; then
+    journalctl -u fail2ban -n "$n" --no-pager
+  else
+    msg_err "找不到 Fail2Ban 日志（无 /var/log/fail2ban.log 且无 fail2ban.service）"
+    return 1
+  fi
+}
+
+_f2b_params() {
+  local mr="${1:-}" bt="${2:-}"
+  [[ "$mr" =~ ^[1-9][0-9]{0,8}$ && "$bt" =~ ^[1-9][0-9]{0,8}$ ]] || { msg_err "maxretry/bantime 必须是正整数（秒）"; return 1; }
+  python3 "$FUSION_SRC/lib/system_safety.py" fail2ban "$mr" "$bt" || return 1
+  msg_ok "SSH 防护参数已更新并重载（启用状态/端口/后端不变）"
+}
+
+_f2b_uninstall() {
+  command -v fail2ban-client &>/dev/null || { msg_err "未安装 Fail2Ban"; return 1; }
+  msg_warn "将停止并卸载 Fail2Ban：SSH 暴力破解防护随之消失"
+  msg_warn "自有 jail.local 与未知配置保留在 /etc/fail2ban，不会自动清理；仅移除 FusionBox 受管参数文件"
+  confirm "确认卸载 Fail2Ban？" || { msg_info "已取消"; return 1; }
+  python3 "$FUSION_SRC/lib/system_safety.py" f2b-uninstall || return 1
+  case "$F_PKG_MGR" in
+    apt)    apt-get purge -y fail2ban || { msg_err "软件包卸载失败，服务已停止；请检查 apt 输出"; return 1; } ;;
+    yum)    yum remove -y fail2ban || { msg_err "软件包卸载失败，服务已停止"; return 1; } ;;
+    apk)    apk del fail2ban || { msg_err "软件包卸载失败，服务已停止"; return 1; } ;;
+    zypper) zypper remove -y fail2ban || { msg_err "软件包卸载失败，服务已停止"; return 1; } ;;
+    *) msg_err "未知包管理器，服务已停止，请手动卸载软件包"; return 1 ;;
+  esac
+  if command -v fail2ban-client &>/dev/null; then
+    msg_warn "fail2ban-client 仍存在，卸载可能不完整"
+    return 1
+  fi
+  msg_ok "Fail2Ban 已卸载"
+  _log_write "Fail2Ban 已卸载"
+}
+
+_f2b_menu() {
+  while true; do
+    clear
+    _print_banner
+    msg_title "Fail2Ban 管理面板"
+    msg ""
+    _f2b_status
+    msg ""
+    msg "  1) 解封 IP"
+    msg "  2) 查看日志（尾部 N 行）"
+    msg "  3) SSH 防护参数 (maxretry/bantime)"
+    msg "  4) 卸载 Fail2Ban"
+    msg "  0) 返回"
+    read -p "请选择: " f2b_choice || { msg ""; return; }
+    case "$f2b_choice" in
+      1) f2b_ip=$(read_input "要解封的 IP") && _f2b_unban_cmd "$f2b_ip" && pause ;;
+      2) f2b_n=$(read_input "显示行数（默认 50）" 50) && _f2b_log "$f2b_n" && pause ;;
+      3) f2b_mr=$(read_input "maxretry（失败几次封禁）") && f2b_bt=$(read_input "bantime（封禁秒数）") && _f2b_params "$f2b_mr" "$f2b_bt" && pause ;;
+      4) _f2b_uninstall && pause ;;
+      0) return ;;
+      *) ;;
+    esac
+  done
+}
+
+system_fail2ban() {
+  _require_root
+  local cmd="${1:-menu}"
+  case "$cmd" in
+    status)    _f2b_status ;;
+    banned)    _f2b_banned ;;
+    unban)     shift; _f2b_unban_cmd "$@" ;;
+    log)       shift; _f2b_log "$@" ;;
+    params)    shift; _f2b_params "$@" ;;
+    uninstall) _f2b_uninstall ;;
+    menu|"")   _f2b_menu ;;
+    *)         msg_err "未知子命令: $cmd（可用: status/banned/unban/log/params/uninstall）"; return 1 ;;
+  esac
 }
 
 # ---- Help ----
@@ -3762,6 +3876,7 @@ system_help() {
   msg "  fusionbox system traffic-guard  流量阈值保护 (超限告警/关机)"
   msg "  fusionbox system notify         Telegram 资源告警"
   msg "  fusionbox system netopt         网络优化分级 (按网卡速率)"
+  msg "  fusionbox system fail2ban       Fail2Ban 面板 (状态/解封/日志/参数/卸载)"
   msg "  fusionbox system settings       系统设置子菜单"
   msg "  fusionbox system tools          系统工具子菜单"
   msg ""
