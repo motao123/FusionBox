@@ -2002,6 +2002,8 @@ web_site_data() {
       fi
       ;;
     3)
+      msg_err "定时远程备份尚未迁移到带清单的安全归档格式，暂不创建新任务；旧任务请人工检查。"
+      return 1
       msg "  ${F_BOLD}远程备份配置${F_RESET}"
       msg "  1) Rclone (S3/WebDAV/FTP)"
       msg "  2) SCP (SSH 远程)"
@@ -2685,14 +2687,18 @@ _web_guard_cf_config() {
       umask 077
       mkdir -p /etc/fusionbox
       [[ -f "$cf_conf" ]] && cp "$cf_conf" "$cf_conf.fb-bak-$(date +%s)" 2>/dev/null
-      cat > "$cf_conf" << CFCONF
+      local cf_tmp
+      cf_tmp=$(mktemp "${cf_conf}.XXXXXXXX") || return 1
+      cat > "$cf_tmp" << CFCONF
 # FusionBox Cloudflare 联动配置（含密钥，请勿外泄）
 CF_API_TOKEN=$token
 CF_ZONE_ID=$zone
 # 负载自适应开盾阈值（1 分钟负载，默认 5.0）
 LOAD_THRESHOLD=$threshold
 CFCONF
-      chmod 600 "$cf_conf"
+      if [[ $? -ne 0 ]] || ! chmod 600 "$cf_tmp" || ! mv -T "$cf_tmp" "$cf_conf"; then
+        rm -f "$cf_tmp"; return 1
+      fi
       msg_ok "Cloudflare 配置已写入: $cf_conf (权限 600)"
       _log_write "Cloudflare 配置已更新 (zone=$zone)"
       ;;
@@ -2837,11 +2843,20 @@ _web_guard_cf_adaptive() {
 # FusionBox Cloudflare 负载自适应开盾
 # load1 > LOAD_THRESHOLD → security_level=under_attack；否则恢复初始安全级别
 # 状态记录在 /var/lib/fusionbox/cf-guard.state，避免重复调用 API
+set +x
+set -o pipefail
 CONF="/etc/fusionbox/cloudflare.conf"
-STATE="/var/lib/fusionbox/cf-guard.state"
 API="https://api.cloudflare.com/client/v4"
 
 [ -f "$CONF" ] && . "$CONF"
+[[ "${CF_ZONE_ID:-}" =~ ^[a-fA-F0-9]{32}$ ]] || exit 1
+[[ "${CF_API_TOKEN:-}" =~ ^[A-Za-z0-9_-]{10,}$ ]] || exit 1
+CF_ZONE_ID=${CF_ZONE_ID,,}
+STATE="/var/lib/fusionbox/cf-guard.${CF_ZONE_ID}.state"
+umask 077
+mkdir -p "$(dirname "$STATE")" || exit 1
+exec 9>"${STATE}.lock"
+flock -n 9 || exit 0
 LOAD_THRESHOLD="${LOAD_THRESHOLD:-5.0}"
 
 if [ -z "${CF_API_TOKEN:-}" ] || [ -z "${CF_ZONE_ID:-}" ]; then
@@ -2871,23 +2886,24 @@ trap 'rm -f "$CURL_CFG"' EXIT
 printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$CF_API_TOKEN" > "$CURL_CFG"
 
 command -v python3 >/dev/null || { echo "需要 python3 解析 API 响应"; exit 1; }
-umask 077
-exec 9>"${STATE}.lock"
-flock -n 9 || exit 0
+atomic_state() {
+  local staged
+  staged=$(mktemp "${1}.XXXXXXXX") || return 1
+  printf '%s\n' "$2" > "$staged" && mv -T "$staged" "$1" || { rm -f "$staged"; return 1; }
+}
 if [ ! -s "${STATE}.original" ]; then
   original=$(curl -fsS --max-time 20 -K "$CURL_CFG" "$API/zones/$CF_ZONE_ID/settings/security_level" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("success"); print(d["result"]["value"])') || exit 1
   case "$original" in off|essentially_off|low|medium|high|under_attack) ;; *) exit 1 ;; esac
-  printf '%s\n' "$original" > "${STATE}.original" || exit 1
+  atomic_state "${STATE}.original" "$original" || exit 1
 fi
 [ -n "$want" ] || want=$(cat "${STATE}.original")
 [ "$want" = "$last" ] && exit 0
 resp=$(curl -fsS --max-time 20 -X PATCH "$API/zones/$CF_ZONE_ID/settings/security_level" \
   -K "$CURL_CFG" \
-  --data "{\"value\":\"$want\"}")
+  --data "{\"value\":\"$want\"}") || exit 1
 
-if echo "$resp" | grep -q '"success":true'; then
-  mkdir -p "$(dirname "$STATE")"
-  echo "$want" > "$STATE"
+if printf '%s' "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(d.get("success") is not True)'; then
+  atomic_state "$STATE" "$want" || exit 1
   echo "负载 $load1 → Cloudflare security_level: $want"
 else
   echo "Cloudflare API 调用失败（负载 $load1），状态未更新"
@@ -2920,7 +2936,8 @@ CFCRONEOF
       if ! confirm "确认卸载负载自适应开盾？（Cloudflare 当前安全级别保持不变）"; then
         return
       fi
-      rm -f "$g_script" "$g_cron" "$g_state"
+      rm -f "$g_script" "$g_cron" || return 1
+      msg_info "保留按 Zone ID 隔离的状态与初始级别，重新安装可继续恢复；旧无区域状态不再使用。"
       msg_ok "已卸载负载自适应开盾"
       _log_write "负载自适应开盾已卸载"
       ;;
@@ -2933,7 +2950,12 @@ CFCRONEOF
         th=${th:-5.0}
         msg "  当前负载(1 分钟): $(awk '{print $1}' /proc/loadavg 2>/dev/null)"
         msg "  阈值: $th"
-        msg "  上次切换状态: $(cat "$g_state" 2>/dev/null || echo "未记录")"
+        local status_zone
+        status_zone=$(sed -n 's/^CF_ZONE_ID=//p' "$cf_conf" | tail -1)
+        if [[ "$status_zone" =~ ^[a-fA-F0-9]{32}$ ]]; then
+          g_state="/var/lib/fusionbox/cf-guard.${status_zone,,}.state"
+          msg "  上次切换状态: $(cat "$g_state" 2>/dev/null || echo "未记录")"
+        fi
       else
         msg_warn "未配置 Cloudflare API Token，脚本会安全跳过（不影响系统）"
       fi

@@ -116,7 +116,7 @@ _system_netopt_reset || exit
         self.assertEqual((self.root / 'etc/sysctl.d/99-fusionbox-netopt.conf').read_text(), 'original')
 
     def test_notify_mock_success_and_failure(self):
-        setup = '''_notify_conf_get() { printf dummy; }
+        setup = '''_notify_conf_get() { if [[ "$1" == TG_BOT_TOKEN ]]; then printf '123:dummy'; else printf 123; fi; }
 curl() { printf '%s' '{"ok":true}'; }
 _notify_send test || exit 1
 curl() { printf '%s' '{"ok":false}'; }

@@ -2651,7 +2651,8 @@ TEOF
 _traffic_guard_install_bin() {
   mkdir -p /usr/local/bin /etc/fusionbox /var/lib/fusionbox /var/log
 
-  cat > /usr/local/bin/fusionbox-traffic-guard << 'TGEOF'
+  { printf '#!/bin/bash\nset +x\n'; declare -f _fb_telegram_send _fb_atomic_state; } > /usr/local/bin/fusionbox-traffic-guard || return 1
+  cat >> /usr/local/bin/fusionbox-traffic-guard << 'TGEOF'
 #!/bin/bash
 # FusionBox 流量阈值保护脚本（由 fusionbox system traffic-guard 安装）
 # 配置: /etc/fusionbox/traffic-guard.conf
@@ -2726,14 +2727,11 @@ else
   BASE_RX="$cur_rx"; BASE_TX="$cur_tx"
 fi
 
-{
-  echo "MONTH=$MONTH"
-  echo "LAST_RUN=$now"
-  echo "BASE_RX=$BASE_RX"
-  echo "BASE_TX=$BASE_TX"
-  echo "TOTAL=$TOTAL"
-} > "$STATE" 2>/dev/null
-chmod 600 "$STATE" 2>/dev/null
+_fb_atomic_state "$STATE" "MONTH=$MONTH
+LAST_RUN=$now
+BASE_RX=$BASE_RX
+BASE_TX=$BASE_TX
+TOTAL=$TOTAL" || exit 1
 
 limit_bytes=$(awk -v g="$LIMIT_GB" 'BEGIN{printf "%.0f", g*1073741824}' 2>/dev/null)
 limit_bytes=${limit_bytes:-0}
@@ -2742,9 +2740,6 @@ used_gb=${used_gb:-0}
 
 if [[ "$limit_bytes" =~ ^[0-9]+$ ]] && [[ "$limit_bytes" -gt 0 ]] && \
    [[ "$TOTAL" -ge "$limit_bytes" ]] && [[ ! -f "$FLAG" ]]; then
-  : > "$FLAG" 2>/dev/null
-  chmod 600 "$FLAG" 2>/dev/null
-
   note="[FusionBox] 流量告警：本月已用 ${used_gb} GB，超过阈值 ${LIMIT_GB} GB（网卡: $IFACE，动作: $ACTION）"
   log_line "$note"
 
@@ -2753,16 +2748,17 @@ if [[ "$limit_bytes" =~ ^[0-9]+$ ]] && [[ "$limit_bytes" -gt 0 ]] && \
     t=$(grep -m1 '^TG_BOT_TOKEN=' "$NOTIFY_CONF" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
     c=$(grep -m1 '^TG_CHAT_ID=' "$NOTIFY_CONF" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
     if [[ -n "$t" && -n "$c" ]]; then
-      curl -s --max-time 10 "https://api.telegram.org/bot${t}/sendMessage" \
-        --data-urlencode "chat_id=${c}" --data-urlencode "text=${note}" >/dev/null 2>&1 || true
+      _fb_telegram_send "$t" "$c" "$note" || exit 1
     fi
   fi
 
   if [[ "$ACTION" == "shutdown" ]]; then
     echo "$note" | wall 2>/dev/null || true
-    shutdown -h +5 "FusionBox: 流量超过阈值 ${LIMIT_GB} GB" 2>/dev/null || \
-      /sbin/shutdown -h +5 "FusionBox: 流量超过阈值 ${LIMIT_GB} GB" 2>/dev/null || true
+    shutdown -h +5 "FusionBox: 流量超过阈值 ${LIMIT_GB} GB" 2>/dev/null || exit 1
+  elif [[ "$ACTION" != warn ]]; then
+    exit 1
   fi
+  _fb_atomic_state "$FLAG" "$this_month" || exit 1
 fi
 TGEOF
   chmod 755 /usr/local/bin/fusionbox-traffic-guard
@@ -2991,8 +2987,29 @@ NEOF
   chmod 600 /etc/fusionbox/notify.conf
 }
 
+# Shared transport is embedded into generated cron scripts; credentials use stdin,
+# never curl argv, exported variables, or persistent temporary credential files.
+_fb_telegram_send() (
+  set +x
+  local token="$1" chat="$2" text="$3" response
+  export -n token TG_BOT_TOKEN 2>/dev/null
+  [[ "$token" =~ ^[0-9]+:[A-Za-z0-9_-]+$ && "$chat" =~ ^-?[0-9]+$ ]] || return 1
+  response=$(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token" |
+    curl -q -fsS --max-time 10 --config - --data-urlencode "chat_id=$chat" --data-urlencode "text=$text" 2>/dev/null) || return 1
+  printf '%s' "$response" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(not isinstance(d,dict) or d.get("ok") is not True)' 2>/dev/null
+)
+
+_fb_atomic_state() (
+  umask 077
+  local target="$1" value="$2" staged
+  staged=$(mktemp "${target}.XXXXXXXX") || return 1
+  trap 'rm -f "$staged"' EXIT
+  printf '%s\n' "$value" > "$staged" && mv -T "$staged" "$target"
+)
+
 # 用法: _notify_send "消息文本"（不会打印 token）
-_notify_send() {
+_notify_send() (
+  set +x
   local text="$1"
   local token chat
   token=$(_notify_conf_get TG_BOT_TOKEN)
@@ -3003,22 +3020,18 @@ _notify_send() {
     return 1
   fi
 
-  local resp
-  resp=$(curl -s --max-time 10 "https://api.telegram.org/bot${token}/sendMessage" \
-    --data-urlencode "chat_id=${chat}" \
-    --data-urlencode "text=${text}" 2>/dev/null)
-
-  if [[ "$resp" == *'"ok":true'* ]]; then
+  if _fb_telegram_send "$token" "$chat" "$text"; then
     return 0
   fi
   msg_err "Telegram 消息发送失败（请检查 Token / Chat ID 与网络连通性）"
   return 1
-}
+)
 
 _notify_install_check() {
   mkdir -p /usr/local/bin /etc/fusionbox /var/lib/fusionbox /var/log
 
-  cat > /usr/local/bin/fusionbox-notify-check << 'NEOF'
+  { printf '#!/bin/bash\nset +x\n'; declare -f _fb_telegram_send _fb_atomic_state; } > /usr/local/bin/fusionbox-notify-check || return 1
+  cat >> /usr/local/bin/fusionbox-notify-check << 'NEOF'
 #!/bin/bash
 # FusionBox 资源告警检查（由 fusionbox system notify 安装）
 # 配置: /etc/fusionbox/notify.conf  状态: /var/lib/fusionbox/notify.state
@@ -3079,12 +3092,8 @@ if [[ $((now - LAST_ALERT)) -lt $((COOLDOWN_MIN * 60)) ]]; then exit 0; fi
 
 note="[FusionBox] $host 资源告警：$alert（阈值 CPU ${ALERT_CPU}% / 内存 ${ALERT_MEM}% / 磁盘 ${ALERT_DISK}%）"
 log_line "$note"
-resp=$(curl -fsS --max-time 10 "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
-  --data-urlencode "chat_id=${TG_CHAT_ID}" \
-  --data-urlencode "text=${note}" 2>/dev/null) || exit 1
-[[ "$resp" == *'"ok":true'* ]] || exit 1
-echo "LAST_ALERT=$now" > "$STATE"
-chmod 600 "$STATE"
+_fb_telegram_send "$TG_BOT_TOKEN" "$TG_CHAT_ID" "$note" || exit 1
+_fb_atomic_state "$STATE" "LAST_ALERT=$now" || exit 1
 NEOF
   chmod 755 /usr/local/bin/fusionbox-notify-check
 
