@@ -4,6 +4,24 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.19.0 运维小工具合集（G68/G21/G15/G62/G19）
+
+```bash
+fusionbox system info                 # 新增 x86-64 psABI 级别（v1-v4，二进制兼容性参考）
+fusionbox system sshkey               # 新增 7) 从 GitHub 用户 / https URL 导入公钥（逐条校验+确认）
+fusionbox cluster sshout add|list|rm|connect   # SSH 出站收藏（0600 清单、严格校验、直连）
+fusionbox workspace work new|attach|send|kill|list   # work1-10 编号 tmux 会话（可注入首条/任意命令）
+fusionbox market clamav <路径>         # ClamAV 病毒扫描（按需安装，威胁返回非零，摘要+日志）
+```
+
+- sshkey 导入仅接受 https；每行经 ssh-keygen 校验并逐条确认后写入，全部拒绝时不改动 authorized_keys。
+- sshout 收藏存 `/etc/fusionbox/ssh_out.conf`（0600），名称/目标/端口严格校验，防注入形态拒绝。
+- 编号会话基于 tmux（缺失时明确报错），注入命令经 send-keys 在会话内执行。
+- clamav 扫描排除 /sys /proc /dev，日志落 /root（0600）；发现威胁返回 1，出错返回非零。
+- 真机验证（25 项全过）：psABI 真实 CPU（v4）、GitHub 真实拉取公钥（全拒绝时 authorized_keys 零改动）、sshout 真实文件往返与拒绝路径、work5 真实 tmux 会话注入命令执行并清理、clamav 拒绝路径；完整扫描为 mock 覆盖（夹具不安装重型杀毒包）。
+
+Linux 验证目标：42 基础 + 455 行为（新增 85），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 25/25。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.18.0 站点运维闭环（G39/G41/G42/G49/G50）
 
 ```bash
@@ -406,6 +424,8 @@ fusionbox system fail2ban        # Fail2Ban 面板 (状态/解封/日志/参数/
 fusionbox system env             # 环境变量管理 (list/show/check/edit)
 fusionbox panels docker port-block  # 容器端口封禁 (DOCKER-USER, list/add/del)
 fusionbox panels docker uninstall   # Docker 一键卸载 (YES 门禁)
+fusionbox workspace work            # 编号工作区 (tmux work1-10, 命令注入)
+fusionbox cluster sshout            # SSH 出站收藏 (add/list/rm/connect)
 fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
 fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)
 fusionbox system sshkey          # SSH 密钥管理
