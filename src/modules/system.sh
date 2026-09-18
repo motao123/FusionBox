@@ -856,32 +856,10 @@ system_backup() {
   msg_title "系统备份"
   msg ""
 
-  local dirs_to_backup=(
-    "/etc/fusionbox/proxy" "/etc/nginx" "/etc/caddy"
-    "/etc/fusionbox" "/var/www"
-    "/opt/docker"
-  )
-
-  msg_info "正在备份到: $backup_file"
-  local exists=0
-  for d in "${dirs_to_backup[@]}"; do
-    if [[ -d "$d" ]]; then
-      exists=1
-    fi
-  done
-
-  if [[ $exists -eq 1 ]]; then
-    tar czf "$backup_file" "${dirs_to_backup[@]}" 2>/dev/null
-    if [[ -f "$backup_file" ]]; then
-      local size; size=$(du -h "$backup_file" | cut -f1)
-      msg_ok "备份已创建: $backup_file ($size)"
-      _log_write "系统备份已创建: $backup_file"
-    else
-      msg_err "备份失败"
-    fi
-  else
-    msg_warn "没有可备份的目录"
-  fi
+  msg_warn "请先停止写入服务；文件备份不是数据库一致性快照。链接与特殊文件将被拒绝。"
+  python3 "$FUSION_SRC/lib/archive.py" create system "$backup_file" || return 1
+  msg_ok "备份已创建: $backup_file"
+  _log_write "系统备份已创建: $backup_file"
   pause
 }
 
@@ -913,7 +891,8 @@ system_restore() {
   done
   msg ""
 
-  read -p "请选择要恢复的备份: " choice
+  read -r -p "请选择要恢复的备份: " choice
+  [[ "$choice" =~ ^[1-9][0-9]{0,5}$ ]] || return 1
   local idx=$((choice - 1))
   if [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]]; then
     local restore_file="${backups[$idx]}"
@@ -924,7 +903,7 @@ system_restore() {
       local confirm_input=""
       read -r -p "请输入大写 YES 确认恢复: " confirm_input
       if [[ "$confirm_input" == "YES" ]]; then
-        tar xzf "$restore_file" -C /
+        python3 "$FUSION_SRC/lib/archive.py" restore system "$restore_file" || return 1
         msg_ok "恢复完成"
         _log_write "系统已从备份恢复: $restore_file"
       else
@@ -1812,7 +1791,7 @@ _system_dns_apply() {
     return 1
   fi
   for s in "${servers[@]}"; do
-    if [[ ! "$s" =~ ^[0-9a-fA-F:.]+$ ]]; then
+    if [[ ! "$s" =~ ^[0-9a-fA-F:.]+$ ]] || ! python3 -c 'import ipaddress,sys; ipaddress.ip_address(sys.argv[1])' "$s" 2>/dev/null; then
       msg_err "无效的 DNS 地址: $s"
       return 1
     fi
@@ -1841,25 +1820,21 @@ _system_dns_apply() {
     msg_ok "已备份原配置: $bak"
   fi
 
-  chattr -i /etc/resolv.conf 2>/dev/null || true
-  [[ -L /etc/resolv.conf ]] && rm -f /etc/resolv.conf
+  local staged
+  staged=$(mktemp /etc/.fusionbox-dns.XXXXXXXX) || return 1
+  if ! printf 'nameserver %s\n' "${servers[@]}" > "$staged" ||
+     ! chmod 644 "$staged"; then
+    rm -f "$staged"; return 1
+  fi
 
-  {
-    echo "# FusionBox DNS 配置 ($label) - $(date '+%Y-%m-%d %H:%M:%S')"
-    for s in "${servers[@]}"; do echo "nameserver $s"; done
-  } > /etc/resolv.conf 2>/dev/null
-
-  if [[ -s /etc/resolv.conf ]]; then
-    chmod 644 /etc/resolv.conf 2>/dev/null
+  if [[ ! -L /etc/resolv.conf ]] && mv -T "$staged" /etc/resolv.conf; then
     msg_ok "DNS 已更新 ($label)"
     msg "  当前配置:"
     grep -E "^nameserver" /etc/resolv.conf 2>/dev/null | while IFS= read -r s; do msg "    $s"; done
     _log_write "DNS 已更新为 $label"
   else
     msg_err "写入 /etc/resolv.conf 失败"
-    if [[ -f "$bak" ]]; then
-      cp -Lp "$bak" /etc/resolv.conf 2>/dev/null && msg_warn "已从备份回滚: $bak"
-    fi
+    rm -f "$staged"
     return 1
   fi
   return 0
@@ -1895,11 +1870,11 @@ _system_dns_restore() {
   fi
 
   confirm "确认用 $(basename "${baks[$idx]}") 覆盖当前 /etc/resolv.conf？" || return 1
-  chattr -i /etc/resolv.conf 2>/dev/null || true
-  [[ -L /etc/resolv.conf ]] && rm -f /etc/resolv.conf
-
-  if _fb_backup_file "${baks[$idx]}" /etc/resolv.conf; then
-    chmod 644 /etc/resolv.conf 2>/dev/null
+  local staged
+  staged=$(mktemp /etc/.fusionbox-dns.XXXXXXXX) || return 1
+  if [[ ! -L /etc/resolv.conf ]] &&
+     cp -- "${baks[$idx]}" "$staged" && chmod 644 "$staged" &&
+     mv -T "$staged" /etc/resolv.conf; then
     msg_ok "已恢复: ${baks[$idx]}"
     grep -E "^nameserver" /etc/resolv.conf 2>/dev/null | while IFS= read -r f; do msg "    $f"; done
     _log_write "resolv.conf 已从备份恢复"

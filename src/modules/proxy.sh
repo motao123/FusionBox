@@ -52,24 +52,43 @@ SB_SH_BIN="/usr/local/bin/sing-box"
 SB_CORE_DIR="/etc/sing-box"
 
 _singbox_233_installed() {
-  [[ -x "$SB_SH_BIN" && -d "$SB_CORE_DIR/sh" ]]
+  [[ -x "$SB_SH_BIN" ]] && _proxy_link_points_to "$SB_SH_BIN" "$SB_CORE_DIR/sh/sing-box.sh"
+}
+
+# Resolve ownership without executing commands, including dangling native links.
+_proxy_link_points_to() {
+  [[ -L "$1" && "$(readlink -m -- "$1")" == "$(readlink -m -- "$2")" ]]
 }
 
 # 233boy/sing-box 安装（脚本落地临时文件再执行；官方安装器全程无交互）
 _singbox_233_install() {
+  _singbox_233_installed && return 0
+  local path
+  for path in "$SB_SH_BIN" "$(dirname "$SB_SH_BIN")/sb" "$SB_CORE_DIR" \
+    "$P_SERVICE_DIR/sing-box.service" /var/log/sing-box; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      msg_err "拒绝覆盖现有文件: $path；请先确认归属并手动处理"
+      return 1
+    fi
+  done
   msg_info "正在安装 233boy/sing-box（下载内核与管理脚本，约 1 分钟）..."
   local tmpf
-  tmpf=$(mktemp)
-  if ! _download "https://raw.githubusercontent.com/233boy/sing-box/main/install.sh" "$tmpf"; then
+  tmpf=$(mktemp) || return $?
+  local rc=0
+  _download "https://raw.githubusercontent.com/233boy/sing-box/main/install.sh" "$tmpf" || rc=$?
+  if [[ $rc -ne 0 ]]; then
     msg_err "下载 233boy/sing-box 安装脚本失败"
     rm -f "$tmpf"
-    return 1
+    return "$rc"
   fi
-  bash "$tmpf"
-  local rc=$?
+  bash "$tmpf" || rc=$?
   rm -f "$tmpf"
-  if [[ $rc -ne 0 || ! -x "$SB_SH_BIN" ]]; then
+  if [[ $rc -ne 0 ]]; then
     msg_err "233boy/sing-box 安装失败（退出码 $rc），可查看上方输出定位原因"
+    return "$rc"
+  fi
+  if ! _singbox_233_installed; then
+    msg_err "安装后未检测到受支持的 233boy/sing-box 管理入口"
     return 1
   fi
   msg_ok "233boy/sing-box 安装完成（已自动创建 REALITY 配置）"
@@ -79,10 +98,10 @@ _singbox_233_install() {
 
 # 入口: fusionbox proxy sb [参数] —— 无参数进 233boy 交互主菜单，带参数原样透传
 proxy_sb() {
-  _require_root
+  _require_root || return $?
   if ! _singbox_233_installed; then
     confirm "未检测到 233boy/sing-box，是否立即安装？（自动创建 REALITY 配置）" || return 1
-    _singbox_233_install || return 1
+    _singbox_233_install || return $?
     return
   fi
   if [[ $# -gt 0 ]]; then
@@ -119,7 +138,7 @@ proxy_main() {
 
 # ---- 安装代理核心 ----
 proxy_install() {
-  _require_root
+  _require_root || return $?
   msg_title "安装代理核心"
   msg ""
 
@@ -159,6 +178,13 @@ proxy_install() {
     confirm "sing-box 将由社区最佳实践的 233boy 脚本安装与管理（自动创建 REALITY 配置），是否继续？" || return
     _singbox_233_install
     return
+  fi
+
+  local command_path="/usr/local/bin/$be_name"
+  if [[ -e "$command_path" || -L "$command_path" ]] && \
+    ! _proxy_link_points_to "$command_path" "$P_BIN_DIR/$be_name"; then
+    msg_err "拒绝覆盖不属于 FusionBox 的命令: $command_path"
+    return 1
   fi
 
   # 检查是否已安装
@@ -353,37 +379,56 @@ SEOF
 
 # ---- 卸载 ----
 proxy_uninstall() {
-  _require_root
+  _require_root || return $?
   msg_title "卸载代理核心"
 
-  if [[ ! -d "$P_BASE_DIR" ]]; then
+  # Snapshot both owners before native removal can break the legacy shared link.
+  local native=0 upstream=0 path be rc=0
+  local native_links=()
+  [[ -d "$P_BASE_DIR" ]] && native=1
+  _singbox_233_installed && upstream=1
+  for be in xray v2ray sing-box clash-meta; do
+    path="/usr/local/bin/$be"
+    _proxy_link_points_to "$path" "$P_BIN_DIR/$be" && native_links+=("$path")
+  done
+  if [[ $native -eq 0 && $upstream -eq 0 ]]; then
     msg_warn "代理模块未安装"
-    return
+    return 0
   fi
 
-  confirm "将删除所有代理配置和核心文件，确认继续？" || return
-
-  proxy_service "stop" 2>/dev/null
-  systemctl disable fusionbox-proxy 2>/dev/null
-  rm -f "$P_SERVICE_DIR/fusionbox-proxy.service"
-  systemctl daemon-reload 2>/dev/null
-
-  local backend=""
-  [[ -f "$P_BASE_DIR/current_backend" ]] && backend=$(cat "$P_BASE_DIR/current_backend")
-
-  rm -rf "$P_BASE_DIR" "$P_LOG_DIR"
-  [[ -n "$backend" ]] && rm -f "/usr/local/bin/$backend"
-
-  # 联动卸载 233boy/sing-box（由其自带卸载器处理，交互确认交给用户）
-  if _singbox_233_installed; then
-    if confirm "同时卸载 233boy/sing-box？"; then
-      "$SB_SH_BIN" uninstall
+  if [[ $native -eq 1 ]] && confirm "将删除 FusionBox 自有代理配置和核心文件，确认继续？"; then
+    local unit="$P_SERVICE_DIR/fusionbox-proxy.service" owned_unit=0
+    for be in xray v2ray sing-box clash-meta; do
+      if [[ ! -L "$unit" ]] && grep -Fxq "ExecStart=$P_BIN_DIR/$be run -c $P_CONF_DIR/config.json" "$unit" 2>/dev/null; then
+        owned_unit=1
+      fi
+    done
+    if [[ $owned_unit -eq 1 ]]; then
+      systemctl stop fusionbox-proxy || return $?
+      systemctl disable fusionbox-proxy || return $?
+      rm -f "$unit" || return $?
+      systemctl daemon-reload || return $?
     fi
+    for path in "${native_links[@]}"; do
+      rm -f "$path" || return $?
+    done
+    rm -rf "$P_BASE_DIR" "$P_LOG_DIR" || return $?
+    msg_ok "FusionBox 自有代理模块已卸载"
+    _log_write "FusionBox 自有代理模块已卸载"
   fi
 
-  msg_ok "代理模块已卸载"
-  _log_write "代理模块已卸载"
+  if [[ $upstream -eq 1 ]] && confirm "卸载 233boy/sing-box 及其配置？"; then
+    _singbox_233_installed || return 1
+    "$SB_SH_BIN" uninstall || rc=$?
+    if [[ $rc -ne 0 ]]; then
+      msg_err "233boy/sing-box 卸载失败（退出码 $rc）"
+      return "$rc"
+    fi
+    msg_ok "233boy/sing-box 卸载命令已完成"
+    _log_write "233boy/sing-box 卸载命令已完成"
+  fi
   pause
+  return 0
 }
 
 # ---- 后端-协议支持矩阵 ----

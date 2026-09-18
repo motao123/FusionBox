@@ -171,33 +171,28 @@ show_status() {
 # NOTE: keep the repo URL in sync with install.sh (single source of truth)
 FUSION_REPO="https://github.com/motao123/FusionBox"
 
-self_update() {
+self_update() (
+  local tmpdir remote_ver
+  tmpdir=$(mktemp -d) || return 1
+  trap 'rm -rf -- "$tmpdir"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   msg_info "正在检查更新..."
-  _download "https://raw.githubusercontent.com/motao123/FusionBox/main/version.txt" /tmp/fusionbox_ver
-  if [[ -f /tmp/fusionbox_ver ]]; then
-    local remote_ver
-    remote_ver="$(tr -d '[:space:]' < /tmp/fusionbox_ver)"
-    rm -f /tmp/fusionbox_ver
-    if [[ "$remote_ver" != "$FUSION_VER" && "$remote_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      msg_info "发现新版本 $remote_ver，正在更新..."
-      local tmpdir
-      tmpdir="$(mktemp -d)"
-      if _download "$FUSION_REPO/archive/main.tar.gz" "$tmpdir/fusionbox.tar.gz" \
-         && tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir" \
-         && [[ -f "$tmpdir/FusionBox-main/fusion.sh" ]]; then
-        cp -rf "$tmpdir/FusionBox-main/"* "$FUSION_BASE/" || { rm -rf "$tmpdir"; msg_err "更新复制失败"; return 1; }
-        msg_ok "更新完成，重新运行 fusionbox 生效"
-      else
-        msg_err "下载或解压失败，已取消更新"
-      fi
-      rm -rf "$tmpdir"
-    else
-      msg_ok "已是最新版本"
-    fi
-  else
-    msg_warn "无法检查更新（离线）"
+  _download "https://raw.githubusercontent.com/motao123/FusionBox/main/version.txt" "$tmpdir/version.txt" || return 1
+  remote_ver=$(tr -d '[:space:]' < "$tmpdir/version.txt") || return 1
+  [[ "$remote_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  if [[ "$remote_ver" == "$FUSION_VER" ]]; then
+    msg_ok "已是最新版本"
+    return 0
   fi
-}
+  _download "$FUSION_REPO/archive/main.tar.gz" "$tmpdir/fusionbox.tar.gz" || return 1
+  tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir" || return 1
+  source "$FUSION_BASE/src/lib/deploy.sh" || return 1
+  fusion_validate_release "$tmpdir/FusionBox-main" || return 1
+  [[ "$(tr -d '[:space:]' < "$tmpdir/FusionBox-main/version.txt")" == "$remote_ver" ]] || return 1
+  fusion_deploy "$tmpdir/FusionBox-main" "$FUSION_BASE" || return 1
+  msg_ok "更新完成，重新运行 fusionbox 生效"
+)
 
 # ---- Self Uninstall ----
 self_uninstall() {

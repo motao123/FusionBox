@@ -373,7 +373,10 @@ _web_cert_info() {
   [[ -z "$enddate" ]] && return 1
   end_ts=$(date -d "$enddate" +%s 2>/dev/null) || return 1
   now_ts=$(date +%s)
-  printf '%s|%s' "$enddate" "$(( (end_ts - now_ts) / 86400 ))"
+  local delta=$((end_ts - now_ts))
+  # Round negative partial days down so recently expired certificates stay negative.
+  (( delta < 0 )) && delta=$((delta - 86399))
+  printf '%s|%s' "$enddate" "$(( delta / 86400 ))"
 }
 
 # 仅返回证书剩余天数
@@ -472,7 +475,8 @@ web_ssl_renew() {
     return
   fi
 
-  local renew_log="/tmp/fusionbox-certbot-renew.log"
+  local renew_log
+  renew_log=$(mktemp /tmp/fusionbox-certbot-renew.XXXXXXXX.log) || return 1
   msg_info "正在续期（以下为 certbot 真实输出）..."
   msg ""
   certbot renew 2>&1 | tee "$renew_log"
@@ -480,7 +484,10 @@ web_ssl_renew() {
   msg ""
 
   if [[ $rc -eq 0 ]]; then
-    systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+    if ! { systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null; }; then
+      msg_err "续期流程完成，但 Nginx 重载失败"
+      return 1
+    fi
     msg_ok "续期流程完成，Nginx 已重载"
     _log_write "certbot renew 执行成功"
   else
@@ -538,22 +545,23 @@ web_ssl_autorenew() {
       fi
       # 随机分钟：避免大批机器在同一分钟集中请求 CA
       local rnd_min=$((RANDOM % 60))
-      mkdir -p /etc/cron.d
-      if [[ -f "$cron_file" ]]; then
-        cp "$cron_file" "$cron_file.fb-bak-$(date +%s)" 2>/dev/null
-      fi
-      cat > "$cron_file" << AEOF
+      mkdir -p /etc/cron.d || return 1
+      [[ ! -L "$cron_file" ]] || return 1
+      local cron_tmp
+      cron_tmp=$(mktemp "${cron_file}.XXXXXXXX") || return 1
+      if ! cat > "$cron_tmp" << AEOF
 # FusionBox 证书自动续期（由 fusionbox web ssl auto 生成）
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # 每天 03:00-03:59 之间随机分钟执行，避免多机同时请求 CA
 $rnd_min 3 * * * root certbot renew --quiet --deploy-hook "systemctl reload nginx"
 AEOF
-      if [[ ! -f "$cron_file" ]]; then
+      then
+        rm -f "$cron_tmp"
         msg_err "写入 $cron_file 失败，请检查目录权限"
         pause; return 1
       fi
-      chmod 644 "$cron_file"
+      chmod 644 "$cron_tmp" && mv -T "$cron_tmp" "$cron_file" || { rm -f "$cron_tmp"; return 1; }
       msg_ok "自动续期已配置: 每天 03:$(printf '%02d' "$rnd_min") 执行"
       msg_info "任务内容: certbot renew --quiet --deploy-hook \"systemctl reload nginx\""
       if ! command -v cron &>/dev/null && ! command -v crond &>/dev/null; then
@@ -1963,13 +1971,10 @@ web_site_data() {
       mkdir -p "$backup_dir"
       local date_str=$(date '+%Y%m%d_%H%M%S')
       local backup_file="$backup_dir/site_data_$date_str.tar.gz"
-      msg_info "正在备份..."
-      tar czf "$backup_file" /var/www/ /opt/docker/ /etc/nginx/ 2>/dev/null
-      if [[ -f "$backup_file" ]]; then
-        local size=$(du -h "$backup_file" | cut -f1)
-        msg_ok "备份已创建: $backup_file ($size)"
-        _log_write "站点数据已备份: $backup_file"
-      fi
+      msg_warn "请先停止写入服务；文件备份不是数据库快照，链接与特殊文件将被拒绝。"
+      python3 "$FUSION_SRC/lib/archive.py" create web "$backup_file" || return 1
+      msg_ok "备份已创建: $backup_file"
+      _log_write "站点数据已备份: $backup_file"
       ;;
     2)
       local backup_dir="/root/site_backups"
@@ -1985,11 +1990,12 @@ web_site_data() {
           msg "  $i) $(basename "$f") ($(du -h "$f" | cut -f1))"
           i=$((i+1))
         done
-        read -p "选择要恢复的备份: " choice
+        read -r -p "选择要恢复的备份: " choice
+        [[ "$choice" =~ ^[1-9][0-9]{0,5}$ ]] || return 1
         local idx=$((choice-1))
         if [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]]; then
           if confirm "确认恢复？这将覆盖现有数据！"; then
-            tar xzf "${backups[$idx]}" -C /
+            python3 "$FUSION_SRC/lib/archive.py" restore web "${backups[$idx]}" || return 1
             msg_ok "恢复完成"
           fi
         fi

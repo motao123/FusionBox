@@ -188,11 +188,11 @@ CLUSTER_TASKS=(
   "status|系统状态概览|uptime; free -h | head -2; df -h / | tail -1"
   "update|系统更新|if command -v apt-get >/dev/null; then apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade; elif command -v dnf >/dev/null; then dnf -y upgrade; elif command -v yum >/dev/null; then yum -y update; fi"
   "clean|系统清理|if command -v apt-get >/dev/null; then apt-get -y autoremove && apt-get clean; elif command -v dnf >/dev/null; then dnf -y autoremove; fi"
-  "bbr|启用 BBR|(sysctl -w net.ipv4.tcp_congestion_control=bbr; sysctl -w net.core.default_qdisc=fq) 2>/dev/null; sysctl -n net.ipv4.tcp_congestion_control"
-  "timezone|设置时区为 Asia/Shanghai|timedatectl set-timezone Asia/Shanghai 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime; date"
-  "docker-ps|Docker 容器状态|docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null || echo 'Docker 未安装'"
-  "fail2ban|安装 fail2ban|if command -v apt-get >/dev/null; then DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban; elif command -v dnf >/dev/null; then dnf -y install fail2ban; fi; systemctl enable --now fail2ban 2>/dev/null; echo done"
-  "swap1g|创建 1G Swap|(swapon --show=NAME | grep -q /swapfile) && echo '已有 swap' || (fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && grep -q /swapfile /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab); free -h | grep -i swap"
+  "bbr|启用 BBR|sysctl -w net.ipv4.tcp_congestion_control=bbr && sysctl -w net.core.default_qdisc=fq && sysctl -n net.ipv4.tcp_congestion_control"
+  "timezone|设置时区为 Asia/Shanghai|(timedatectl set-timezone Asia/Shanghai 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime) && date"
+  "docker-ps|Docker 容器状态|docker ps --format 'table {{.Names}}\t{{.Status}}'"
+  "fail2ban|安装 fail2ban|(if command -v apt-get >/dev/null; then DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban; elif command -v dnf >/dev/null; then dnf -y install fail2ban; else exit 1; fi) && systemctl enable --now fail2ban && echo done"
+  "swap1g|创建 1G Swap|if swapon --show=NAME --noheadings | grep -Fxq /swapfile; then echo '已有 swap'; else test ! -e /swapfile && test ! -L /swapfile && fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && (grep -Eq '^[[:space:]]*/swapfile[[:space:]]' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab); fi"
   "reboot|重启节点|reboot"
 )
 
@@ -309,6 +309,7 @@ cluster_task() {
   msg "  汇总: ${F_GREEN}成功 $ok${F_RESET} / ${F_RED}失败 $fail${F_RESET} （共 $node_total 个节点）"
   _log_write "集群预置任务 [${run_names[*]}] 执行完成: 成功 $ok / 失败 $fail"
   pause
+  [[ $fail -eq 0 ]]
 }
 
 # ---- 游戏服务端 ----
