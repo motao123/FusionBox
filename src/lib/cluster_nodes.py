@@ -112,6 +112,8 @@ def rows(nodes):
 
 
 def write(path, text, exclusive=False):
+    if len(text.encode('utf-8')) > LIMIT:
+        raise ValueError('Serialized node file exceeds 1 MiB')
     path = safe(path, True)
     fd, name = tempfile.mkstemp(prefix='.nodes-', dir=path.parent)
     try:

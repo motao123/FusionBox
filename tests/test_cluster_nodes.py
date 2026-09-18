@@ -123,6 +123,9 @@ class ClusterNodes(unittest.TestCase):
             with self.assertRaises(OSError): self.run_op(confirm=True)
         self.assertEqual(before, (self.old.read_bytes(), self.source.read_bytes()))
         self.assertFalse(list(self.base.glob('.nodes-*')))
+        with self.assertRaisesRegex(ValueError, 'exceeds'):
+            c.write(self.old, 'x' * (c.LIMIT + 1))
+        self.assertEqual(before[0], self.old.read_bytes())
 
     def test_lock_shared_by_import_add_remove_export(self):
         before = self.old.read_bytes()
