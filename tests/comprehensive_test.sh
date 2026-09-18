@@ -12,6 +12,7 @@ if command -v python >/dev/null 2>&1; then
   python tests/test_web_lifecycle.py
   python tests/test_misc_batch.py
   python tests/test_web_tune.py
+  python tests/test_system_tools.py
   python tests/test_docker_diagnostics.py
   python tests/test_archive_transfer.py
   python tests/test_cluster_nodes.py
@@ -33,6 +34,7 @@ else
   python3 tests/test_web_lifecycle.py
   python3 tests/test_misc_batch.py
   python3 tests/test_web_tune.py
+  python3 tests/test_system_tools.py
   python3 tests/test_docker_diagnostics.py
   python3 tests/test_archive_transfer.py
   python3 tests/test_cluster_nodes.py

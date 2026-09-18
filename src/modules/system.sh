@@ -33,6 +33,11 @@ system_main() {
     netopt)           system_netopt "$@" ;;
     fail2ban|f2b)     system_fail2ban "$@" ;;
     env)              system_env "$@" ;;
+    rsync)            system_rsync "$@" ;;
+    file)             system_file "$@" ;;
+    genpass)          system_genpass "$@" ;;
+    gai)              system_gai "$@" ;;
+    locale)           system_locale "$@" ;;
     settings)         system_settings_menu ;;
     tools)            system_tools_menu ;;
     menu|main)        system_menu ;;
@@ -4038,6 +4043,225 @@ system_env() {
       esac ;;
     *) msg_err "未知子命令: $cmd（可用: list/show/check/edit）"; return 1 ;;
   esac
+}
+
+# ---- rsync 同步任务管理 (G16)：持久化任务清单 + 可选 cron ----
+_RSYNC_FILE="/etc/fusionbox/rsync-tasks.conf"
+_RSYNC_CRON_FILE="/etc/cron.d/fusionbox-rsync"
+
+_rsync_check_name() {
+  [[ "$1" =~ ^[a-zA-Z0-9_-]{1,32}$ ]] || { msg_err "任务名无效（字母/数字/_/-，≤32）: $1"; return 1; }
+}
+
+_rsync_check_endpoint() {
+  local ep="$1"
+  if [[ "$ep" == *:* ]]; then
+    [[ "$ep" =~ ^[a-zA-Z0-9._@-]+:/[a-zA-Z0-9._/-]*$ ]] || { msg_err "远端格式无效（应为 user@host:/path）: $ep"; return 1; }
+  else
+    [[ "$ep" == /* ]] || { msg_err "本地路径必须以 / 开头: $ep"; return 1; }
+  fi
+}
+
+_rsync_rewrite_cron() {
+  {
+    echo "# FusionBox managed rsync schedule"
+    grep -v '^#' "$_RSYNC_FILE" 2>/dev/null | awk -F'|' '$5 == "daily" {printf "30 3 * * * root /usr/bin/rsync %s %s %s\n", $4, $2, $3}'
+  } > "$_RSYNC_CRON_FILE"
+  chmod 600 "$_RSYNC_CRON_FILE"
+}
+
+system_rsync() {
+  _require_root
+  local action="${1:-list}"; shift || true
+
+  case "$action" in
+    list)
+      [[ -s "$_RSYNC_FILE" ]] || { msg "  无同步任务（system rsync add 添加）"; return 0; }
+      msg "  ${F_BOLD}rsync 任务:${F_RESET}"
+      awk -F'|' '{printf "    %s: %s -> %s [%s] cron=%s\n", $1, $2, $3, ($4 ~ /delete/ ? "mirror" : "safe"), $5}' "$_RSYNC_FILE"
+      ;;
+    add)
+      local name="${1:-}"
+      _rsync_check_name "$name" || return 1
+      grep -q "^$name|" "$_RSYNC_FILE" 2>/dev/null && { msg_err "任务已存在: $name"; return 1; }
+      local src dest
+      src=$(read_input "源路径（本地绝对路径）")
+      _rsync_check_endpoint "$src" || return 1
+      [[ -e "$src" ]] || { msg_err "源路径不存在: $src"; return 1; }
+      dest=$(read_input "目标（本地 /path 或 user@host:/path）")
+      _rsync_check_endpoint "$dest" || return 1
+      local mirror=0
+      confirm "镜像模式（--delete，目标多余文件将被删除）？" && mirror=1
+      local flags="-a"
+      [[ $mirror -eq 1 ]] && flags="-a --delete"
+      local cron="no"
+      confirm "加入每日 03:30 cron？" && cron="daily"
+      mkdir -p "$(dirname "$_RSYNC_FILE")" && touch "$_RSYNC_FILE" && chmod 600 "$_RSYNC_FILE"
+      printf '%s|%s|%s|%s|%s\n' "$name" "$src" "$dest" "$flags" "$cron" >> "$_RSYNC_FILE"
+      _rsync_rewrite_cron
+      msg_ok "任务已保存: $name"
+      _log_write "rsync 任务已添加: $name"
+      ;;
+    run)
+      local name="${1:-}" row
+      _rsync_check_name "$name" || return 1
+      row=$(grep "^$name|" "$_RSYNC_FILE" 2>/dev/null | tail -1)
+      [[ -n "$row" ]] || { msg_err "任务不存在: $name"; return 1; }
+      local src dest flags
+      src=$(echo "$row" | cut -d'|' -f2); dest=$(echo "$row" | cut -d'|' -f3); flags=$(echo "$row" | cut -d'|' -f4)
+      msg_info "rsync $flags $src $dest"
+      rsync $flags "$src" "$dest"
+      ;;
+    enable|disable)
+      local name="${1:-}" row
+      _rsync_check_name "$name" || return 1
+      row=$(grep "^$name|" "$_RSYNC_FILE" 2>/dev/null | tail -1)
+      [[ -n "$row" ]] || { msg_err "任务不存在: $name"; return 1; }
+      if [[ "$action" == "enable" ]]; then
+        awk -F'|' -v n="$name" 'BEGIN{OFS="|"} $1==n {$5="daily"} {print}' "$_RSYNC_FILE" > "$_RSYNC_FILE.new" && mv "$_RSYNC_FILE.new" "$_RSYNC_FILE"
+      else
+        awk -F'|' -v n="$name" 'BEGIN{OFS="|"} $1==n {$5="no"} {print}' "$_RSYNC_FILE" > "$_RSYNC_FILE.new" && mv "$_RSYNC_FILE.new" "$_RSYNC_FILE"
+      fi
+      chmod 600 "$_RSYNC_FILE"
+      _rsync_rewrite_cron
+      msg_ok "$name cron 已 $action"
+      ;;
+    rm)
+      local name="${1:-}"
+      _rsync_check_name "$name" || return 1
+      grep -q "^$name|" "$_RSYNC_FILE" 2>/dev/null || { msg_err "任务不存在: $name"; return 1; }
+      confirm "确认删除任务 $name（不删除任何文件数据）？" || { msg_info "已取消"; return 1; }
+      sed -i "/^$name|/d" "$_RSYNC_FILE"
+      _rsync_rewrite_cron
+      msg_ok "任务已删除: $name"
+      ;;
+    *)
+      msg_err "未知子命令: $action（可用: list/add/run/enable/disable/rm）"; return 2 ;;
+  esac
+}
+
+# ---- 文件管理器 (G14)：受控的目录/文件操作，删除进回收站 ----
+_FILE_TRASH="/root/.fusionbox_trash/files"
+
+system_file() {
+  _require_root
+  local action="${1:-}"; shift || true
+
+  case "$action" in
+    ls)
+      local d="${1:-}"
+      [[ -d "$d" ]] || { msg_err "目录不存在: $d"; return 1; }
+      ls -la --time-style=long-iso "$d" 2>/dev/null || ls -la "$d"
+      ;;
+    cat)
+      local f="${1:-}"
+      [[ -f "$f" ]] || { msg_err "文件不存在: $f"; return 1; }
+      cat "$f"
+      ;;
+    mkdir)
+      local d="${1:-}"
+      [[ "$d" == /* ]] || { msg_err "请使用绝对路径"; return 1; }
+      mkdir -p "$d" && msg_ok "已创建 $d"
+      ;;
+    cp|mv)
+      local src="${1:-}" dest="${2:-}"
+      [[ $# -eq 2 && -e "$src" && -n "$dest" ]] || { msg_err "用法: system file $action <源> <目标>"; return 1; }
+      if [[ "$action" == "cp" ]]; then
+        cp -a "$src" "$dest" && msg_ok "已复制"
+      else
+        mv "$src" "$dest" && msg_ok "已移动"
+      fi
+      ;;
+    del)
+      local f="${1:-}"
+      [[ -e "$f" || -L "$f" ]] || { msg_err "路径不存在: $f"; return 1; }
+      [[ "$f" != "/" ]] || { msg_err "拒绝删除 /"; return 1; }
+      mkdir -p "$_FILE_TRASH"
+      local name; name="$(basename "$f")_$(date +%s)"
+      mv "$f" "$_FILE_TRASH/$name" && msg_ok "已移入回收站: $_FILE_TRASH/$name（fusionbox system trash 可管理）"
+      ;;
+    chmod)
+      local mode="${1:-}" f="${2:-}"
+      [[ "$mode" =~ ^[0-7]{3,4}$ && -e "$f" ]] || { msg_err "用法: system file chmod <mode 如 644> <路径>"; return 1; }
+      chmod "$mode" "$f" && msg_ok "权限已更新"
+      ;;
+    tar|untar)
+      local src="${1:-}" dest="${2:-}"
+      if [[ "$action" == "tar" ]]; then
+        [[ -e "$src" && -n "$dest" ]] || { msg_err "用法: system file tar <目录或文件> <目标.tar.gz>"; return 1; }
+        [[ "$dest" == *.tar.gz ]] || dest="$dest.tar.gz"
+        tar czf "$dest" -C "$(dirname "$src")" "$(basename "$src")" && msg_ok "已打包: $dest"
+      else
+        [[ -f "$src" && -d "$dest" ]] || { msg_err "用法: system file untar <包.tar.gz> <目标目录>"; return 1; }
+        tar xzf "$src" -C "$dest" && msg_ok "已解压到 $dest"
+      fi
+      ;;
+    send)
+      local src="${1:-}" dest="${2:-}"
+      [[ $# -eq 2 && -e "$src" ]] || { msg_err "用法: system file send <本地文件> [user@]host:/remote/path"; return 2; }
+      [[ "$dest" == *:* ]] || { msg_err "远程目标格式: user@host:/path"; return 2; }
+      scp -p "$src" "$dest" && msg_ok "已发送"
+      ;;
+    *)
+      msg_err "未知子命令: $action（可用: ls/cat/mkdir/cp/mv/del/chmod/tar/untar/send）"; return 2 ;;
+  esac
+}
+
+# ---- 小工具 (G22)：密码生成器 / IPv4-IPv6 优先级 / locale ----
+_genpass_raw() {
+  head -c 256 /dev/urandom 2>/dev/null
+}
+
+system_genpass() {
+  local len="${1:-20}"
+  [[ "$len" =~ ^[0-9]+$ ]] && [ "$len" -ge 8 ] && [ "$len" -le 128 ] || { msg_err "长度需为 8-128"; return 1; }
+  local pw
+  pw=$(_genpass_raw | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c "$len")
+  [[ -n "$pw" ]] && msg "$pw" || { msg_err "生成失败"; return 1; }
+}
+
+system_gai() {
+  _require_root
+  local action="${1:-status}"
+  local f="/etc/gai.conf"
+  case "$action" in
+    status)
+      if grep -q "^precedence ::ffff:0:0/96  100" "$f" 2>/dev/null; then
+        msg "  当前: IPv4 优先"
+      else
+        msg "  当前: IPv6 优先（gai.conf 默认）"
+      fi
+      ;;
+    v4-first)
+      [[ -f "$f" ]] || { msg_err "/etc/gai.conf 不存在"; return 1; }
+      cp -p "$f" "$f.fb-bak-$(date +%s)" 2>/dev/null
+      grep -q "^precedence ::ffff:0:0/96  100" "$f" || \
+        printf '# FusionBox: prefer IPv4\nprecedence ::ffff:0:0/96  100\n' >> "$f"
+      msg_ok "已设为 IPv4 优先（新连接生效）"
+      ;;
+    default)
+      [[ -f "$f" ]] || { msg_err "/etc/gai.conf 不存在"; return 1; }
+      cp -p "$f" "$f.fb-bak-$(date +%s)" 2>/dev/null
+      sed -i '/^# FusionBox: prefer IPv4$/d; /^precedence ::ffff:0:0\/96  100$/d' "$f"
+      msg_ok "已恢复 gai.conf 默认（IPv6 优先）"
+      ;;
+    *) msg_err "未知子命令（可用: status/v4-first/default）"; return 2 ;;
+  esac
+}
+
+system_locale() {
+  _require_root
+  local lang="${1:-}"
+  if [[ -z "$lang" ]]; then
+    msg "  当前: $LANG"
+    msg "  可用: $(locale -a 2>/dev/null | grep -iE 'zh_CN|en_US' | tr '\n' ' ')"
+    return 0
+  fi
+  [[ "$lang" =~ ^[a-zA-Z0-9_.@-]+$ ]] || { msg_err "locale 格式无效"; return 1; }
+  command -v update-locale &>/dev/null || { msg_err "需要 update-locale（systemd/Debian 系）"; return 1; }
+  locale-gen "$lang" 2>/dev/null || msg_warn "locale-gen 未能生成 $lang（可能已存在）"
+  update-locale "LANG=$lang" && msg_ok "默认语言已设为 $lang（重新登录生效）"
+  _log_write "系统语言切换: $lang"
 }
 
 # ---- Help ----
