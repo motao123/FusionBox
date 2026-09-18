@@ -498,7 +498,8 @@ market_category() {
 market_help() {
   msg_title "应用市场 帮助"
   msg ""
-  msg "  fusionbox market managed          受管 Nginx catalog/install/reinstall/status/update/uninstall（--help）"
+  msg "  fusionbox market managed domain nginx --domain example.com --confirm   HTTP-only owned host mapping"
+  msg "  fusionbox market managed domain nginx --remove-domain --confirm  remove owned mapping"
   msg "  reinstall nginx --confirm --reuse-data  确认复用卸载保留数据"
   msg "  install/reinstall --auto-port     最多探测 20 个 localhost 端口（不预留）"
   msg "  fusionbox market list             列出所有可用应用"
@@ -514,10 +515,16 @@ market_help() {
 # ---- Interactive Menu ----
 market_managed_menu() {
   _require_root
-  local action port
+  local action port domain
   local -a args=()
-  read -r -p "操作 catalog/status/install/reinstall/update/uninstall: " action || return 1
+  read -r -p "操作 catalog/status/install/reinstall/update/uninstall/domain: " action || return 1
   case "$action" in
+    domain)
+      msg_warn "仅 HTTP，需已有宿主 Nginx conf.d include；暂停其他配置写入者；TLS 不可用。"
+      read -r -p "域名（留空删除自有映射）: " domain || return 1
+      confirm "确认修改并校验/重载宿主 Nginx？" || return 1
+      args+=(--confirm)
+      if [[ -n "$domain" ]]; then args+=(--domain "$domain"); else args+=(--remove-domain); fi ;;
     catalog|status) ;;
     install|reinstall|update|uninstall)
       confirm "确认执行 $action？可能停机；卸载保留数据；失败需检查恢复状态" || return 1

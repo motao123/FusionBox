@@ -11,6 +11,7 @@ import uuid
 
 import compose_backup as cb
 from backup_jobs import atomic
+import market_domain
 
 OWNER = 'fusionbox-market-v1'
 CATALOG = {'nginx': {'image': 'nginx:stable-alpine', 'port': 8080, 'bytes': 256 * 1024 * 1024}}
@@ -140,6 +141,12 @@ def reinstall(registry, record, port, automatic):
     if cb.js('image', 'inspect', image)[0]['Id'] != image:
         raise ValueError('Retained image identity mismatch')
     original = json.loads(json.dumps(record))
+    # A retained host mapping reserves its upstream identity logically. Never
+    # silently route it to a different port during reinstall.
+    if 'domain' in record['market']:
+        market_domain.owned(record)
+        if automatic or (port is not None and port != record['market']['port']):
+            raise ValueError('Remove domain mapping before changing its retained upstream port or using --auto-port')
     record['market']['port'] = select_port(record['market']['port'] if port is None else port, automatic)
     try:
         write_compose(record)
@@ -158,6 +165,9 @@ def reinstall(registry, record, port, automatic):
         finally:
             write_compose(original)
         raise RuntimeError('Reinstall failed; newly created containers removed; original registry/config/data retained') from None
+    if 'domain' in record['market']:
+        mapping = record['market']['domain']
+        market_domain.change(registry, record, mapping['name'], mapping['listen'])
     print('Reinstall completed; healthy; localhost port ' + str(record['market']['port']))
 
 
@@ -184,7 +194,7 @@ def health(record):
     return state.get('Health', {}).get('Status', 'unknown')
 
 
-def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False):
+def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False, domain=None, listen=80):
     if app not in CATALOG:
         raise ValueError('Unsupported managed application')
     project = project or 'fb-market-' + app
@@ -215,6 +225,10 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             if not registry.exists():
                 raise ValueError('Not managed; legacy/native/unknown installations are never adopted')
             record = load(registry, project)
+            if action != 'status' and (cb.BASE / (project + '.domain-recovery.json')).exists():
+                raise ValueError('Pending domain recovery journal; manual recovery required')
+            if 'domain' in record['market']:
+                market_domain.owned(record)
             if action == 'reinstall':
                 if not reuse:
                     raise ValueError('Explicit --reuse-data required for retained content')
@@ -224,10 +238,20 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             if action == 'status':
                 print('managed-compose', app, record['market']['state'], health(record),
                       'http://127.0.0.1:' + str(record['market']['port']))
+                market_domain.status(record)
                 if record['market']['state'] == 'uninstalled':
                     print('Retained data: reinstall nginx --confirm --reuse-data [--auto-port]')
                 return
+            if action == 'domain':
+                if domain and (record['market']['state'] != 'healthy' or health(record) != 'healthy'):
+                    raise ValueError('Domain activation requires healthy managed app')
+                market_domain.change(registry, record, domain, listen)
+                return
             if action == 'uninstall':
+                if 'domain' in record['market']:
+                    mapping = record['market']['domain']
+                    market_domain.change(registry, record, mapping['name'], mapping['listen'], enabled=False)
+                    record = load(registry, project)
                 for c in containers:
                     cb.docker('stop', c['Id'])
                     cb.docker('rm', c['Id'])
@@ -275,12 +299,15 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
 def main():
     os.umask(0o077)
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall'))
+    p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall', 'domain'))
     p.add_argument('app', nargs='?', default='nginx', choices=tuple(CATALOG))
     p.add_argument('--port', type=int, help='Preferred port; default 8080 or retained port for reinstall')
     p.add_argument('--auto-port', action='store_true', help='Probe at most 20 localhost ports; not a reservation')
     p.add_argument('--reuse-data', action='store_true', help='Explicitly reuse owned retained data on reinstall')
     p.add_argument('--confirm', action='store_true')
+    p.add_argument('--domain', help='Managed HTTP-only DNS name (domain action)')
+    p.add_argument('--listen', type=int, default=80, help='Host HTTP port for domain mapping')
+    p.add_argument('--remove-domain', action='store_true', help='Remove the owned domain mapping')
     args = p.parse_args()
     if args.action == 'catalog':
         print('nginx: static web server; managed Compose; localhost only; persistent read-only content; 256 MiB free disk; Docker Compose v2/Python 3/Linux required')
@@ -289,7 +316,14 @@ def main():
         p.error('Port options apply only to install/reinstall')
     if args.reuse_data and args.action != 'reinstall':
         p.error('--reuse-data applies only to reinstall')
-    operate(args.action, args.app, args.port, args.confirm, automatic=args.auto_port, reuse=args.reuse_data)
+    if args.action == 'domain' and not args.confirm:
+        p.error('Domain mapping requires explicit --confirm')
+    if args.action != 'domain' and (args.domain or args.remove_domain):
+        p.error('--domain/--remove-domain apply only to domain')
+    if args.action == 'domain' and (args.domain is None) == (not args.remove_domain):
+        p.error('Choose exactly one of --domain NAME or --remove-domain')
+    operate(args.action, args.app, args.port, args.confirm, automatic=args.auto_port, reuse=args.reuse_data,
+            domain=None if args.remove_domain else args.domain, listen=args.listen)
 
 
 if __name__ == '__main__':

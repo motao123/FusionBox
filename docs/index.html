@@ -137,9 +137,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.6.1 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.7.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖常见运维场景，一行命令安装。v1.6.1 完善受管 Nginx 生命周期：显式复用卸载保留数据重装，验证配置/原镜像/卷归属；失败保留恢复状态。自动端口最多探测 20 个 localhost 端口，不承诺预留，真实绑定竞争失败不会报告成功。复用 Compose 私有登记与全局锁，健康验证、镜像更新失败回滚、卸载保留数据。Linux 42 基础 + 116 行为测试；真实市场夹具验证保留内容重装与端口竞争清理，Compose 13 断言保持通过。目录仅 Nginx，域名访问、更多应用和迁移仍待实现。既有 Compose 恢复与回滚双重失败保持停止；真实 ACME、Cloudflare/TG 未验证。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
+        <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖常见运维场景。v1.7.0 新增受管 Nginx HTTP-only 域名入口：独立自有宿主配置、域名冲突检测、暂存与整体验证、重载失败回滚和恢复记录。更新保留映射；卸载入口暂停为 503，重装恢复原端口映射。本机上游仍可访问，不声称防火墙隔离；TLS 明确不可用，DNS/公网可达性未验证。Linux 42 基础 + 124 行为测试，真实专用 Nginx 夹具 12 项检查，Compose 13 与市场 20 项夹具。更多应用、迁移、真实 ACME、Cloudflare/TG 仍待验证。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>
@@ -238,7 +238,7 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
         <p class="desc">轻量、实用、可靠 &mdash; 让服务器管理更简单</p>
       </div>
       <div class="fg">
-        <div class="fc">纯 Bash 实现，零外部依赖</div>
+        <div class="fc">Bash 主程序；备份与受管应用使用 Python 3 标准库</div>
         <div class="fc">支持 Debian / Ubuntu / CentOS / Fedora / Alpine</div>
         <div class="fc">amd64 + arm64 双架构</div>
         <div class="fc">中文界面，菜单 + CLI 双模式</div>

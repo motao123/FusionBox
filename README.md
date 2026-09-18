@@ -4,7 +4,25 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
-## v1.6.1 保留数据重装与端口探测
+## v1.7.0 受管应用 HTTP 域名入口
+
+受管 Nginx 支持独立自有宿主 Nginx 配置，不复用旧站点写入器。依赖 Linux、Python 3 标准库、Docker Compose v2 与已运行的宿主 Nginx；宿主配置必须已有 `include /etc/nginx/conf.d/*.conf;`。不安装/改写主配置、不修改防火墙。操作前暂停其他 Nginx 配置写入者，FusionBox 的锁只能协调自身操作。
+
+```bash
+fusionbox market managed domain nginx --domain app.example.com --confirm
+fusionbox market managed status nginx
+fusionbox market managed domain nginx --remove-domain --confirm
+# 可选独立 HTTP 端口（默认 80）
+fusionbox market managed domain nginx --domain app.example.com --listen 18080 --confirm
+```
+
+严格限制小写 ASCII DNS 域名、固定 `/` 路径、来自受管登记的 `127.0.0.1` 上游；拒绝 URL/IP/通配符/配置注入与未知配置覆盖。读取 `nginx -T` 检测其他站点域名冲突；正则 server_name 保守拒绝。配置路径固定为 `/etc/nginx/conf.d/fusionbox-market-fb-market-nginx.conf`，校验 token 与完整内容；先暂存 `nginx -t -c`，再校验整体配置并重载。失败恢复旧配置并再次校验/重载；双重失败保留 `.domain-recovery.json` 并阻止后续变更，需人工核对 before/after、实际文件与运行配置后恢复。强杀/断电不保证跨文件原子性。
+
+更新保留映射；卸载先将自有入口改为 503，保留域名设置，避免端口被其他进程复用时错误转发；重装沿用原上游端口并恢复映射。存在映射时禁止更换端口或 `--auto-port`，需先显式移除映射。应用重装成功但域名重载失败仍返回失败，应用可能运行而入口保持暂停，按恢复信息处理。
+
+这是 **HTTP-only 域名映射**，不是 HTTPS/ACME 集成；TLS 明确不可用，没有签发或验证真实证书。DNS/公网可达性需自行配置和验证。默认直接访问仍仅限 localhost，域名映射不会封锁本机上游访问，不声称 `domain_only` 防火墙隔离。市场菜单 6、help、status 均提供入口。更多应用、迁移、真实 ACME/Cloudflare/Telegram 仍待后续。
+
+## v1.6.1 保留数据重装与端口探测（历史）
 
 受管 Nginx 新增 `reinstall --confirm --reuse-data`，只接受已卸载且无容器、归属正确的保留卷、未改动配置与可用的原镜像 ID；不拉取新镜像、不新建替代数据卷。成功后恢复服务并保留静态内容；失败尝试清理本次创建且归属验证通过的容器，恢复原配置，保留原登记/数据。清理失败明确要求人工检查，不删除未知资源。强杀/断电仍需人工检查，不提供跨文件原子事务。
 
