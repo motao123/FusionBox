@@ -4,6 +4,23 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.21.0 Web 调优档位与 brotli/WP-Redis（G45/G46/G47/G48）
+
+```bash
+fusionbox web tune show                  # 查看当前 nginx/PHP-FPM/MySQL 关键参数
+fusionbox web tune standard|high         # 档位切换（修改前自动备份，可 restore）
+fusionbox web tune restore               # 恢复最近一次调优备份
+fusionbox web brotli status|on|off       # brotli 压缩开关（Ubuntu brotli 模块包）
+fusionbox web wp-redis <domain>          # WordPress Redis 预配置
+```
+
+- **tune 档位**：nginx worker_connections（1024/4096）+ gzip（high 档）；PHP-FPM 池按总内存计算（standard 内存÷80、high 内存÷40，下限 5）；MySQL innodb_buffer_pool_size（128M/1G）**只写配置不自动重启数据库**。修改前备份到 `/etc/fusionbox/tune-backups/latest`（manifest 映射），`nginx -t`/`php-fpm -t` 校验失败自动回滚；restore 按 manifest 逐文件恢复并重载。
+- **brotli**：安装 Ubuntu 打包的 `libnginx-mod-http-brotli-filter`，写自有 `conf.d/fusionbox-brotli.conf`，`nginx -t` 失败自动移除；off 仅删自有文件。zstd 无稳定发行版模块，明确不提供。
+- **wp-redis**：检测 wp-config.php 标准锚点注入 `WP_REDIS_HOST`/`WP_CACHE`（幂等），redis 可用性检查 + 可选安装 redis-server/php-redis，`php -l` 校验失败回滚；激活缓存还需 WP 内 Redis Object Cache 插件（不代装）。
+- 真机验证 24/24：真实 nginx 档位修改/备份/恢复、真实 brotli 模块安装并实测 `Content-Encoding: br` 响应、真实 redis 安装 + wp-config 注入与幂等、门禁拒绝。
+
+Linux 验证目标：42 基础 + 517 行为（新增 61），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；真机 24/24。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.20.0 受管市场模板扩容：Uptime-Kuma 与 ddns-go（G51/G52 部分）
 
 在受管市场（`market managed`）新增两个单卷、localhost 发布的模板，沿用既有登记/锁/端口预检/健康检查/回滚框架：
@@ -445,6 +462,8 @@ fusionbox panels docker uninstall   # Docker 一键卸载 (YES 门禁)
 fusionbox workspace work            # 编号工作区 (tmux work1-10, 命令注入)
 fusionbox cluster sshout            # SSH 出站收藏 (add/list/rm/connect)
 fusionbox market managed install uptime-kuma / ddns-go   # 受管模板扩容
+fusionbox web tune                      # 调优档位 (standard/high/restore)
+fusionbox web brotli                    # brotli 压缩开关
 fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
 fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)
 fusionbox system sshkey          # SSH 密钥管理

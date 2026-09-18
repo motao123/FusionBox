@@ -1,4 +1,8 @@
-# v1.20.0 受管市场模板扩容（部分）
+# v1.21.0 Web 调优档位与 brotli/WP-Redis
+
+G45/G46/G47/G48 限定范围完成：`web tune`（standard/high 档位事务化修改 nginx/PHP-FPM/MySQL，manifest 备份 + nginx -t/php-fpm -t 校验回滚 + restore；MySQL 仅写配置不自动重启数据库）、`web brotli`（Ubuntu brotli 模块包 + 自有 conf，nginx -t 回滚；zstd 无稳定包不提供）、`web wp-redis`（wp-config 锚点注入，幂等，php -l 校验回滚，Redis Object Cache 插件需用户自装）。真机验证 24 项全过：真实档位修改/备份/恢复、真实 brotli 模块 + Content-Encoding: br 响应实测、真实 redis + wp-config 注入。最终 Linux 验证目标：42 基础 + 517 行为（新增 61）。剩余：G16 rsync 任务、G14 文件管理器、G22 小工具、G66 自动更新、G51 NewAPI。
+
+## v1.20.0 受管市场模板扩容（历史）
 
 G51/G52 限定范围部分完成：受管目录新增 `uptime-kuma`（监控面板，1.5GiB 预检，镜像自带 node healthcheck——实测镜像无 wget 后纠正）与 `ddns-go`（DDNS 更新器，512MiB 预检）。两者均为单具名卷、localhost 发布、digest 固定镜像（实拉验证）、domain 映射明确拒绝。真机验证：两类应用各一轮完整生命周期（安装/健康/状态/HTTP 服务重定向语义/重复与端口占用拒绝/卸载保留卷）共 13 项，测试产物（卷/登记）已清理。最终 Linux 验证目标：42 基础 + 456 行为。剩余：G51-G56 其余应用逐项扩容、Oracle 生态（G32-34）、rsync 任务/文件管理器（G16/G14）、工作区 SSH 常驻模式。
 
@@ -177,10 +181,10 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G42 | 站点访问日志分析（goaccess 报表） | 受管范围完成 | v1.18.0 web goaccess：真实安装+报表生成，/root 私有存放 |
 | G43 | 防 CC（fail2ban nginx filter + DOCKER-USER chain + Cloudflare action） | 部分实现 | 宿主 Nginx 4xx fail2ban；未覆盖 DOCKER-USER/真实流量测试 |
 | G44 | Cloudflare 联动（负载>5 自动 under_attack + CF API 封 IP） | 凭据依赖 | CF 封禁辅助脚本/开盾；保存初始安全级别；未实测 API |
-| G45 | 优化模式（标准/高性能切换：worker_connections/www.conf/MySQL/WP 内存） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G46 | brotli/zstd 压缩开关 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G47 | WordPress + Redis 预配置（wp-config 注入缓存参数） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G48 | 运行时调优模板注入（opcache/JIT、MySQL 4096M、PHP-FPM 池、valkey） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G45 | 优化模式（标准/高性能切换） | 受管范围完成 | v1.21.0 web tune standard/high：真机 nginx 档位验证；MySQL 只写配置不自动重启 |
+| G46 | brotli/zstd 压缩开关 | brotli 完成 | v1.21.0 web brotli：真机实测 Content-Encoding: br；zstd 无稳定发行版模块，不提供 |
+| G47 | WordPress + Redis 预配置 | 受管范围完成 | v1.21.0 web wp-redis：注入+幂等+php -l 回滚（真机 redis 安装+注入）；Object Cache 插件需 WP 内自装 |
+| G48 | 运行时调优模板注入 | 并入 tune 档位 | v1.21.0 tune 档位覆盖 PHP-FPM 池/MySQL buffer/nginx；opcache 细项与 valkey 未单独覆盖 |
 | G49 | 组件热更新（单独升级 nginx/mysql/php/redis） | 受管范围完成 | v1.18.0 web upgrade：真机 nginx 升级路径验证；失败保持原版本，不提供降级 |
 | G50 | LDNMP 环境卸载 | 受管范围完成 | v1.18.0 uninstall-lnmp：真机完整卸载（备份/purge/wipe），验证后恢复原状 |
 | G51 | AI/LLM 类应用 | 未实现 | 仍为 0；模板扩容先覆盖监控/DDNS 类，AI 类需逐项镜像与资源评估 |
