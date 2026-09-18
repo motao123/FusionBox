@@ -107,7 +107,8 @@ def run():
                 assert before == (registry.read_bytes(), Path(r['compose']).read_bytes())
                 assert not m.resources(record())
                 assert (volume / 'index.html').read_text() == 'FusionBox managed persistent content\n'
-                m.operate('reinstall', accepted=True, project=project, reuse=True)
+                m.operate('reinstall', accepted=True, project=project, reuse=True, automatic=True)
+                port = record()['market']['port']
                 assert b'FusionBox managed persistent content' in content()
                 operation('uninstall')
                 print('REAL MARKET: 20 assertions passed; retained-data reinstall, occupied-port fallback, real bind race cleanup and retry')
