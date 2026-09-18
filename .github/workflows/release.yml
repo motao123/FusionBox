@@ -35,7 +35,7 @@ jobs:
           sudo install -d -m 0755 /run/sshd
           sudo python3 tests/archive_ssh_fixture.py --run
 
-      - name: Run isolated Docker lifecycle fixtures
+      - name: Run isolated Docker diagnostics and lifecycle fixtures
         run: |
           sudo python3 tests/compose_docker_fixture.py --run
           sudo python3 tests/market_docker_fixture.py --run

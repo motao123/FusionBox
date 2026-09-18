@@ -26,6 +26,8 @@ panels_docker() {
   local action="${1:-menu}"
 
   case "$action" in
+    summary)      shift; panels_docker_summary "$@" ;;
+    detail)       shift; panels_docker_detail "$@" ;;
     install)      panels_docker_install ;;
     ps)           panels_docker_ps ;;
     images)       panels_docker_images ;;
@@ -35,6 +37,93 @@ panels_docker() {
     menu|"")      panels_docker_menu ;;
     *)            panels_docker_menu ;;
   esac
+}
+
+# Diagnostics never print Docker error bodies (which can contain endpoint credentials).
+_panels_docker_read() {
+  local output
+  if ! command -v docker >/dev/null 2>&1; then
+    printf '%s\n' 'Docker unavailable: CLI not installed' >&2; return 1
+  fi
+  if ! output=$(docker "$@" 2>/dev/null); then
+    printf '%s\n' 'Docker query failed: check daemon connectivity, permissions, context and object existence; data unavailable' >&2
+    return 1
+  fi
+  printf '%s\n' "$output"
+}
+
+panels_docker_summary() {
+  local mode="${1:-}" info states networks volumes disk containers images line
+  local total=0 running=0 paused=0 exited=0 created=0 restarting=0 dead=0 removing=0 stopped=0 nc=0 vc=0
+  [[ $# -le 1 && ( -z "$mode" || "$mode" == --all ) ]] || {
+    printf '%s\n' 'Usage: fusionbox panels docker summary [--all]' >&2; return 2;
+  }
+  # Collect everything before publishing; failed queries never become zero counts.
+  info=$(_panels_docker_read info --format 'Engine={{.ServerVersion}} Images={{.Images}}') || return 1
+  states=$(_panels_docker_read container ls -a --format '{{.State}}') || return 1
+  networks=$(_panels_docker_read network ls --no-trunc --format '{{.ID}} {{json .Name}} {{.Driver}} {{.Scope}}') || return 1
+  volumes=$(_panels_docker_read volume ls --format '{{json .Name}} {{.Driver}}') || return 1
+  disk=$(_panels_docker_read system df) || return 1
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    total=$((total + 1))
+    case "$line" in
+      running) running=$((running + 1)) ;; paused) paused=$((paused + 1)) ;;
+      exited) exited=$((exited + 1)); stopped=$((stopped + 1)) ;;
+      created) created=$((created + 1)); stopped=$((stopped + 1)) ;;
+      dead) dead=$((dead + 1)); stopped=$((stopped + 1)) ;;
+      restarting) restarting=$((restarting + 1)) ;; removing) removing=$((removing + 1)) ;;
+      *) printf '%s\n' 'Docker returned an unknown container state; summary unavailable' >&2; return 1 ;;
+    esac
+  done <<< "$states"
+  while IFS= read -r line; do [[ -z "$line" ]] || nc=$((nc + 1)); done <<< "$networks"
+  while IFS= read -r line; do [[ -z "$line" ]] || vc=$((vc + 1)); done <<< "$volumes"
+  if [[ "$mode" == --all ]]; then
+    containers=$(_panels_docker_read container ls -a --no-trunc --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Ports}}') || return 1
+    images=$(_panels_docker_read image ls -a --no-trunc --format 'table {{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}') || return 1
+  fi
+  printf '%s\n' "$info" "Containers=$total Running=$running Paused=$paused Stopped=$stopped Exited=$exited Created=$created Dead=$dead Restarting=$restarting Removing=$removing" "Networks=$nc Volumes=$vc" 'Stopped = created + exited + dead; paused/restarting/removing are separate.' 'Sequential engine observations, not an atomic snapshot. Images = engine image count, not tag rows.' 'Disk usage (Docker shared/reclaimable accounting, not host free space):' "$disk"
+  if [[ "$mode" == --all ]]; then
+    printf '\n%s\n' 'Containers:' "$containers" 'Images (multiple tags may share an ID):' "$images" 'Networks (ID/name/driver/scope):' "$networks" 'Volumes (name/driver):' "$volumes"
+  fi
+}
+
+panels_docker_detail() {
+  local target="${1:-}" detail stats state id
+  [[ $# -eq 1 && ${#target} -le 255 && "$target" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || {
+    printf '%s\n' 'Usage: fusionbox panels docker detail CONTAINER_ID_OR_NAME (simple name or ID only)' >&2; return 2;
+  }
+  # Whitelist fields; never expose Env, command arguments, labels, health output or raw inspect.
+  detail=$(_panels_docker_read container inspect --format 'ID={{.Id}}
+Name={{json .Name}}
+ImageReference={{json .Config.Image}}
+ImageID={{.Image}}
+State={{.State.Status}}
+Running={{.State.Running}} Paused={{.State.Paused}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}}
+Created={{.Created}} Started={{.State.StartedAt}} Finished={{.State.FinishedAt}}
+Health={{if index .State "Health"}}{{.State.Health.Status}}{{else}}not-configured{{end}}
+RestartPolicy={{.HostConfig.RestartPolicy.Name}} MaximumRetryCount={{.HostConfig.RestartPolicy.MaximumRetryCount}} RestartCount={{.RestartCount}}
+PersistedLimits: MemoryBytes={{.HostConfig.Memory}} MemoryReservationBytes={{.HostConfig.MemoryReservation}} MemorySwapBytes={{.HostConfig.MemorySwap}} NanoCPUs={{.HostConfig.NanoCpus}} CpuQuota={{.HostConfig.CpuQuota}} CpuPeriod={{.HostConfig.CpuPeriod}} CpuShares={{.HostConfig.CpuShares}} CpusetCpus={{json .HostConfig.CpusetCpus}} PidsLimit={{.HostConfig.PidsLimit}}
+ConfiguredPorts={{json .HostConfig.PortBindings}}
+RuntimePorts={{json .NetworkSettings.Ports}}
+Mounts:{{range .Mounts}}
+  Type={{.Type}} Name={{json (index . "Name")}} Source={{json .Source}} Destination={{json .Destination}} RW={{.RW}}{{end}}
+Networks:{{range $name, $net := .NetworkSettings.Networks}}
+  Name={{json $name}} ID={{$net.NetworkID}} IP={{json $net.IPAddress}} IPv6={{json $net.GlobalIPv6Address}} Gateway={{json $net.Gateway}}{{end}}
+Environment=[redacted: all values omitted]' -- "$target") || return 1
+  [[ -n "$detail" ]] || return 1
+  printf '%s\n' "$detail" 'Limit semantics: MemoryBytes=0 means no container memory cap; NanoCPUs=0 means no NanoCPU cap (quota/cpuset may still limit CPU); CpuQuota<=0 means no quota; CpuShares=0 means default weight; PidsLimit<=0/unset means no explicit PID cap. MemorySwap=0 is Docker default, -1 unlimited swap. Host/parent cgroups can impose further limits.'
+  state=$(printf '%s\n' "$detail" | grep '^State=')
+  id=${detail%%$'\n'*}; id=${id#ID=}
+  if [[ "$state" == State=running ]]; then
+    stats=$(_panels_docker_read container stats --no-stream --format 'RuntimeUsage: CPU={{.CPUPerc}} Memory={{.MemUsage}} MemoryPercent={{.MemPerc}} PIDs={{.PIDs}} NetworkIO={{.NetIO}} BlockIO={{.BlockIO}}' -- "$id") || {
+      printf '%s\n' 'RuntimeUsage=unavailable (container may have changed state)' >&2; return 1;
+    }
+    [[ -n "$stats" ]] || { printf '%s\n' 'RuntimeUsage=unavailable' >&2; return 1; }
+    printf '%s\n' "$stats" 'Runtime memory limit is engine-reported; CPU percent is usage, not a CPU limit.'
+  else
+    printf '%s\n' 'RuntimeUsage=not sampled (container not running or paused); persisted limits remain above.'
+  fi
 }
 
 panels_docker_install() {
@@ -817,6 +906,7 @@ panels_docker_container_mgmt() {
   msg "  6) 进入容器终端"
   msg "  7) 查看资源占用"
   msg "  8) 设置自动重启"
+  msg "  9) 只读容器详情（环境变量隐藏）"
   msg "  0) 返回"
   read -p "请选择: " cm_choice
 
@@ -833,6 +923,7 @@ panels_docker_container_mgmt() {
     5) read -p "容器名称: " c; read -p "行数 (默认50): " n; docker logs --tail "${n:-50}" "$c" 2>/dev/null ;;
     6) read -p "容器名称: " c; docker exec -it "$c" /bin/bash 2>/dev/null || docker exec -it "$c" /bin/sh 2>/dev/null ;;
     7) docker stats --no-stream 2>/dev/null ;;
+    9) read -r -p "容器名称或 ID: " c; panels_docker_detail "$c" || return $? ;;
     8)
       read -p "容器名称: " c
       msg "  可选重启策略: no / on-failure / always / unless-stopped"
@@ -931,9 +1022,12 @@ panels_docker_menu() {
     msg ""
     if command -v docker &>/dev/null; then
       msg "  Docker: $(docker --version 2>/dev/null)"
-      local running=$(docker ps -q 2>/dev/null | wc -l)
-      local total=$(docker ps -aq 2>/dev/null | wc -l)
-      msg "  容器: $running 运行中, $total 总计"
+      local counts
+      if counts=$(_panels_docker_read info --format 'Containers={{.Containers}} Running={{.ContainersRunning}} Paused={{.ContainersPaused}} Stopped={{.ContainersStopped}}'); then
+        printf '  %s\n' "$counts"
+      else
+        msg "  容器计数不可用（不是零）"
+      fi
     else
       msg "  Docker 未安装"
     fi
@@ -951,9 +1045,11 @@ panels_docker_menu() {
     msg "  ${F_GREEN}11${F_RESET}) 网络管理"
     msg "  ${F_GREEN}12${F_RESET}) 卷管理"
     msg "  ${F_GREEN}13${F_RESET}) 镜像加速 / 换源"
+    msg "  ${F_GREEN}14${F_RESET}) 只读全局总览（含完整资源列表）"
+    msg "  ${F_GREEN}15${F_RESET}) 只读容器详情（环境变量隐藏）"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-13]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-15]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$dk_choice" in
       1) panels_docker_install; pause ;;
       2) panels_docker_ps ;;
@@ -968,6 +1064,8 @@ panels_docker_menu() {
       11) panels_docker_network ;;
       12) panels_docker_volumes ;;
       13) panels_docker_mirror ;;
+      14) panels_docker_summary --all; pause ;;
+      15) local target; read -r -p "容器名称或 ID: " target; panels_docker_detail "$target"; pause ;;
       0) break ;;
     esac
   done
@@ -1218,6 +1316,8 @@ panels_help() {
   msg ""
   msg "  fusionbox panels compose-backup   受管 Compose register/backup/restore（--help）"
   msg "  fusionbox panels docker           Docker 管理"
+  msg "  fusionbox panels docker summary [--all]  只读计数/磁盘用量；--all 完整列表"
+  msg "  fusionbox panels docker detail NAME_OR_ID  只读详情/限额/占用；环境变量隐藏"
   msg "  fusionbox panels docker mirror    Docker 镜像加速 / 换源"
   msg "  fusionbox panels mirror           Docker 镜像加速 / 换源"
   msg "  fusionbox panels mirror test      测试拉取 hello-world"

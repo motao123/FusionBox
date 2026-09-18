@@ -4,7 +4,23 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
-## v1.11.1 校验归档 SSH 异地传输
+## v1.12.0 Docker 只读诊断（G26/G31 限定范围）
+
+```bash
+fusionbox panels docker summary          # 引擎镜像数、容器状态计数、网络/卷数、磁盘用量
+fusionbox panels docker summary --all    # 另列全部容器、镜像标签、网络、卷
+fusionbox panels docker detail NAME_OR_ID
+```
+
+Docker 菜单 14/15、容器管理 9 提供相同入口；已有日志/终端/stats 入口保留。使用 Bash 与 Docker 原生格式模板，无新增 Python 运行依赖。沿用 CLI 的 Docker context/环境与主入口 root 要求，不安装、不启动 Docker、不更改任何资源。CLI 不暂停；参数错误返回 2，查询失败返回非零。缺少 Docker、守护进程不可达、权限不足或对象消失不会伪装为零；错误正文不输出，避免泄露端点凭据。
+
+总览默认仅聚合数据；`--all` 显示所选引擎清单，请勿公开生产输出。Stopped 明确定义为 created + exited + dead，paused/restarting/removing 独立计数；镜像数来自引擎，标签行可能重复同一镜像 ID。磁盘用量使用 Docker shared/reclaimable 口径，不是宿主剩余空间。多个查询不是原子快照。
+
+详情只接受单个简单名称或 ID，显示镜像引用/ID、状态/健康状态、重启策略、配置及运行端口、挂载/网络、持久化 HostConfig 限额和运行容器的即时 stats。全部环境变量值、命令参数、标签、健康检查日志都不展示；无 raw inspect 开关。挂载路径/网络仍可能敏感。Memory=0 表示无容器内存上限；NanoCPUs=0 仅表示无 NanoCPU 上限，quota/cpuset/父 cgroup 仍可能限流；CPU 使用率不是 CPU 限额。停止/暂停容器不采样 stats，配置限额仍显示；采样失败明确标未知并失败退出，不填零。
+
+验证目标：Linux 42 基础 + 177 行为（新增 12），SSH 21、Compose 13、同一 Compose 专用夹具新增 Docker 诊断 15、市场 20、TLS 34。新夹具验证运行/停止/暂停/健康、端口/具名卷/网络、镜像/限额、名称/ID 与敏感环境隐藏；诊断原始输出不进日志。只完成 G26 详情与 G31 总览范围，不代表所有 Docker 管理功能或全部待办完成。ACME、Cloudflare、Telegram 仍待真实凭据验证。
+
+## v1.11.1 校验归档 SSH 异地传输（历史）
 
 新增 `fusionbox cluster archive push|pull|status`，集群菜单选项 9 提供参数帮助。复用严格校验的节点清单；仅支持现有 `archive.py` / `backup_jobs.py` 生成的 `config/system/web` 清单归档。Compose 专用归档、旧无清单 tar、应用重建和跨主机恢复不在本批范围。
 
