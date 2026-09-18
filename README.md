@@ -4,7 +4,7 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
-## v1.11.0 校验归档 SSH 异地传输
+## v1.11.1 校验归档 SSH 异地传输
 
 新增 `fusionbox cluster archive push|pull|status`，集群菜单选项 9 提供参数帮助。复用严格校验的节点清单；仅支持现有 `archive.py` / `backup_jobs.py` 生成的 `config/system/web` 清单归档。Compose 专用归档、旧无清单 tar、应用重建和跨主机恢复不在本批范围。
 

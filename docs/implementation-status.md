@@ -1,6 +1,6 @@
-# v1.11.0 候选需求实施跟踪
+# v1.11.1 候选需求实施跟踪
 
-v1.11.0 完成限定归档文件传输：cluster archive push/pull/status，复用节点校验；显式密钥与严格 known_hosts，不保存密码，不加载用户 SSH config。专用私有归属目录、路径逐段 no-follow、SHA-256 校验临时文件后 no-clobber 原子发布，同哈希可重试，冲突拒绝、源始终保留。pull 校验现有 config/system/web manifest/scope/压缩完整性，不解压；摘要完整性不是作者真实性。Compose 专用归档传输、应用重建、全量 /home、调度和旧 cron 迁移仍待后续。
+v1.11.1 完成限定归档文件传输：cluster archive push/pull/status，复用节点校验；显式密钥与严格 known_hosts，不保存密码，不加载用户 SSH config。专用私有归属目录、路径逐段 no-follow、SHA-256 校验临时文件后 no-clobber 原子发布，同哈希可重试，冲突拒绝、源始终保留。pull 校验现有 config/system/web manifest/scope/压缩完整性，不解压；摘要完整性不是作者真实性。Compose 专用归档传输、应用重建、全量 /home、调度和旧 cron 迁移仍待后续。
 
 最终归档验证目标：42 基础 + 165 行为、SSH 21、Compose 13、市场 20、TLS 34。SSH 为单服务器 loopback 独立临时 sshd、临时密钥/authorized_keys，生产 SSH 配置/服务不变；不是两主机灾难恢复。Docker SSH 镜像未预装，采用已安装 sshd 的独立配置方案；CI 同样使用 runner 已安装 OpenSSH，不新增下载依赖。外部 ACME/CF/TG 仍待验证。
 
@@ -133,7 +133,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G58 | 应用访问模式持久化（direct/domain_only 记录并在更新后恢复） | 部分实现 | v1.7.0 localhost-direct / HTTP 映射登记与更新/重装持久化；无 domain_only 防火墙隔离 |
 | G59 | 一键域名访问（应用=反代+证书一条龙） | 部分实现 | v1.8.1 自有宿主 HTTP/自备 PEM HTTPS、SAN/有效期/密钥校验与重载回滚；真实 ACME 后续 |
 | G60 | 磁盘空间预检（按应用体积校验 + NAS 路径软链） | 部分实现 | v1.6.0 受管 Nginx 检查注册表/Docker 数据盘各 256 MiB；NAS/任意应用体积估算后续 |
-| G61 | 全量备份/还原（/home 打包 + 可 scp 异地） | 部分实现 | v1.11.0 完成现有 config/system/web 安全归档 SSH push/pull/status；单服务器隔离 SSH 验证；全量 /home、应用重建与两主机灾备仍后续 |
+| G61 | 全量备份/还原（/home 打包 + 可 scp 异地） | 部分实现 | v1.11.1 完成现有 config/system/web 安全归档 SSH push/pull/status；单服务器隔离 SSH 验证；全量 /home、应用重建与两主机灾备仍后续 |
 | G62 | 后台工作区增强（编号会话 work1-10、会话注入命令、SSH 常驻模式） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G63 | 集群内置批量任务（18 项：update/clean/docker/swap/time/iptables…） | 部分实现 | cluster task；沿用密钥连接，未在生产节点批量执行 |
 | G64 | 集群配置备份/导入导出 | 节点清单范围完成 | v1.10.0 无凭据 JSON、预览/确认合并、冲突拒绝、共享锁与私有原子写入；合法旧 nodes.conf 原格式兼容，异常行人工修复；完整 SSH 配置/密钥/known_hosts 迁移不在范围 |

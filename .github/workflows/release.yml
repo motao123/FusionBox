@@ -30,7 +30,10 @@ jobs:
         run: bash tests/comprehensive_test.sh
 
       - name: Run isolated SSH archive fixture
-        run: sudo python3 tests/archive_ssh_fixture.py --run
+        run: |
+          # Ephemeral CI runner only; do not start or reconfigure the system SSH service.
+          sudo install -d -m 0755 /run/sshd
+          sudo python3 tests/archive_ssh_fixture.py --run
 
       - name: Run isolated Docker lifecycle fixtures
         run: |
