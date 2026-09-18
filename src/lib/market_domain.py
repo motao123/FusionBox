@@ -1,10 +1,11 @@
-"""Owned HTTP-only host Nginx mappings for managed apps; no ACME or firewall changes."""
+"""Owned host Nginx mappings with optional supplied PEM TLS; no ACME or firewall changes."""
 import copy
 import re
 import subprocess
 from pathlib import Path
 
 import compose_backup as cb
+import market_tls
 from backup_jobs import atomic
 
 CONF = Path('/etc/nginx/conf.d')
@@ -39,7 +40,7 @@ def path(record):
 
 def render(record):
     mapping = record['market']['domain']
-    if (set(mapping) != {'name', 'listen', 'mode', 'enabled'} or mapping['mode'] != 'http-only' or
+    if (set(mapping) not in ({'name', 'listen', 'mode', 'enabled'}, {'name', 'listen', 'mode', 'enabled', 'tls'}) or mapping['mode'] != 'http-only' or
             type(mapping['enabled']) is not bool):
         raise ValueError('Unknown domain mapping type; TLS unavailable')
     domain = validate(mapping['name'])
@@ -53,7 +54,7 @@ def render(record):
     if not re.fullmatch('[a-f0-9]{32}', token):
         raise ValueError('Invalid ownership token')
     backend = (f'proxy_pass http://127.0.0.1:{port};' if mapping['enabled'] else 'return 503;')
-    return f'''# FusionBox managed HTTP mapping {token}
+    text = f'''# FusionBox managed HTTP mapping {token}
 server {{
     listen {listen};
     server_name {domain};
@@ -68,6 +69,21 @@ server {{
     }}
 }}
 '''
+    tls = mapping.get('tls')
+    if tls:
+        if set(tls) != {'cert', 'key', 'listen', 'redirect'} or type(tls['redirect']) is not bool:
+            raise ValueError('Invalid TLS settings')
+        if type(tls['listen']) is not int or not 1 <= tls['listen'] <= 65535 or tls['listen'] in (port, listen):
+            raise ValueError('TLS port must differ from HTTP and upstream ports')
+        for value in (tls['cert'], tls['key']):
+            if not isinstance(value, str) or not re.fullmatch(r'/[A-Za-z0-9_./-]+', value) or '..' in Path(value).parts:
+                raise ValueError('Invalid TLS file path')
+        secure = text.replace(f'listen {listen};', f"listen {tls['listen']} ssl;\n    ssl_certificate {tls['cert']};\n    ssl_certificate_key {tls['key']};\n    ssl_protocols TLSv1.2 TLSv1.3;")
+        if tls['redirect'] and mapping['enabled']:
+            suffix = '' if tls['listen'] == 443 else ':' + str(tls['listen'])
+            text = text.replace(backend, f'return 308 https://{domain}{suffix}$request_uri;')
+        text += secure
+    return text
 
 
 def owned(record):
@@ -105,7 +121,7 @@ def collision(dump, target, domain):
         raise ValueError('Host Nginx must already include the conf.d/*.conf directory')
 
 
-def change(registry, record, domain=None, listen=80, enabled=True):
+def change(registry, record, domain=None, listen=80, enabled=True, tls='retain'):
     """Caller holds global Compose registry lock. External Nginx writers must be stopped."""
     target = owned(record)
     candidate = copy.deepcopy(record)
@@ -116,6 +132,11 @@ def change(registry, record, domain=None, listen=80, enabled=True):
         text = None
     else:
         candidate['market']['domain'] = {'name': validate(domain), 'listen': listen, 'mode': 'http-only', 'enabled': enabled}
+        settings = record['market'].get('domain', {}).get('tls') if tls == 'retain' else tls
+        if settings is not None:
+            candidate['market']['domain']['tls'] = copy.deepcopy(settings)
+            if enabled:
+                market_tls.validate(domain, settings)
         text = render(candidate)
     dump = nginx('-T')
     if domain is not None:
@@ -174,14 +195,25 @@ def change(registry, record, domain=None, listen=80, enabled=True):
         stage_pid = Path(str(stage) + '.pid')
         if stage_pid.exists():
             stage_pid.unlink()
-    print('HTTP-only domain mapping applied; TLS unavailable; DNS/reachability not verified' if domain else
+    print('Domain mapping applied; TLS configured with supplied files' if domain and candidate['market']['domain'].get('tls') else
+          'HTTP-only domain mapping applied; TLS unavailable; DNS/reachability not verified' if domain else
           'Domain mapping removed; app remains localhost-only')
 
 
 def status(record):
     owned(record)
     mapping = record['market'].get('domain')
-    if mapping:
+    if mapping and mapping.get('tls'):
+        tls = mapping['tls']
+        print('HTTPS configured: https://' + mapping['name'] + ':' + str(tls['listen']),
+              'redirect=' + str(tls['redirect']), 'enabled=' + str(mapping['enabled']))
+        try:
+            expiry = market_tls.validate(mapping['name'], tls)
+            print('Local PEM/key/SAN/time validation passed; expires ' + expiry)
+        except (ValueError, OSError, subprocess.SubprocessError):
+            print('WARNING: TLS file validation failed; configured runtime may differ')
+        print('Public CA trust, DNS and public reachability unverified; no ACME issuance or renewal')
+    elif mapping:
         print('HTTP-only domain: http://' + mapping['name'] + ':' + str(mapping['listen']),
               '(configured; DNS/public reachability unverified; TLS unavailable)',
               'enabled' if mapping['enabled'] else 'suspended: returns 503')

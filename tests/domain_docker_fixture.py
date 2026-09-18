@@ -34,6 +34,32 @@ def run():
         upstream = freeport()
         while upstream == listen:
             upstream = freeport()
+        tls_port = freeport()
+        while tls_port in (listen, upstream):
+            tls_port = freeport()
+        import subprocess
+        def pem(name, hostname, days='2'):
+            cert, key = base / (name + '.pem'), base / (name + '.key')
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(key), '-out', str(cert),
+                            '-days', '2', '-subj', '/CN=' + hostname, '-addext', 'subjectAltName=DNS:' + hostname], check=True, capture_output=True)
+            os.chmod(key, 0o600)
+            if days == '-1':
+                subprocess.run(['openssl', 'x509', '-in', str(cert), '-signkey', str(key), '-days', '-1', '-out', str(cert)], check=True, capture_output=True)
+            return {'cert': str(cert), 'key': str(key), 'listen': tls_port, 'redirect': True}
+        good = pem('valid', 'test.local')
+        wrong = pem('wrong', 'wrong.local')
+        expired = pem('expired', 'test.local', '-1')
+        malformed = base / 'invalid.pem'
+        malformed.write_text('invalid PEM fixture')
+        def secure(expected=200, hostname='test.local'):
+            for attempt in range(40):
+                result = subprocess.run(['curl', '--silent', '--show-error', '--noproxy', '*', '--cacert', good['cert'],
+                                         '--resolve', hostname + ':' + str(tls_port) + ':127.0.0.1',
+                                         '--max-time', '3', '-w', '\\n%{http_code}', 'https://' + hostname + ':' + str(tls_port) + '/'], capture_output=True)
+                if result.returncode == 0 and result.stdout.endswith(str(expected).encode()):
+                    return result.stdout
+                time.sleep(.1)
+            raise AssertionError('Verified TLS request failed; no insecure fallback')
         main = base / 'nginx.conf'
         main.write_text('pid /tmp/fixture-nginx.pid;\nevents {}\nhttp { access_log off; include ' + str(d.CONF) + '/*.conf; }\n')
         registry = m.cb.BASE / (project + '.json')
@@ -99,10 +125,45 @@ def run():
                     raise AssertionError('collision expected')
                 other.unlink()
                 assert before == (registry.read_bytes(), d.path(record()).read_bytes())
+                m.operate('domain', accepted=True, project=project, domain='test.local', listen=listen)
+                before = registry.read_bytes(), d.path(record()).read_bytes()
+                for bad in (wrong, expired, dict(good, key=wrong['key']), dict(good, cert=str(malformed))):
+                    try:
+                        m.operate('tls', accepted=True, project=project, tls=bad)
+                    except ValueError:
+                        pass
+                    else:
+                        raise AssertionError('Invalid TLS material accepted')
+                    assert before == (registry.read_bytes(), d.path(record()).read_bytes())
+                m.operate('tls', accepted=True, project=project, tls=good)
+                assert b'Welcome to nginx' in secure()
+                redirect = subprocess.run(['curl', '-sS', '--noproxy', '*', '-D', '-', '-o', '/dev/null', '-H', 'Host: test.local',
+                                           'http://127.0.0.1:' + str(listen)], capture_output=True, check=True).stdout
+                assert b'308' in redirect and ('https://test.local:' + str(tls_port)).encode() in redirect
+                wrong_host = subprocess.run(['curl', '-sS', '--noproxy', '*', '--cacert', good['cert'], '--resolve',
+                                             'wrong.local:' + str(tls_port) + ':127.0.0.1', 'https://wrong.local:' + str(tls_port)], capture_output=True)
+                assert wrong_host.returncode == 60
+                before = registry.read_bytes(), d.path(record()).read_bytes()
+                calls.clear()
+                with patch.object(d, 'nginx', side_effect=failed_reload):
+                    try:
+                        m.operate('tls', accepted=True, project=project, tls=None)
+                    except RuntimeError as error:
+                        assert 'previous configuration restored' in str(error)
+                    else:
+                        raise AssertionError('TLS reload failure expected')
+                assert before == (registry.read_bytes(), d.path(record()).read_bytes())
+                assert b'Welcome to nginx' in secure()
+                m.operate('tls', accepted=True, project=project, tls=dict(good, redirect=False))
+                assert b'Welcome to nginx' in request('test.local')
+                assert b'Welcome to nginx' in secure()
+                m.operate('tls', accepted=True, project=project, tls=good)
+                m.operate('status', project=project)
                 m.operate('update', accepted=True, project=project)
-                assert record()['market']['domain']['name'] == 'app.example.test'
+                assert record()['market']['domain']['tls'] == good
                 m.operate('uninstall', accepted=True, project=project)
-                request('app.example.test', 503)
+                request('test.local', 503)
+                secure(503)
                 assert not record()['market']['domain']['enabled']
                 # HTTP clients can leave TIME_WAIT on the upstream; use the normal
                 # conservative preflight and retry only EADDRINUSE, bounded.
@@ -115,12 +176,15 @@ def run():
                         if error.errno != errno.EADDRINUSE or attempt == 74:
                             raise
                         time.sleep(1)
-                assert b'Welcome to nginx' in request('app.example.test')
+                assert b'Welcome to nginx' in secure()
                 assert record()['market']['domain']['enabled']
+                m.operate('tls', accepted=True, project=project, tls=None)
+                assert b'Welcome to nginx' in request('test.local')
+                assert Path(good['cert']).exists() and Path(good['key']).exists()
                 m.operate('domain', accepted=True, project=project)
                 assert 'domain' not in record()['market']
                 assert not d.path(record()).exists()
-                print('REAL DOMAIN: 12 checks passed; Host routing/rejection, reload rollback, collision, update/uninstall/reinstall persistence, removal')
+                print('REAL DOMAIN/TLS: 24 checks passed; HTTP routing/rollback, verified self-signed TLS, redirect, SAN/expiry/key rejection, lifecycle persistence and disable')
         finally:
             if proxy_started:
                 m.cb.docker('rm', '-f', proxy)

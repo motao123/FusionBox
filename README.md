@@ -4,7 +4,23 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
-## v1.7.0 受管应用 HTTP 域名入口
+## v1.8.0 自备证书 HTTPS
+
+受管域名可显式启用已有 PEM 证书与私钥。先创建域名映射，再启用 TLS；默认 HTTPS 443 并将 HTTP 重定向到 HTTPS，`--tls-port` 可选独立端口，`--no-redirect` 显式保留 HTTP 服务。
+
+```bash
+fusionbox market managed tls nginx --cert /root/certs/fullchain.pem --key /root/certs/key.pem --confirm
+fusionbox market managed status nginx
+fusionbox market managed tls nginx --disable-tls --confirm
+```
+
+依赖已安装 OpenSSL。只引用操作者提供的文件，不复制、删除、输出私钥，也不自动 chmod。要求绝对规范 ASCII 路径、无软链接/硬链接、当前操作者拥有的普通文件；私钥权限 0600/0400，证书不得组/全局可写，父目录不可被其他用户写入（系统 sticky 临时目录除外）。不支持加密私钥、CN 回退或通配 SAN；验证 PEM 可解析、精确 DNS SAN、有效起止时间、证书和私钥公钥一致。状态重新校验当前文件并显示到期时间；这些检查不证明公共 CA 信任、完整证书链、DNS 或公网可达性。
+
+沿用自有配置、冲突检测、暂存/整体 Nginx 校验、重载失败回滚与双重失败 journal。更新保留 TLS；卸载 HTTP/HTTPS 均返回 503，重装验证证书后恢复 TLS；停用恢复 HTTP 并保留原证书/私钥文件。外部证书或配置写入者必须暂停；证书更换后需重新执行 tls 命令校验并重载，无自动续期。证书文件失效导致 Nginx 无法校验时需人工修复原文件；重装入口失败仍返回失败，不保证应用与入口共同原子恢复。
+
+隔离夹具生成 `test.local` 自签名证书并以 `curl --cacert` 严格验证真实 TLS 握手（不使用 `-k`）；错误主机名、过期证书、私钥不匹配被拒绝且状态不变。这是自签名测试信任，**不是公开 CA/ACME 验证**。未调用任何外部签发服务，未改生产 443。Linux 42 基础 + 128 行为、Compose 13、市场 20、域名/TLS 24 项检查；详见实施跟踪。ACME/Cloudflare/Telegram 与其余待办未宣称完成。
+
+## v1.7.0 受管应用 HTTP 域名入口（历史）
 
 受管 Nginx 支持独立自有宿主 Nginx 配置，不复用旧站点写入器。依赖 Linux、Python 3 标准库、Docker Compose v2 与已运行的宿主 Nginx；宿主配置必须已有 `include /etc/nginx/conf.d/*.conf;`。不安装/改写主配置、不修改防火墙。操作前暂停其他 Nginx 配置写入者，FusionBox 的锁只能协调自身操作。
 

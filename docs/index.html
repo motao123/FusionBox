@@ -137,9 +137,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.7.0 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.8.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖常见运维场景。v1.7.0 新增受管 Nginx HTTP-only 域名入口：独立自有宿主配置、域名冲突检测、暂存与整体验证、重载失败回滚和恢复记录。更新保留映射；卸载入口暂停为 503，重装恢复原端口映射。本机上游仍可访问，不声称防火墙隔离；TLS 明确不可用，DNS/公网可达性未验证。Linux 42 基础 + 124 行为测试，真实专用 Nginx 夹具 12 项检查，Compose 13 与市场 20 项夹具。更多应用、迁移、真实 ACME、Cloudflare/TG 仍待验证。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
+        <p class="sub">代理管理、系统运维、网络诊断、网站部署、Docker、应用市场 &mdash; 九大模块覆盖常见运维场景。v1.8.0 新增受管域名自备 PEM HTTPS：显式证书/私钥路径，OpenSSL 精确 SAN、有效期与密钥匹配检查，私钥权限与归属校验。默认 HTTP 重定向可关闭，支持 TLS 状态与停用；更新/卸载 503/重装保留设置，重载失败回滚。Linux 42 基础 + 128 行为测试，真实域名/TLS 夹具 24 项检查，Compose 13 与市场 20 项夹具。test.local 自签名证书以 curl --cacert 验证真实 TLS，不使用 -k，不代表公共 CA/ACME 验证；无签发/自动续期，DNS/公网与 Cloudflare/TG 未验证。本机上游仍可访问，不声称防火墙隔离。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>

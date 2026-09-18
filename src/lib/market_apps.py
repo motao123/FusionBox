@@ -194,7 +194,7 @@ def health(record):
     return state.get('Health', {}).get('Status', 'unknown')
 
 
-def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False, domain=None, listen=80):
+def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False, domain=None, listen=80, tls=None):
     if app not in CATALOG:
         raise ValueError('Unsupported managed application')
     project = project or 'fb-market-' + app
@@ -241,6 +241,14 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 market_domain.status(record)
                 if record['market']['state'] == 'uninstalled':
                     print('Retained data: reinstall nginx --confirm --reuse-data [--auto-port]')
+                return
+            if action == 'tls':
+                mapping = record['market'].get('domain')
+                if not mapping:
+                    raise ValueError('Create an owned domain mapping first')
+                if tls is not None and (record['market']['state'] != 'healthy' or health(record) != 'healthy'):
+                    raise ValueError('TLS activation requires healthy managed app')
+                market_domain.change(registry, record, mapping['name'], mapping['listen'], mapping['enabled'], tls=tls)
                 return
             if action == 'domain':
                 if domain and (record['market']['state'] != 'healthy' or health(record) != 'healthy'):
@@ -299,7 +307,7 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
 def main():
     os.umask(0o077)
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall', 'domain'))
+    p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls'))
     p.add_argument('app', nargs='?', default='nginx', choices=tuple(CATALOG))
     p.add_argument('--port', type=int, help='Preferred port; default 8080 or retained port for reinstall')
     p.add_argument('--auto-port', action='store_true', help='Probe at most 20 localhost ports; not a reservation')
@@ -308,7 +316,20 @@ def main():
     p.add_argument('--domain', help='Managed HTTP-only DNS name (domain action)')
     p.add_argument('--listen', type=int, default=80, help='Host HTTP port for domain mapping')
     p.add_argument('--remove-domain', action='store_true', help='Remove the owned domain mapping')
+    p.add_argument('--cert', help='Existing PEM certificate/fullchain; no issuance')
+    p.add_argument('--key', help='Existing unencrypted PEM key, operator-owned mode 0600/0400')
+    p.add_argument('--tls-port', type=int, default=443)
+    p.add_argument('--no-redirect', action='store_true', help='Explicitly retain HTTP service alongside HTTPS')
+    p.add_argument('--disable-tls', action='store_true')
     args = p.parse_args()
+    if args.action == 'tls':
+        if args.disable_tls:
+            if args.cert or args.key or args.no_redirect or args.tls_port != 443:
+                p.error('--disable-tls cannot include certificate/port/redirect options')
+        elif not (args.cert and args.key):
+            p.error('TLS requires both --cert and --key, or --disable-tls')
+    elif args.cert or args.key or args.disable_tls or args.no_redirect or args.tls_port != 443:
+        p.error('TLS options apply only to tls action')
     if args.action == 'catalog':
         print('nginx: static web server; managed Compose; localhost only; persistent read-only content; 256 MiB free disk; Docker Compose v2/Python 3/Linux required')
         return
@@ -323,7 +344,9 @@ def main():
     if args.action == 'domain' and (args.domain is None) == (not args.remove_domain):
         p.error('Choose exactly one of --domain NAME or --remove-domain')
     operate(args.action, args.app, args.port, args.confirm, automatic=args.auto_port, reuse=args.reuse_data,
-            domain=None if args.remove_domain else args.domain, listen=args.listen)
+            domain=None if args.remove_domain else args.domain, listen=args.listen,
+            tls={'cert': args.cert, 'key': args.key, 'listen': args.tls_port, 'redirect': not args.no_redirect}
+            if args.action == 'tls' and not args.disable_tls else None)
 
 
 if __name__ == '__main__':

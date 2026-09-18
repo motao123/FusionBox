@@ -9,6 +9,22 @@ import market_domain as d
 
 
 class DomainValidation(unittest.TestCase):
+    @unittest.skipIf(sys.platform == 'win32', 'POSIX file permissions')
+    def test_tls_key_permissions_links_and_paths(self):
+        import os
+        with tempfile.TemporaryDirectory() as folder:
+            key = Path(folder) / 'key.pem'
+            key.write_text('not a secret fixture')
+            os.chmod(key, 0o600)
+            self.assertEqual(d.market_tls.file_path(str(key), True), str(key))
+            os.chmod(key, 0o644)
+            with self.assertRaises(ValueError): d.market_tls.file_path(str(key), True)
+            os.chmod(key, 0o600)
+            link = Path(folder) / 'linked.pem'
+            link.symlink_to(key)
+            with self.assertRaises(ValueError): d.market_tls.file_path(str(link), True)
+            with self.assertRaises(ValueError): d.market_tls.file_path(str(key) + ';inject', True)
+
     def test_rejects_invalid_and_accepts_dns(self):
         for value in ('localhost', 'EXAMPLE.COM', '*.example.com', 'http://example.com', '127.0.0.1', 'a..example.com'):
             with self.assertRaises(ValueError): d.validate(value)
@@ -46,6 +62,40 @@ class DomainTransactions(unittest.TestCase):
         self.registry = self.base / 'fixture.json'
         self.registry.write_text(json.dumps(self.record))
         self.nginx = patch.object(d, 'nginx', return_value='include ' + str(self.conf) + '/*.conf;').start()
+
+    def test_tls_invalid_material_preserves_state(self):
+        before = self.registry.read_bytes()
+        with patch.object(d.market_tls, 'validate', side_effect=ValueError('invalid PEM')):
+            with self.assertRaises(ValueError):
+                d.change(self.registry, self.record, 'test.local', tls={'cert': '/tmp/cert', 'key': '/tmp/key', 'listen': 443, 'redirect': True})
+        self.assertEqual(before, self.registry.read_bytes())
+        self.assertFalse(self.target.exists())
+        self.nginx.assert_not_called()
+
+    def test_tls_suspend_retain_and_disable(self):
+        tls = {'cert': '/tmp/cert', 'key': '/tmp/key', 'listen': 443, 'redirect': True}
+        with patch.object(d.market_tls, 'validate'):
+            d.change(self.registry, self.record, 'test.local', tls=tls)
+            record = json.loads(self.registry.read_text())
+            self.assertIn('return 308 https://test.local$request_uri;', self.target.read_text())
+            d.change(self.registry, record, 'test.local', enabled=False)
+            suspended = json.loads(self.registry.read_text())
+            self.assertEqual(suspended['market']['domain']['tls'], tls)
+            self.assertEqual(self.target.read_text().count('return 503;'), 2)
+            d.change(self.registry, suspended, 'test.local', tls=None)
+            self.assertNotIn('ssl_certificate', self.target.read_text())
+
+    def test_tls_double_reload_failure_retains_original(self):
+        tls = {'cert': '/tmp/cert', 'key': '/tmp/key', 'listen': 443, 'redirect': True}
+        with patch.object(d.market_tls, 'validate'):
+            d.change(self.registry, self.record, 'test.local', tls=tls)
+        record = json.loads(self.registry.read_text())
+        before = self.registry.read_bytes(), self.target.read_bytes()
+        self.nginx.side_effect = [self.nginx.return_value, '', '', RuntimeError('reload'), '', RuntimeError('rollback')]
+        with self.assertRaisesRegex(RuntimeError, 'AND rollback failed'):
+            d.change(self.registry, record, 'test.local', tls=None)
+        self.assertEqual(before, (self.registry.read_bytes(), self.target.read_bytes()))
+        self.assertTrue((self.base / 'fixture.domain-recovery.json').exists())
 
     def test_success_and_remove(self):
         d.change(self.registry, self.record, 'app.example.com')

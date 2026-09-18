@@ -500,6 +500,9 @@ market_help() {
   msg ""
   msg "  fusionbox market managed domain nginx --domain example.com --confirm   HTTP-only owned host mapping"
   msg "  fusionbox market managed domain nginx --remove-domain --confirm  remove owned mapping"
+  msg "  fusionbox market managed tls nginx --cert /path/fullchain.pem --key /path/key.pem --confirm"
+  msg "  fusionbox market managed tls nginx --disable-tls --confirm  仅停用 TLS，保留证书文件"
+  msg "  fusionbox market managed status nginx  查看本地证书校验与入口状态"
   msg "  reinstall nginx --confirm --reuse-data  确认复用卸载保留数据"
   msg "  install/reinstall --auto-port     最多探测 20 个 localhost 端口（不预留）"
   msg "  fusionbox market list             列出所有可用应用"
@@ -515,12 +518,21 @@ market_help() {
 # ---- Interactive Menu ----
 market_managed_menu() {
   _require_root
-  local action port domain
+  local action port domain cert key
   local -a args=()
-  read -r -p "操作 catalog/status/install/reinstall/update/uninstall/domain: " action || return 1
+  read -r -p "操作 catalog/status/install/reinstall/update/uninstall/domain/tls: " action || return 1
   case "$action" in
+    tls)
+      msg_warn "仅使用已有 PEM 文件；不签发证书。默认 HTTPS 443 并重定向 HTTP；key 需 0600/0400。"
+      read -r -p "证书绝对路径（留空停用 TLS）: " cert || return 1
+      if [[ -n "$cert" ]]; then
+        read -r -p "私钥绝对路径: " key || return 1
+        args+=(--cert "$cert" --key "$key")
+      else args+=(--disable-tls); fi
+      confirm "确认校验文件并重载自有映射？原证书/私钥不复制或删除" || return 1
+      args+=(--confirm) ;;
     domain)
-      msg_warn "仅 HTTP，需已有宿主 Nginx conf.d include；暂停其他配置写入者；TLS 不可用。"
+      msg_warn "需已有宿主 Nginx conf.d include；暂停其他配置写入者；已有 TLS 设置将保留。"
       read -r -p "域名（留空删除自有映射）: " domain || return 1
       confirm "确认修改并校验/重载宿主 Nginx？" || return 1
       args+=(--confirm)
