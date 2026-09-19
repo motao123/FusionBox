@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.29.0-blue)
+![version](https://img.shields.io/badge/version-1.30.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,16 +58,16 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.29.0）
+## 最近更新（v1.30.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增 SSH 登录 Telegram 通知 `install/status/test/uninstall`，通过明确 PAM ignore-on-failure 控制，通知失败不会阻断登录
-- 通知脚本、PAM 配置及状态记录使用完整内容 SHA256 漂移保护；Bot Token/Chat ID 不进入命令参数或日志
-- 新增 high/balanced/web/stream/game/db 六场景内核调优：按 RAM/内核逐键探测，管理 sysctl、limits 与 THP
-- 调优使用首次运行值、文件内容与 THP systemd 状态快照；应用、切换或恢复失败均事务回滚，Linux 验证服务器专项事务测试通过
+- 新增 ACME `preflight/status/issue/renew` 事务闭环：严格输入、DNS报告、端口/site/certbot检查，以及 Nginx 暂存校验和失败回滚
+- 签发成功后验证 SAN、有效期和证书/私钥匹配；challenge 与 TLS 配置采用 owner marker + SHA256 漂移保护，拒绝接管外部文件
+- renew 使用 `flock`、剩余天数阈值和证书指纹比较，仅在证书变化时校验并 reload Nginx
+- 本地专项 20 项、Linux 验证服务器 32 项通过；没有可控公网域名，因此真实 ACME 签发仍标记未验证
 
-完整版本历史（v1.28.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+完整版本历史（v1.29.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考
 
