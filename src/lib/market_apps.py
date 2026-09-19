@@ -308,8 +308,10 @@ def pull(app='nginx'):
 
 
 def up(record):
+    spec = metadata(record['market']['app'])
+    wait_timeout = 45 + spec.get('health_retries', 10) * 2
     cb.docker('compose', '-p', record['project'], '-f', record['compose'],
-              'up', '-d', '--wait', '--wait-timeout', '45', '--pull', 'never')
+              'up', '-d', '--wait', '--wait-timeout', str(wait_timeout), '--pull', 'never')
     if health(record) != 'healthy':
         raise RuntimeError('Application health check failed')
 
