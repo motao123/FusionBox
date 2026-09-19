@@ -2,6 +2,14 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.29.0 SSH 登录通知与六场景内核调优
+
+- 新增 `fusionbox system login-alert install|status|test|uninstall`：复用私有 Telegram 配置，通过 PAM session hook 发送用户、来源地址和时间等最小字段。PAM 使用 `[success=ok default=ignore]`，通知脚本所有失败路径放行，安装前后以 `sshd -t` 校验。
+- 登录脚本、PAM 目标及状态文件记录完整期望内容和 SHA256；遇管理员外部编辑时拒绝覆盖、测试或删除。Telegram 凭据通过 curl stdin config 传递，不进入 argv 或操作日志。
+- 新增 `fusionbox system tuning high|balanced|web|stream|game|db|status|restore`：按 RAM 自动降档并逐键探测内核支持，仅写受管 sysctl/limits/THP unit。
+- 首次快照保存有效 sysctl、原文件内容/hash、THP 当前模式及 unit exists/enabled/active；二次应用保留旧快照字节，应用、切换、restore 或 rollback 任一步失败都会恢复并报告，不静默吞错。
+- 本地通知与安全回归通过；Linux 验证服务器上的 POSIX 事务用例覆盖登录通知 install/status/test/uninstall、漂移拒绝、THP 解析、调优 profile 切换与 restore。未使用真实 Telegram 凭据，因此消息实际送达仍标记未验证。
+
 ## v1.28.0 Docker 目标机预检与事务恢复（P1b）
 
 - 新增 `docker migration preflight`：验证 bundle 后以只读方式检查目标 OS/架构、Docker/Compose、磁盘与 inode、HostIP/协议端口、名称、网络/IPAM、bind 映射、local volume 和镜像 ID/RepoTag 冲突；失败时零变更。
