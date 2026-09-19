@@ -24,7 +24,13 @@ jobs:
           for f in fusion.sh install.sh src/init.sh src/lib/common.sh src/lib/deploy.sh src/modules/*.sh src/i18n/*.sh; do
             bash -n "$f"
           done
-          echo "All syntax checks passed"
+          python3 -m py_compile src/lib/*.py scripts/*.py
+          python3 src/lib/market_apps.py catalog >/dev/null
+          printf '[]\n' > /tmp/releases.json
+          python3 scripts/release_downloads.py --fixture /tmp/releases.json --output /tmp/metrics.json --shields-output /tmp/shield.json
+          echo "All shipped code checks passed"
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -34,9 +40,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get version
+      - name: Validate release version
         id: version
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          version="$(tr -d '[:space:]' < version.txt)"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$tag" == "v$version" ]]
+          grep -Fqx "export FUSION_VER=\"$version\"" src/init.sh
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Package complete distribution
         run: |

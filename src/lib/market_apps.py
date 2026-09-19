@@ -14,8 +14,11 @@ import urllib.request
 import compose_backup as cb
 from backup_jobs import atomic
 import market_domain
+import market_catalog
 
 OWNER = 'fusionbox-market-v1'
+RUNTIME_CATALOG = None
+CATALOG_SOURCE = 'legacy-builtin'
 CATALOG = {
     'nginx': {'image': 'nginx:stable-alpine', 'port': 8080, 'bytes': 256 * 1024 * 1024,
               'target': 80, 'mount': '/usr/share/nginx/html', 'readonly': True,
@@ -84,6 +87,61 @@ CATALOG = {
 }
 
 
+def configure_catalog(url=None, sha256=None, revision=None):
+    """Load the built-in or pinned remote declarative catalog for this invocation."""
+    global RUNTIME_CATALOG, CATALOG_SOURCE
+    RUNTIME_CATALOG, CATALOG_SOURCE = market_catalog.load(cb.BASE, url, sha256, revision)
+    return CATALOG_SOURCE
+
+
+def catalog_apps():
+    apps = dict(CATALOG)
+    if RUNTIME_CATALOG is not None:
+        overlap = set(apps).intersection(RUNTIME_CATALOG['apps'])
+        if overlap:
+            raise ValueError('Declarative catalog application collides with built-in ID: ' + sorted(overlap)[0])
+        apps.update(RUNTIME_CATALOG['apps'])
+    return apps
+
+
+def is_manifest(spec):
+    return isinstance(spec, dict) and 'services' in spec
+
+
+def app_spec(app):
+    apps = catalog_apps()
+    if app not in apps:
+        raise ValueError('Unsupported managed application')
+    spec = apps[app]
+    if is_manifest(spec):
+        return spec
+    return metadata(app)
+
+
+def record_spec(record):
+    stored = record.get('market', {}).get('catalog_app')
+    if stored is None:
+        return metadata(record['market']['app'])
+    if not is_manifest(stored) or market_catalog.app_digest(stored) != record['market'].get('catalog_digest'):
+        raise ValueError('Managed catalog application snapshot changed')
+    return stored
+
+
+def manifest_ports(spec):
+    return [(service, port) for service in spec['services'] for port in service['ports']]
+
+
+def resolve_bind(source, nas_path):
+    if '{nas_path}' not in source:
+        return source
+    if nas_path is None:
+        raise ValueError('Application requires explicit --nas-path')
+    if (not isinstance(nas_path, str) or not nas_path.startswith('/') or '..' in Path(nas_path).parts or
+            not re.fullmatch(r'/[A-Za-z0-9_. /-]+', nas_path)):
+        raise ValueError('NAS path must be a safe absolute path')
+    return source.replace('{nas_path}', nas_path)
+
+
 def app_mounts(spec):
     """Normalize a catalog spec into the internal mount list."""
     if 'mounts' in spec:
@@ -124,7 +182,53 @@ def metadata(app):
     return spec
 
 
+def manifest_document(record):
+    spec = record_spec(record)
+    labels = {'io.fusionbox.market': record['market']['token']}
+    project = record['project']
+    result = {'services': {}, 'volumes': {}}
+    for item in spec['services']:
+        service = {
+            'image': item['image'], 'container_name': project + '-' + item['id'],
+            'network_mode': item['network_mode'], 'restart': 'unless-stopped',
+            'labels': labels, 'mem_limit': item['memory'], 'cpus': item['cpus'],
+            'pids_limit': item['pids_limit'],
+            'logging': {'driver': 'json-file', 'options': {'max-size': '5m', 'max-file': '2'}},
+            'healthcheck': {'test': item['health'], 'interval': '2s', 'timeout': '2s',
+                            'retries': item['health_retries']}}
+        if item['ports']:
+            service['ports'] = ['127.0.0.1:%s:%s/%s' % (p['published'], p['target'], p['protocol'])
+                                for p in item['ports']]
+        volumes = []
+        for volume in item['volumes']:
+            volumes.append(volume['name'] + ':' + volume['target'] + (':ro' if volume['read_only'] else ''))
+            result['volumes'][volume['name']] = {'name': project + '_' + volume['name'], 'labels': labels}
+        for bind in item['binds']:
+            source = resolve_bind(bind['source'], record['market'].get('nas_path'))
+            volumes.append(source + ':' + bind['target'] + (':ro' if bind['read_only'] else ''))
+        if item['docker_socket']:
+            volumes.append('/var/run/docker.sock:/var/run/docker.sock')
+        if volumes:
+            service['volumes'] = volumes
+        if item['devices']:
+            service['devices'] = ['%s:%s:%s' % (d['source'], d['target'], d['permissions']) for d in item['devices']]
+        for field in ('command', 'environment', 'user'):
+            if field in item:
+                service[field] = item[field].copy() if isinstance(item[field], (list, dict)) else item[field]
+        if not spec['high_privilege']:
+            service.update(init=True, cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
+        result['services'][item['id']] = service
+    if not result['volumes']:
+        del result['volumes']
+    return result
+
+
 def document(record, image=None):
+    spec = record_spec(record)
+    if is_manifest(spec):
+        if image is not None:
+            raise ValueError('Per-image override unsupported for declarative multi-service applications')
+        return manifest_document(record)
     m = record['market']
     spec = metadata(m['app'])
     labels = {'io.fusionbox.market': m['token']}
@@ -165,20 +269,74 @@ def write_compose(record, image=None):
 def load(path, project):
     record = cb.load(path, project)
     m = record.get('market', {})
-    if (m.get('owner') != OWNER or m.get('app') not in CATALOG or
-            not re.fullmatch('[a-f0-9]{32}', m.get('token', '')) or
-            not re.fullmatch('sha256:[a-f0-9]{64}', m.get('image', '')) or
-            type(m.get('port')) is not int or not 1024 <= m['port'] <= 65535 or
+    declarative = 'catalog_app' in m
+    known = m.get('app') in CATALOG if not declarative else is_manifest(m.get('catalog_app'))
+    valid_image = (re.fullmatch('sha256:[a-f0-9]{64}', m.get('image', '')) is not None) if not declarative else 'image' not in m
+    valid_port = (type(m.get('port')) is int and 1024 <= m['port'] <= 65535) if not declarative else 'port' not in m
+    if (m.get('owner') != OWNER or not known or
+            not re.fullmatch('[a-f0-9]{32}', m.get('token', '')) or not valid_image or not valid_port or
             record['compose'] != str((cb.BASE / (project + '.compose.json')).absolute())):
         raise ValueError('Unknown managed application ownership/type')
+    if declarative:
+        record_spec(record)
     cb.no_links(Path(record['compose']))
     if json.loads(Path(record['compose']).read_text()) != document(record):
         raise ValueError('Managed Compose configuration changed; manual recovery required')
     return record
 
 
+def manifest_resources(record):
+    """Validate every declarative container and named volume against the stored snapshot."""
+    project, token = record['project'], record['market']['token']
+    spec = record_spec(record)
+    ids = cb.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project).decode().split()
+    expected_names = {project + '-' + service['id']: service for service in spec['services']}
+    named = []
+    for name in expected_names:
+        named.extend(cb.docker('ps', '-aq', '--filter', 'name=^/' + name + '$').decode().split())
+    if set(ids) != set(named) or len(ids) > len(expected_names):
+        raise ValueError('Unknown container ownership')
+    containers = cb.js('inspect', *ids) if ids else []
+    for container in containers:
+        name = container['Name'].lstrip('/')
+        service = expected_names.get(name)
+        labels = container['Config'].get('Labels') or {}
+        if (service is None or labels.get('io.fusionbox.market') != token or
+                labels.get('com.docker.compose.service') != service['id'] or
+                labels.get('com.docker.compose.project.config_files') != record['compose'] or
+                container['HostConfig'].get('NetworkMode') != service['network_mode'] or
+                container['HostConfig'].get('Privileged')):
+            raise ValueError('Unknown container ownership/type')
+        expected_mounts = {(project + '_' + v['name'], v['target'], not v['read_only']) for v in service['volumes']}
+        actual_mounts = {(mount.get('Name'), mount.get('Destination'), mount['RW'])
+                         for mount in container.get('Mounts', []) if mount['Type'] == 'volume'}
+        if actual_mounts != expected_mounts:
+            raise ValueError('Unexpected application storage')
+        socket_mounts = [m for m in container.get('Mounts', []) if m.get('Destination') == '/var/run/docker.sock']
+        if bool(socket_mounts) != service['docker_socket']:
+            raise ValueError('Unexpected Docker socket capability')
+    volumes = cb.docker('volume', 'ls', '-q').decode().split()
+    names = {v['name'] for service in spec['services'] for v in service['volumes']}
+    for suffix in names:
+        name = project + '_' + suffix
+        if name in volumes:
+            volume = cb.js('volume', 'inspect', name)[0]
+            labels = volume.get('Labels') or {}
+            if (labels.get('io.fusionbox.market') != token or labels.get('com.docker.compose.project') != project or
+                    volume['Driver'] != 'local' or volume.get('Options')):
+                raise ValueError('Unknown data volume ownership')
+            users = cb.docker('ps', '-aq', '--filter', 'volume=' + name).decode().split()
+            if set(users) - set(ids):
+                raise ValueError('Data volume shared outside managed app')
+        elif containers:
+            raise ValueError('Managed data volume missing')
+    return containers
+
+
 def resources(record):
     """Check exact resource names and labels before any stop/remove/recreate."""
+    if is_manifest(record_spec(record)):
+        return manifest_resources(record)
     project, token = record['project'], record['market']['token']
     spec = metadata(record['market']['app'])
     ids = cb.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project).decode().split()
@@ -225,7 +383,8 @@ def preflight(port, check_port=True, app='nginx'):
         raise ValueError('Port must be 1024-65535')
     cb.docker('compose', 'version')
     root = Path(cb.js('info', '--format', '{{json .DockerRootDir}}'))
-    required = metadata(app)['bytes']
+    spec = app_spec(app)
+    required = spec['bytes']
     for path in (cb.BASE, root):
         if shutil.disk_usage(path).free < required:
             raise ValueError('Insufficient disk space (%s MiB required on registry and Docker storage)' % (required // 1024 // 1024))
@@ -303,7 +462,24 @@ def reinstall(registry, record, port, automatic):
     print('Reinstall completed; healthy; localhost port ' + str(record['market']['port']))
 
 
+def pull_manifest(spec):
+    images = {}
+    for service in spec['services']:
+        image = service['image']
+        if image in images:
+            continue
+        cb.docker('pull', image)
+        identity = cb.js('image', 'inspect', image)[0]['Id']
+        if not re.fullmatch(r'sha256:[a-f0-9]{64}', identity):
+            raise ValueError('Invalid pulled image identity')
+        images[image] = identity
+    return images
+
+
 def pull(app='nginx'):
+    spec = app_spec(app)
+    if is_manifest(spec):
+        return pull_manifest(spec)
     image = metadata(app)['image']
     cb.docker('pull', image)
     return cb.js('image', 'inspect', image)[0]['Id']
@@ -311,9 +487,12 @@ def pull(app='nginx'):
 
 def up(record):
     wait_timeout = 45
-    app = record.get('market', {}).get('app')
-    if app:
-        wait_timeout = 45 + metadata(app).get('health_retries', 10) * 2
+    if record.get('market'):
+        spec = record_spec(record)
+        if is_manifest(spec):
+            wait_timeout += max(service['health_retries'] for service in spec['services']) * 2
+        else:
+            wait_timeout += spec.get('health_retries', 10) * 2
     cb.docker('compose', '-p', record['project'], '-f', record['compose'],
               'up', '-d', '--wait', '--wait-timeout', str(wait_timeout), '--pull', 'never')
     if health(record) != 'healthy':
@@ -324,11 +503,14 @@ def health(record):
     containers = resources(record)
     if not containers:
         return 'absent; data/config retained'
-    state = containers[0]['State']
-    if not state['Running']:
+    states = [container['State'] for container in containers]
+    if any(not state['Running'] for state in states):
         return 'stopped'
-    status = state.get('Health', {}).get('Status', 'unknown')
-    spec = metadata(record['market']['app'])
+    statuses = [state.get('Health', {}).get('Status', 'unknown') for state in states]
+    status = 'healthy' if all(value == 'healthy' for value in statuses) else next(value for value in statuses if value != 'healthy')
+    spec = record_spec(record)
+    if is_manifest(spec):
+        return status
     if status == 'healthy' and spec.get('health_json'):
         try:
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -340,13 +522,25 @@ def health(record):
     return status
 
 
-def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False, domain=None, listen=80, tls=None):
-    spec = metadata(app)
+def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False,
+            domain=None, listen=80, tls=None, risk_ack=None, nas_path=None):
     if action not in ('install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls', 'tls-refresh'):
         raise ValueError('Unsupported managed action')
-    if action in ('domain', 'tls', 'tls-refresh') and not spec['domain']:
-        raise ValueError('Domain/TLS unsupported for this application; localhost only')
     project = project or 'fb-market-' + app
+    spec = manifest = None
+    if action == 'install':
+        spec = app_spec(app)
+        manifest = is_manifest(spec)
+        if manifest and port is not None:
+            raise ValueError('Declarative catalog ports are fixed by the pinned manifest')
+        if manifest and automatic:
+            raise ValueError('--auto-port is unsupported for declarative catalog applications')
+        if manifest and spec['revoked']:
+            raise ValueError('Application is revoked and cannot be installed')
+        if manifest and spec['nas_path'] != (nas_path is not None):
+            raise ValueError('NAS application requires exactly one explicit --nas-path')
+        if manifest and spec['high_privilege'] and risk_ack != spec['risk_acknowledgement']:
+            raise ValueError('HIGH PRIVILEGE application requires exact --risk-ack text: ' + spec['risk_acknowledgement'])
     if action != 'status' and not accepted:
         raise ValueError('Explicit --confirm required (update/uninstall cause downtime; data retained)')
     with cb.lock(project) as registry:
@@ -354,14 +548,33 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             compose = cb.BASE / (project + '.compose.json')
             if registry.exists() or registry.is_symlink() or compose.exists() or compose.is_symlink():
                 raise ValueError('Existing registry/configuration; refusing adoption')
-            port = select_port(spec['port'] if port is None else port, automatic, app=app)
-            if (cb.docker('ps', '-aq', '--filter', 'name=^/' + project + '-app$').strip() or
-                    cb.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project).strip() or
-                    project + '_data' in cb.docker('volume', 'ls', '-q').decode().split()):
-                raise ValueError('Existing unmanaged Docker resources; refusing adoption')
-            record = {'owner': cb.OWNER, 'project': project, 'compose': str(compose.absolute()),
-                      'market': {'owner': OWNER, 'app': app, 'token': uuid.uuid4().hex,
-                                 'port': port, 'image': pull(app), 'state': 'installing'}}
+            if manifest:
+                for service, binding in manifest_ports(spec):
+                    preflight(binding['published'], app=app)
+                existing_names = [project + '-' + service['id'] for service in spec['services']]
+                volume_names = {project + '_' + volume['name'] for service in spec['services'] for volume in service['volumes']}
+                if (cb.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project).strip() or
+                        any(cb.docker('ps', '-aq', '--filter', 'name=^/' + name + '$').strip() for name in existing_names) or
+                        volume_names.intersection(cb.docker('volume', 'ls', '-q').decode().split())):
+                    raise ValueError('Existing unmanaged Docker resources; refusing adoption')
+                pull_manifest(spec)
+                market = {'owner': OWNER, 'app': app, 'token': uuid.uuid4().hex, 'state': 'installing',
+                          'catalog_schema': RUNTIME_CATALOG['schema_version'],
+                          'catalog_id': RUNTIME_CATALOG['catalog_id'], 'catalog_revision': RUNTIME_CATALOG['revision'],
+                          'catalog_source': CATALOG_SOURCE, 'catalog_app': spec,
+                          'catalog_digest': market_catalog.app_digest(spec)}
+                if nas_path is not None:
+                    market['nas_path'] = nas_path
+                record = {'owner': cb.OWNER, 'project': project, 'compose': str(compose.absolute()), 'market': market}
+            else:
+                port = select_port(spec['port'] if port is None else port, automatic, app=app)
+                if (cb.docker('ps', '-aq', '--filter', 'name=^/' + project + '-app$').strip() or
+                        cb.docker('ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project).strip() or
+                        project + '_data' in cb.docker('volume', 'ls', '-q').decode().split()):
+                    raise ValueError('Existing unmanaged Docker resources; refusing adoption')
+                record = {'owner': cb.OWNER, 'project': project, 'compose': str(compose.absolute()),
+                          'market': {'owner': OWNER, 'app': app, 'token': uuid.uuid4().hex,
+                                     'port': port, 'image': pull(app), 'state': 'installing'}}
             write_compose(record)
             save(registry, record)
             try:
@@ -376,6 +589,12 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             record = load(registry, project)
             if record['market']['app'] != app:
                 raise ValueError('Registered application identity mismatch')
+            spec = record_spec(record)
+            manifest = is_manifest(spec)
+            if action in ('domain', 'tls', 'tls-refresh') and not spec['domain']:
+                raise ValueError('Domain/TLS unsupported for this application; localhost only')
+            if manifest and action in ('reinstall', 'update'):
+                raise ValueError('Declarative catalog v1 supports install/status/uninstall only')
             if action != 'status' and (cb.BASE / (project + '.domain-recovery.json')).exists():
                 raise ValueError('Pending domain recovery journal; manual recovery required')
             if action not in ('status', 'tls-refresh') and (cb.BASE / (project + '.tls-refresh.json')).exists():
@@ -392,10 +611,10 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 return
             containers = resources(record)
             if action == 'status':
-                print('managed-compose', app, record['market']['state'], health(record),
-                      'http://127.0.0.1:' + str(record['market']['port']))
+                location = ('http://127.0.0.1:' + str(record['market']['port'])) if not manifest else 'localhost bindings from pinned catalog'
+                print('managed-compose', app, record['market']['state'], health(record), location)
                 market_domain.status(record)
-                if record['market']['state'] == 'uninstalled':
+                if record['market']['state'] == 'uninstalled' and not manifest:
                     print('Retained data: reinstall ' + app + ' --confirm --reuse-data [--auto-port]')
                 return
             if action == 'tls':
@@ -459,14 +678,23 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 raise RuntimeError('Update failed; previous image restored; recovery record retained') from None
         record['market']['state'] = 'healthy'
         save(registry, record)
-        print(action.capitalize() + ' completed; healthy; localhost port ' + str(record['market']['port']))
+        if manifest:
+            ports = ', '.join('127.0.0.1:%s/%s' % (p['published'], p['protocol']) for _, p in manifest_ports(spec))
+            print(action.capitalize() + ' completed; healthy; localhost only: ' + (ports or 'host network'))
+        else:
+            print(action.capitalize() + ' completed; healthy; localhost port ' + str(record['market']['port']))
 
 
 def main():
     os.umask(0o077)
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls', 'tls-refresh'))
-    p.add_argument('app', nargs='?', default='nginx', choices=tuple(CATALOG))
+    p.add_argument('app', nargs='?', default='nginx')
+    p.add_argument('--catalog-url', help='HTTPS JSON catalog URL; requires a content or revision pin')
+    p.add_argument('--catalog-sha256', help='Expected remote catalog content SHA256')
+    p.add_argument('--catalog-revision', help='Expected catalog commit/revision identifier')
+    p.add_argument('--risk-ack', help='Exact acknowledgement printed for high-privilege applications')
+    p.add_argument('--nas-path', help='Absolute host NAS root for catalog bind templates')
     p.add_argument('--port', type=int, help='Preferred port; catalog default (nginx 8080, ntfy 8081) or retained port for reinstall')
     p.add_argument('--auto-port', action='store_true', help='Probe at most 20 localhost ports; not a reservation')
     p.add_argument('--reuse-data', action='store_true', help='Explicitly reuse owned retained data on reinstall')
@@ -480,6 +708,13 @@ def main():
     p.add_argument('--no-redirect', action='store_true', help='Explicitly retain HTTP service alongside HTTPS')
     p.add_argument('--disable-tls', action='store_true')
     args = p.parse_args()
+    source = configure_catalog(args.catalog_url, args.catalog_sha256, args.catalog_revision)
+    apps = catalog_apps()
+    if args.action == 'catalog':
+        if args.app != 'nginx':
+            p.error('catalog action does not accept an application ID')
+    elif args.action == 'install' and args.app not in apps:
+        p.error('unknown managed application: ' + args.app)
     if args.action == 'tls':
         if args.disable_tls:
             if args.cert or args.key or args.no_redirect or args.tls_port != 443:
@@ -489,15 +724,32 @@ def main():
     elif args.cert or args.key or args.disable_tls or args.no_redirect or args.tls_port != 443:
         p.error('TLS options apply only to tls action')
     if args.action == 'catalog':
-        for app in CATALOG:
-            spec = metadata(app)
-            print('%s: %s; image=%s; localhost port %s; RAM limit %s / CPU 0.50 / PIDs 64; %s MiB minimum free disk (not a quota); Docker Compose v2/Python 3/Linux required' %
-                  (app, spec['description'], spec['image'], spec['port'], spec['memory'], spec['bytes'] // 1024 // 1024))
+        print('catalog source:', source)
+        for app, spec in apps.items():
+            if is_manifest(spec):
+                flags = []
+                if spec['revoked']:
+                    flags.append('REVOKED')
+                if spec['high_privilege']:
+                    flags.append('HIGH PRIVILEGE')
+                ports = ','.join('127.0.0.1:%s:%s/%s' % (p['published'], p['target'], p['protocol'])
+                                 for _, p in manifest_ports(spec)) or 'host-network/no published ports'
+                print('%s: %s; %s; services=%s; localhost=%s; %s' %
+                      (app, spec['description'], ', '.join(flags) if flags else 'ordinary',
+                       len(spec['services']), ports, spec['bytes'] // 1024 // 1024))
+            else:
+                spec = metadata(app)
+                print('%s: %s; image=%s; localhost port %s; RAM limit %s / CPU 0.50 / PIDs 64; %s MiB minimum free disk (not a quota); Docker Compose v2/Python 3/Linux required' %
+                      (app, spec['description'], spec['image'], spec['port'], spec['memory'], spec['bytes'] // 1024 // 1024))
         return
     if (args.auto_port or args.port is not None) and args.action not in ('install', 'reinstall'):
         p.error('Port options apply only to install/reinstall')
     if args.reuse_data and args.action != 'reinstall':
         p.error('--reuse-data applies only to reinstall')
+    if args.risk_ack and args.action != 'install':
+        p.error('--risk-ack applies only to install')
+    if args.nas_path and args.action != 'install':
+        p.error('--nas-path applies only to install')
     if args.action == 'domain' and not args.confirm:
         p.error('Domain mapping requires explicit --confirm')
     if args.action != 'domain' and (args.domain or args.remove_domain):
@@ -507,7 +759,8 @@ def main():
     operate(args.action, args.app, args.port, args.confirm, automatic=args.auto_port, reuse=args.reuse_data,
             domain=None if args.remove_domain else args.domain, listen=args.listen,
             tls={'cert': args.cert, 'key': args.key, 'listen': args.tls_port, 'redirect': not args.no_redirect}
-            if args.action == 'tls' and not args.disable_tls else None)
+            if args.action == 'tls' and not args.disable_tls else None,
+            risk_ack=args.risk_ack, nas_path=args.nas_path)
 
 
 if __name__ == '__main__':

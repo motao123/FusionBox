@@ -1,0 +1,156 @@
+{
+  "assets": [
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.10.0.tar.gz",
+      "tag_name": "v1.10.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.11.1.tar.gz",
+      "tag_name": "v1.11.1"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.12.0.tar.gz",
+      "tag_name": "v1.12.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.12.1.tar.gz",
+      "tag_name": "v1.12.1"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.13.0.tar.gz",
+      "tag_name": "v1.13.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.14.0.tar.gz",
+      "tag_name": "v1.14.0"
+    },
+    {
+      "download_count": 0,
+      "name": "FusionBox-v1.15.0.tar.gz",
+      "tag_name": "v1.15.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.16.0.tar.gz",
+      "tag_name": "v1.16.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.17.0.tar.gz",
+      "tag_name": "v1.17.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.18.0.tar.gz",
+      "tag_name": "v1.18.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.19.0.tar.gz",
+      "tag_name": "v1.19.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.20.0.tar.gz",
+      "tag_name": "v1.20.0"
+    },
+    {
+      "download_count": 0,
+      "name": "FusionBox-v1.21.0.tar.gz",
+      "tag_name": "v1.21.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.22.0.tar.gz",
+      "tag_name": "v1.22.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.23.0.tar.gz",
+      "tag_name": "v1.23.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.24.0.tar.gz",
+      "tag_name": "v1.24.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.24.1.tar.gz",
+      "tag_name": "v1.24.1"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.24.2.tar.gz",
+      "tag_name": "v1.24.2"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.4.0.tar.gz",
+      "tag_name": "v1.4.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.4.1.tar.gz",
+      "tag_name": "v1.4.1"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.4.2.tar.gz",
+      "tag_name": "v1.4.2"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.4.3.tar.gz",
+      "tag_name": "v1.4.3"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.4.4.tar.gz",
+      "tag_name": "v1.4.4"
+    },
+    {
+      "download_count": 2,
+      "name": "FusionBox-v1.5.0.tar.gz",
+      "tag_name": "v1.5.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.5.1.tar.gz",
+      "tag_name": "v1.5.1"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.6.0.tar.gz",
+      "tag_name": "v1.6.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.6.1.tar.gz",
+      "tag_name": "v1.6.1"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.7.0.tar.gz",
+      "tag_name": "v1.7.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.8.1.tar.gz",
+      "tag_name": "v1.8.1"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.9.0.tar.gz",
+      "tag_name": "v1.9.0"
+    }
+  ],
+  "repository": "motao123/FusionBox",
+  "total_downloads": 29
+}

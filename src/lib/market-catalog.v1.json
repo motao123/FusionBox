@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "catalog_id": "fusionbox-builtin",
+  "revision": "builtin-v1",
+  "apps": [
+    {
+      "id": "ntfy-v1",
+      "name": "ntfy (declarative example)",
+      "description": "Pinned local notification service declared entirely by catalog JSON.",
+      "revoked": false,
+      "high_privilege": false,
+      "domain": false,
+      "bytes": 536870912,
+      "nas_path": false,
+      "services": [
+        {
+          "id": "app",
+          "image": "binwiederhier/ntfy:v2.28.0@sha256:6ef4b819f722fccdc036af611c4774cfdc2de821ab74fdd48bbf4c9d6f8973da",
+          "command": ["serve", "--listen-http", ":8080", "--cache-file", "/tmp/ntfy-cache.db", "--cache-duration", "24h"],
+          "user": "65534:65534",
+          "ports": [{"published": 8091, "target": 8080, "protocol": "tcp"}],
+          "volumes": [{"name": "data", "target": "/tmp", "read_only": false}],
+          "binds": [],
+          "devices": [],
+          "network_mode": "bridge",
+          "docker_socket": false,
+          "memory": "128m",
+          "cpus": "0.50",
+          "pids_limit": 64,
+          "health": ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/v1/health | grep -q '\"healthy\":true'"],
+          "health_retries": 30
+        }
+      ]
+    },
+    {
+      "id": "docker-admin-example",
+      "name": "Docker administrator (revoked security fixture)",
+      "description": "Non-installable fixture demonstrating explicit Docker socket privilege classification.",
+      "revoked": true,
+      "high_privilege": true,
+      "risk_acknowledgement": "I ACCEPT HIGH PRIVILEGE: docker-admin-example",
+      "domain": false,
+      "bytes": 536870912,
+      "nas_path": false,
+      "services": [
+        {
+          "id": "app",
+          "image": "jeessy/ddns-go:latest@sha256:0336e6eddcb4052e978c90f0aa530f77205b1dd08fe28057869dbc77a60c5671",
+          "ports": [{"published": 8092, "target": 9876, "protocol": "tcp"}],
+          "volumes": [],
+          "binds": [],
+          "devices": [],
+          "network_mode": "bridge",
+          "docker_socket": true,
+          "memory": "64m",
+          "cpus": "0.50",
+          "pids_limit": 64,
+          "health": ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9876/ || exit 1"],
+          "health_retries": 10
+        }
+      ]
+    }
+  ]
+}

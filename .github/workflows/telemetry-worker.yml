@@ -1,0 +1,77 @@
+name: Telemetry Worker
+
+on:
+  pull_request:
+    paths:
+      - 'telemetry-worker/**'
+      - '.github/workflows/telemetry-worker.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'telemetry-worker/**'
+      - '.github/workflows/telemetry-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: telemetry-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: telemetry-worker/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: telemetry-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: telemetry-worker/package-lock.json
+      - run: npm ci
+      - name: Validate deployment configuration
+        id: config
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -n "$CLOUDFLARE_API_TOKEN" && -n "$CLOUDFLARE_ACCOUNT_ID" ]] && \
+             ! grep -q 'REPLACE_WITH_D1_DATABASE_ID' wrangler.jsonc; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Apply D1 migrations
+        if: steps.config.outputs.ready == 'true'
+        run: npx wrangler d1 migrations apply fusionbox-telemetry --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy configured Worker
+        if: steps.config.outputs.ready == 'true'
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Skip deployment until Cloudflare and D1 are configured
+        if: steps.config.outputs.ready != 'true'
+        run: echo "Cloudflare credentials or D1 database ID are not configured; deployment skipped."

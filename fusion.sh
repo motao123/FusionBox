@@ -4,7 +4,11 @@
 
 # Read-only commands may run without root; everything else (incl. menus) needs root
 case "$1" in
-  help|h|version|v) ;;
+  help|h|version|v|privacy)
+    [[ "$1" != "privacy" || "${2:-status}" == "status" ]] || {
+      [[ $EUID -ne 0 ]] && echo "需要 root 权限" && exit 1
+    }
+    ;;
   *) [[ $EUID -ne 0 ]] && echo "需要 root 权限" && exit 1 ;;
 esac
 
@@ -95,6 +99,9 @@ route() {
     uninstall)
       self_uninstall
       ;;
+    privacy)
+      privacy_command "$@"
+      ;;
     # k command shortcut - pass to system
     k)
       _load_module "cluster"
@@ -175,27 +182,140 @@ show_status() {
 # ---- Self Update ----
 # NOTE: keep the repo URL in sync with install.sh (single source of truth)
 FUSION_REPO="https://github.com/motao123/FusionBox"
+FUSION_API="https://api.github.com/repos/motao123/FusionBox"
+
+_update_json_string() {
+  local key="$1"
+  tr -d '\r\n' < "$2" | sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p"
+}
+
+_version_is_newer() {
+  local remote="$1" current="$2" highest
+  [[ "$remote" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  highest=$(printf '%s\n%s\n' "$current" "$remote" | sort -V | tail -n 1)
+  [[ "$highest" == "$remote" && "$remote" != "$current" ]]
+}
+
+_update_download() {
+  local url="$1" output="$2"
+  shift 2
+  command -v curl &>/dev/null || return 1
+  curl -fsSL --connect-timeout 10 --retry 2 "$@" "$url" -o "$output"
+}
+
+_update_validate_archive() {
+  local archive="$1" root="$2" workdir="$3" entry target type line
+  local listing="$workdir/archive.list" verbose="$workdir/archive.verbose"
+
+  tar tzf "$archive" > "$listing" || return 1
+  tar tvzf "$archive" > "$verbose" || return 1
+  while IFS= read -r entry; do
+    entry="${entry#./}"
+    [[ -n "$entry" && "$entry" != /* && "$entry" != *\\* ]] || return 1
+    case "/$entry/" in
+      */../*|*/./*) return 1 ;;
+    esac
+    [[ "$entry" == "$root" || "$entry" == "$root/" || "$entry" == "$root/"* ]] || return 1
+  done < "$listing"
+
+  while IFS= read -r line; do
+    type="${line:0:1}"
+    [[ "$type" == "-" || "$type" == "d" ]] || return 1
+  done < "$verbose"
+
+  for target in fusion.sh install.sh version.txt src/init.sh src/lib/deploy.sh; do
+    grep -Fxq "$root/$target" "$listing" || return 1
+  done
+}
 
 self_update() (
-  local tmpdir remote_ver
+  local tmpdir metadata tag asset expected actual archive_root remote_ver download_status=0
   tmpdir=$(mktemp -d) || return 1
   trap 'rm -rf -- "$tmpdir"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
   msg_info "正在检查更新..."
-  _download "https://raw.githubusercontent.com/motao123/FusionBox/main/version.txt" "$tmpdir/version.txt" || return 1
-  remote_ver=$(tr -d '[:space:]' < "$tmpdir/version.txt") || return 1
+
+  metadata="$tmpdir/latest-release.json"
+  if _update_download "$FUSION_API/releases/latest" "$metadata" \
+      -H 'Accept: application/vnd.github+json' \
+      -H 'X-GitHub-Api-Version: 2022-11-28'; then
+    tag="$(_update_json_string tag_name "$metadata")"
+    if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      remote_ver="${tag#v}"
+      asset="FusionBox-$tag.tar.gz"
+      archive_root="FusionBox"
+      if [[ "$remote_ver" == "$FUSION_VER" ]]; then
+        msg_ok "已是最新版本"
+        return 0
+      fi
+      _version_is_newer "$remote_ver" "$FUSION_VER" || {
+        msg_warn "最新稳定 Release ($remote_ver) 早于当前版本 ($FUSION_VER)，拒绝降级"
+        return 0
+      }
+      msg_info "发现最新稳定版本 $tag，正在下载已校验的 Release 包..."
+      _update_download "$FUSION_REPO/releases/download/$tag/$asset" "$tmpdir/fusionbox.tar.gz" || download_status=1
+      if [[ $download_status -eq 0 ]]; then
+        _update_download "$FUSION_REPO/releases/download/$tag/SHA256SUMS" "$tmpdir/SHA256SUMS" || download_status=1
+      fi
+      if [[ $download_status -eq 0 ]]; then
+        expected="$(while read -r sum name rest; do
+          name="${name#\*}"
+          if [[ "$name" == "$asset" && -z "$rest" && "$sum" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            printf '%s\n' "${sum,,}"
+          fi
+        done < "$tmpdir/SHA256SUMS")"
+        [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || download_status=1
+      fi
+      if [[ $download_status -eq 0 ]]; then
+        actual="$(sha256sum "$tmpdir/fusionbox.tar.gz" | cut -d ' ' -f 1)" || download_status=1
+        [[ "$actual" == "$expected" ]] || download_status=1
+      fi
+      if [[ $download_status -ne 0 ]]; then
+        msg_err "Release 资产下载或 SHA256 校验失败；为避免降级到未校验内容，更新已停止"
+        return 1
+      fi
+    else
+      download_status=2
+    fi
+  else
+    download_status=2
+  fi
+
+  if [[ $download_status -eq 2 ]]; then
+    msg "${F_YELLOW}[WARN]${F_RESET} GitHub latest Release API 不可用或受限，回退到 main 分支快照。"
+    msg "${F_YELLOW}[WARN]${F_RESET} main 快照没有 Release SHA256SUMS，无法提供发布资产级完整性校验。"
+    _update_download "$FUSION_REPO/archive/refs/heads/main.tar.gz" "$tmpdir/fusionbox.tar.gz" || return 1
+    archive_root="FusionBox-main"
+    tag=""
+  fi
+
+  _update_validate_archive "$tmpdir/fusionbox.tar.gz" "$archive_root" "$tmpdir" || {
+    msg_err "归档结构或路径安全检查失败"
+    return 1
+  }
+  tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir" || return 1
+  [[ -f "$tmpdir/$archive_root/fusion.sh" && ! -L "$tmpdir/$archive_root/fusion.sh" &&
+     -f "$tmpdir/$archive_root/src/lib/deploy.sh" && ! -L "$tmpdir/$archive_root/src/lib/deploy.sh" ]] || return 1
+  remote_ver="$(tr -d '[:space:]' < "$tmpdir/$archive_root/version.txt")" || return 1
   [[ "$remote_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  [[ -z "$tag" || "$remote_ver" == "${tag#v}" ]] || {
+    msg_err "Release 版本与归档内容不一致"
+    return 1
+  }
   if [[ "$remote_ver" == "$FUSION_VER" ]]; then
     msg_ok "已是最新版本"
     return 0
   fi
-  _download "$FUSION_REPO/archive/main.tar.gz" "$tmpdir/fusionbox.tar.gz" || return 1
-  tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir" || return 1
+  _version_is_newer "$remote_ver" "$FUSION_VER" || {
+    msg_warn "远端版本 ($remote_ver) 早于当前版本 ($FUSION_VER)，拒绝降级"
+    return 0
+  }
   source "$FUSION_BASE/src/lib/deploy.sh" || return 1
-  fusion_validate_release "$tmpdir/FusionBox-main" || return 1
-  [[ "$(tr -d '[:space:]' < "$tmpdir/FusionBox-main/version.txt")" == "$remote_ver" ]] || return 1
-  fusion_deploy "$tmpdir/FusionBox-main" "$FUSION_BASE" || return 1
+  fusion_validate_release "$tmpdir/$archive_root" || return 1
+  fusion_deploy "$tmpdir/$archive_root" "$FUSION_BASE" || return 1
+  FUSION_VER="$remote_ver"
+  _telemetry_event update
   msg_ok "更新完成，重新运行 fusionbox 生效"
 )
 
@@ -279,6 +399,7 @@ show_help() {
   msg "  ${F_GREEN}status${F_RESET}            系统状态概览"
   msg "  ${F_GREEN}update${F_RESET}            更新 FusionBox"
   msg "  ${F_GREEN}uninstall${F_RESET}         卸载 FusionBox 本体"
+  msg "  ${F_GREEN}privacy${F_RESET}           隐私与匿名统计设置"
   msg "  ${F_GREEN}version${F_RESET}           显示版本"
   msg "  ${F_GREEN}help${F_RESET}              显示帮助"
   msg ""
@@ -322,10 +443,13 @@ main_menu() {
     msg "  ${F_GREEN} 9${F_RESET}) 集群控制与工具"
     msg "  ${F_GREEN}10${F_RESET}) 系统状态"
     msg "  ${F_GREEN}11${F_RESET}) 帮助"
+    msg "  ${F_GREEN}12${F_RESET}) $(_tr MSG_PRIVACY_MENU "隐私与匿名统计")"
     msg "  ${F_GREEN} 0${F_RESET}) 退出"
     msg ""
+    msg "  $(_tr MSG_ACKNOWLEDGEMENT "棉花云：优质网络提供商 https://www.88sup.com")"
+    msg ""
 
-    read -p "请选择 [0-11]: " main_choice || { msg ""; return; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-12]: " main_choice || { msg ""; return; }   # stdin 关闭时退出，防死循环
 
     case "$main_choice" in
       1) route proxy ;;
@@ -339,7 +463,32 @@ main_menu() {
       9) route cluster ;;
       10) show_status ; pause ;;
       11) show_help ;;
+      12) privacy_menu ;;
       0) msg "再见！"; _log_write "FusionBox 会话已结束"; return ;;
+      *) ;;
+    esac
+  done
+}
+
+privacy_menu() {
+  while true; do
+    _print_banner
+    msg_title "$(_tr MSG_PRIVACY_MENU "隐私与匿名统计")"
+    msg ""
+    privacy_command status
+    msg ""
+    msg "  ${F_GREEN}1${F_RESET}) On"
+    msg "  ${F_GREEN}2${F_RESET}) Off"
+    msg "  ${F_GREEN}3${F_RESET}) Reset ID"
+    msg "  ${F_GREEN}0${F_RESET}) Back"
+    msg ""
+    local choice
+    read -p "请选择 [0-3]: " choice || return
+    case "$choice" in
+      1) privacy_command on; pause ;;
+      2) privacy_command off; pause ;;
+      3) privacy_command reset-id; pause ;;
+      0) return ;;
       *) ;;
     esac
   done
@@ -347,6 +496,7 @@ main_menu() {
 
 # ---- Entry ----
 _log_write "FusionBox v$FUSION_VER started with args: $*"
+_telemetry_event heartbeat
 
 # Route the command
 route "$@"

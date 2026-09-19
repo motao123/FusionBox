@@ -1,7 +1,7 @@
 # FusionBox Initialization
 # Loaded by fusion.sh on startup
 
-export FUSION_VER="1.1.0"
+export FUSION_VER="1.25.0"
 export FUSION_CODENAME="FusionBox"
 
 # Source common library
@@ -80,7 +80,7 @@ _module_status() {
 # ---- Shell completion helper ----
 _fusion_completion() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
-  local cmds="proxy system network web panels market warp workspace cluster help version update status uninstall"
+  local cmds="proxy system network web panels market warp workspace cluster help version update status privacy uninstall"
   COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
 }
 complete -F _fusion_completion fusionbox 2>/dev/null

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fusionbox.local/schemas/market-catalog.v1.json",
+  "title": "FusionBox managed application catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog_id", "revision", "apps"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "catalog_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+    "revision": {"type": "string", "minLength": 1, "maxLength": 64},
+    "apps": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/app"}}
+  },
+  "$defs": {
+    "port": {
+      "type": "object", "additionalProperties": false,
+      "required": ["published", "target", "protocol"],
+      "properties": {"published": {"type": "integer", "minimum": 1024, "maximum": 65535}, "target": {"type": "integer", "minimum": 1, "maximum": 65535}, "protocol": {"enum": ["tcp", "udp"]}}
+    },
+    "volume": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "target", "read_only"],
+      "properties": {"name": {"type": "string"}, "target": {"type": "string"}, "read_only": {"type": "boolean"}}
+    },
+    "bind": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "target", "read_only"],
+      "properties": {"source": {"type": "string"}, "target": {"type": "string"}, "read_only": {"type": "boolean"}}
+    },
+    "device": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "target", "permissions"],
+      "properties": {"source": {"type": "string"}, "target": {"type": "string"}, "permissions": {"type": "string"}}
+    },
+    "service": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "image", "ports", "volumes", "binds", "devices", "network_mode", "docker_socket", "memory", "cpus", "pids_limit", "health", "health_retries"],
+      "properties": {
+        "id": {"type": "string"}, "image": {"type": "string"},
+        "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "environment": {"type": "object", "additionalProperties": {"type": "string"}},
+        "user": {"type": "string"}, "ports": {"type": "array", "items": {"$ref": "#/$defs/port"}},
+        "volumes": {"type": "array", "items": {"$ref": "#/$defs/volume"}}, "binds": {"type": "array", "items": {"$ref": "#/$defs/bind"}},
+        "devices": {"type": "array", "items": {"$ref": "#/$defs/device"}}, "network_mode": {"enum": ["bridge", "host"]},
+        "docker_socket": {"type": "boolean"}, "memory": {"type": "string"}, "cpus": {"type": "string"},
+        "pids_limit": {"type": "integer"}, "health": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "health_retries": {"type": "integer", "minimum": 1, "maximum": 300}
+      }
+    },
+    "app": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "description", "revoked", "high_privilege", "domain", "bytes", "nas_path", "services"],
+      "properties": {
+        "id": {"type": "string"}, "name": {"type": "string"}, "description": {"type": "string"}, "revoked": {"type": "boolean"},
+        "high_privilege": {"type": "boolean"}, "risk_acknowledgement": {"type": "string"}, "domain": {"type": "boolean"},
+        "bytes": {"type": "integer", "minimum": 1}, "nas_path": {"type": "boolean"},
+        "services": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/service"}}
+      }
+    }
+  }
+}
