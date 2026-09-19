@@ -12,7 +12,7 @@
 
 cd "$(dirname "$0")/.." || exit 1
 
-AUTHORIZED_233BOY_FILES="./README.md ./fusion.sh ./src/modules/proxy.sh"
+AUTHORIZED_233BOY_FILES="./README.md ./docs/CHANGELOG.md ./fusion.sh ./src/modules/proxy.sh"
 FORBIDDEN_PATTERNS="kejilion BlueSkyXN SKY-BOX Neo-TOWeR"
 
 rc=0
