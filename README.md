@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.26.0-blue)
+![version](https://img.shields.io/badge/version-1.27.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,16 +58,16 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.26.0）
+## 最近更新（v1.27.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 系统备份改为显式 scope：默认 `fusion,web,docker`，可逐项确认加入 SSH、cron、`/usr/local` 和用户 home
-- manifest v2 记录 scope、UID/GID、mode、size 与逐文件 SHA256；恢复前预览冲突并支持 abort/replace/skip，失败逆序回滚
-- 保持 format-1 历史归档只读兼容；站点备份继续覆盖 `/var/www`、Web 配置和 `/opt/docker`
-- 数据库仍要求应用原生 dump 与停写协调，不把文件归档宣称为数据库一致性备份
+- 新增 Docker 迁移 P1a 导出包：保存容器声明、镜像、网络、本地卷和经逐项确认的 bind 数据，并逐文件校验 hash/size
+- 支持普通容器集合或完整已创建 Compose project；FusionBox 停止选中容器并复核其他 Docker 写入者，宿主/外部写入者仍须操作者自行冻结
+- 不可无损表达的特权、设备、tmpfs、host PID/IPC、远程/rootless daemon 等配置会被拒绝，不静默降级
+- `archive_transfer --kind docker-v1` 只负责可信 SSH 传输和校验；目标机预检、恢复与事务回滚将在 P1b 提供
 
-完整版本历史（v1.25.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+完整版本历史（v1.26.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考
 

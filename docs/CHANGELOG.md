@@ -2,6 +2,14 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.27.0 Docker 完整迁移导出与可信传输（P1a）
+
+- 新增 `fusionbox panels docker migration export|verify`：可选择普通容器集合或完整已创建 Compose project，保存关键 inspect 声明、不可变镜像、网络/IPAM、端口/HostIP、环境变量、启动参数、资源/restart/health 配置及数据挂载。
+- 镜像按 ID 去重执行 `docker image save`；local named/anonymous/external volumes 文件级导出，经规范路径和精确文本双确认的 bind 以逻辑名称入包。操作者必须另外冻结宿主进程、其他运行时和网络存储写入者；数据库应先做原生 dump/停写，P1a 不声称提供跨文件事务快照。
+- 导出前拒绝特权、设备、tmpfs、host PID/IPC、container network、远程/rootless daemon、非 local volume、危险 bind 和范围外共享写入者；停止完整选择集合后再次复核拓扑与写入者，finally 只恢复本操作实际停止的容器。
+- bundle 使用严格 manifest，逐成员记录 size/SHA256/mode/UID/GID，拒绝路径穿越、链接、特殊文件、重复或未声明成员；失败时不发布目标包。
+- `archive_transfer.py --kind docker-v1` 支持密钥 SSH push/pull/status 和本地 bundle 校验，不在远端执行恢复。P1a 仅提供可验证离线导出；目标机预检、重建和 journal rollback 属于 P1b。
+
 ## v1.26.0 显式范围系统备份与事务恢复
 
 - 系统备份使用显式 `fusion/web/docker/ssh/cron/usr-local/home` scope；默认仍为保守的 `fusion,web,docker`，敏感范围逐项输入确认，定时任务固定使用非交互默认范围。

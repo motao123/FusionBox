@@ -13,6 +13,7 @@ import tempfile
 
 import archive
 import cluster_nodes
+import docker_migration
 
 # Sent as fixed program text, with separately shell-quoted arguments. Remote Python
 # needs only its standard library; no installed FusionBox or sourced configuration.
@@ -159,7 +160,10 @@ def run(args):
             with source.open('rb') as src, frozen.open('xb') as dst:
                 shutil.copyfileobj(src, dst)
             os.chmod(frozen, 0o600)
-            archive.verify(frozen, args.scope)
+            if args.kind == 'system-v2':
+                archive.verify(frozen, args.scope)
+            else:
+                docker_migration.verify(frozen)
             with frozen.open('rb') as stream:
                 if digest(stream) != args.sha256:
                     raise ValueError('Local checksum mismatch')
@@ -185,7 +189,10 @@ def run(args):
                 with opened(fd, temporary) as stream:
                     if digest(stream) != args.sha256:
                         raise ValueError('Downloaded checksum mismatch')
-                archive.verify(candidate, args.scope)
+                if args.kind == 'system-v2':
+                    archive.verify(candidate, args.scope)
+                else:
+                    docker_migration.verify(candidate)
                 if result.returncode:
                     raise RuntimeError('SSH transfer failed; source retained')
                 publish(fd, temporary, local.name, args.sha256)
@@ -210,8 +217,8 @@ def main():
     p.add_argument('node')
     p.add_argument('name', help='Remote archive basename ending .tar.gz')
     p.add_argument('--file', help='Local source/destination; private owned regular file for push')
-    p.add_argument('--scope', required=True,
-                   help='Comma-separated explicit archive scopes')
+    p.add_argument('--kind', choices=('system-v2', 'docker-v1'), default='system-v2')
+    p.add_argument('--scope', help='Comma-separated system-v2 archive scopes')
     p.add_argument('--sha256', required=True, help='Trusted expected archive SHA256, not a signature')
     p.add_argument('--remote-root', required=True)
     p.add_argument('--key', required=True)
@@ -220,7 +227,12 @@ def main():
     p.add_argument('--timeout', type=int, default=300)
     p.add_argument('--confirm-owned-store', action='store_true')
     args = p.parse_args()
-    archive.normalize_scopes(args.scope)
+    if args.kind == 'system-v2':
+        if not args.scope:
+            p.error('--scope required for --kind system-v2')
+        archive.normalize_scopes(args.scope)
+    elif args.scope:
+        p.error('--scope is not used with --kind docker-v1')
     if args.action != 'status' and not args.file:
         p.error('--file required for push/pull')
     run(args)
