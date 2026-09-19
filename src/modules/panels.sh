@@ -6,6 +6,7 @@ panels_main() {
 
   case "$cmd" in
     compose-backup)       _require_root; python3 "$FUSION_SRC/lib/compose_backup.py" "$@" ;;
+    docker-migration)     _require_root; python3 "$FUSION_SRC/lib/docker_migration.py" "$@" ;;
     docker|dk)            panels_docker "$@" ;;
     mirror|mirrors)       panels_docker_mirror "${1:-}" ;;
     bt|baota)             panels_bt ;;
@@ -33,6 +34,7 @@ panels_docker() {
     images)       panels_docker_images ;;
     prune)        panels_docker_prune ;;
     compose|up)   panels_docker_compose "$@" ;;
+    migrate|migration) shift; _require_root; python3 "$FUSION_SRC/lib/docker_migration.py" "$@" ;;
     mirror|mirrors) panels_docker_mirror "${2:-}" ;;
     port-block|pb)  shift; panels_docker_port_block "$@" ;;
     uninstall)      panels_docker_uninstall ;;
@@ -988,12 +990,13 @@ panels_docker_backup() {
 
   msg_title "Docker 备份/迁移/恢复"
   msg ""
-  msg "  1) 导出所有容器文件系统（不含卷/运行配置）"
-  msg "  2) 导出指定容器文件系统（不含卷/运行配置）"
-  msg "  3) 备份所有镜像"
-  msg "  4) 受管 Compose 登记/具名卷备份/原项目恢复"
-  msg "  5) 导入文件系统镜像/加载镜像"
-  msg "  6) 传输容器文件系统（不是完整迁移）"
+  msg "  1) 完整迁移 bundle 导出/verify（inspect + 镜像 + 本地卷/bind 冷备，不恢复）"
+  msg "  2) 导出所有容器文件系统（旧 export；不含卷/运行配置）"
+  msg "  3) 导出指定容器文件系统（旧 export；不含卷/运行配置）"
+  msg "  4) 备份所有镜像"
+  msg "  5) 受管 Compose 登记/具名卷备份/原项目恢复"
+  msg "  6) 导入文件系统镜像/加载镜像"
+  msg "  7) 传输容器文件系统（旧 export，不是完整迁移）"
   msg_warn "docker export 不包含卷、挂载数据、网络或运行配置，不能用于完整应用恢复。"
   msg "  0) 返回"
   read -p "请选择: " dbk_choice
@@ -1004,6 +1007,13 @@ panels_docker_backup() {
 
   case "$dbk_choice" in
     1)
+      msg_warn "迁移导出会停止选中的 Docker 容器；宿主进程、其他运行时或网络存储写入者必须由你在外部冻结。"
+      msg_warn "文件级导出不提供跨文件事务快照；数据库必须先做原生 dump/一致性停写。bundle 含环境变量等秘密。"
+      python3 "$FUSION_SRC/lib/docker_migration.py" --help
+      msg "CLI: fusionbox panels docker migration export BUNDLE (--container NAME ... | --compose-project PROJECT) --confirm-stop-writers [--bind ABS_SOURCE=LOGICAL --confirm-bind ABS_SOURCE]"
+      msg "校验: fusionbox panels docker migration verify BUNDLE"
+      ;;
+    2)
       local containers container
       containers=$(docker ps -a --format '{{.Names}}') || { msg_err "容器列表读取失败"; return 1; }
       for container in $containers; do
@@ -1012,13 +1022,13 @@ panels_docker_backup() {
       done
       msg_ok "列出的容器文件系统已导出到 $backup_dir（不含卷/运行配置）"
       ;;
-    2)
+    3)
       read -r -p "容器名称: " c
       [[ "$c" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 1
       _panels_docker_archive "$backup_dir/${c}_${date_str}.tar" export "$c" || return 1
       msg_ok "容器文件系统已导出（不含卷/运行配置）"
       ;;
-    3)
+    4)
       local images
       images=$(docker images -q) || { msg_err "镜像列表读取失败"; return 1; }
       [[ -n "$images" ]] || { msg_err "没有镜像可导出"; return 1; }
@@ -1027,7 +1037,7 @@ panels_docker_backup() {
       _panels_docker_archive "$backup_dir/all_images_${date_str}.tar" save "${image_ids[@]}" || return 1
       msg_ok "镜像归档已发布"
       ;;
-    4)
+    5)
       local action project source
       msg_warn "仅本机已创建的单 Compose 文件项目、本地具名卷；拒绝 bind/external/匿名卷。归档含私密元数据，请妥善保管。"
       read -r -p "操作 register / backup / restore: " action
@@ -1043,7 +1053,7 @@ panels_docker_backup() {
         *) return 1 ;;
       esac
       ;;
-    5)
+    6)
       ls -lh "$backup_dir"/*.tar "$backup_dir"/*.tar.gz 2>/dev/null
       read -p "输入备份文件名: " backup_file
       if [[ -f "$backup_dir/$backup_file" ]]; then
@@ -1058,7 +1068,7 @@ panels_docker_backup() {
         fi
       fi
       ;;
-    6)
+    7)
       read -p "容器名称: " c
       read -p "远程主机 (user@host): " remote_host
       [[ "$c" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 1
@@ -1239,9 +1249,10 @@ panels_docker_menu() {
     msg "  ${F_GREEN}15${F_RESET}) 只读容器详情（环境变量隐藏）"
     msg "  ${F_GREEN}16${F_RESET}) 容器端口封禁（DOCKER-USER 按容器）"
     msg "  ${F_GREEN}17${F_RESET}) Docker 一键卸载（YES 门禁）"
+    msg "  ${F_GREEN}18${F_RESET}) 完整迁移 bundle 导出/校验帮助（不恢复）"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
-    read -p "请选择 [0-17]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-18]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$dk_choice" in
       1) panels_docker_install; pause ;;
       2) panels_docker_ps ;;
@@ -1260,6 +1271,7 @@ panels_docker_menu() {
       15) local target; read -r -p "容器名称或 ID: " target; panels_docker_detail "$target"; pause ;;
       16) panels_docker_port_block menu ;;
       17) panels_docker_uninstall; pause ;;
+      18) python3 "$FUSION_SRC/lib/docker_migration.py" --help; pause ;;
       0) break ;;
     esac
   done
@@ -1509,6 +1521,7 @@ panels_help() {
   msg_title "面板与工具 帮助"
   msg ""
   msg "  fusionbox panels compose-backup   受管 Compose register/backup/restore（--help）"
+  msg "  fusionbox panels docker-migration --help  完整 Docker 离线迁移 bundle 导出/verify（不恢复）"
   msg "  fusionbox panels docker           Docker 管理"
   msg "  fusionbox panels docker summary [--all]  只读计数/磁盘用量；--all 完整列表"
   msg "  fusionbox panels docker detail NAME_OR_ID  只读详情/限额/占用；环境变量隐藏"

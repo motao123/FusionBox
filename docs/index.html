@@ -139,9 +139,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.26.0 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.27.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">v1.26.0 将系统备份升级为显式 scope 和可审计 manifest：默认覆盖 FusionBox、Web 与 Docker 数据，可逐项加入 SSH、cron、/usr/local 和 home；恢复前预览冲突，暂存激活失败时回滚。文件归档不冒充数据库一致性快照，数据库原生 dump/restore 仍在后续批次。<a href="https://github.com/motao123/FusionBox/blob/main/docs/CHANGELOG.md">查看变更历史</a></p>
+        <p class="sub">v1.27.0 新增 Docker 迁移 P1a：把容器声明、镜像、网络、本地卷和显式确认的 bind 数据导出为严格校验 bundle；不支持的高风险运行能力会直接拒绝。FusionBox 会停止选中容器并复核其他 Docker 写入者，宿主或外部写入者仍须操作者自行冻结。当前只提供导出、校验和可信 SSH 传输，目标机事务恢复将在 P1b 完成。<a href="https://github.com/motao123/FusionBox/blob/main/docs/CHANGELOG.md">查看边界与命令</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>
