@@ -2,6 +2,14 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.28.0 Docker 目标机预检与事务恢复（P1b）
+
+- 新增 `docker migration preflight`：验证 bundle 后以只读方式检查目标 OS/架构、Docker/Compose、磁盘与 inode、HostIP/协议端口、名称、网络/IPAM、bind 映射、local volume 和镜像 ID/RepoTag 冲突；失败时零变更。
+- `restore --confirm-clean-target` 只支持经过严格声明校验的干净目标：私有 staging 解包、镜像加载与 ID/tag 核验、local bridge 网络和卷创建、目录 bind 恢复、容器重建、多网络连接、启动与 health 检查。
+- `/var/lib/fusionbox/docker-migration` 中的 root-owned 0700/0600 journal 在每项副作用前后 fsync；资源使用 pending/created 状态，`resume` 可补齐中断步骤，`rollback` 只删除带本事务标签或 marker 的资源。
+- bind 创建、清空、复制、metadata 与回滚使用固定父目录/root FD 和 openat 风格操作，逐级校验 inode/dev，防止符号链接或目录置换导致越界删除。镜像回滚只移除本事务新增且此前不存在的 tags/ID。
+- 本地恢复安全测试 13/13，Linux 验证服务器（Docker 29.8.1、x86_64）同样 13/13，验证后零容器且临时文件已清理。尚无独立第二台目标机，因此未把单机测试表述为真实跨主机验收。
+
 ## v1.27.0 Docker 完整迁移导出与可信传输（P1a）
 
 - 新增 `fusionbox panels docker migration export|verify`：可选择普通容器集合或完整已创建 Compose project，保存关键 inspect 声明、不可变镜像、网络/IPAM、端口/HostIP、环境变量、启动参数、资源/restart/health 配置及数据挂载。
