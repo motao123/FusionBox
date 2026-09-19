@@ -48,7 +48,7 @@ CATALOG = {
                 'description': 'LLM API gateway and billing panel (new-api); SQLite in named volume; runs as container root user (image default); no auth on first setup, set admin password immediately; localhost only; no domain/TLS; image upgrades refused'},
     'lobe-chat': {'image': 'lobehub/lobe-chat:latest@sha256:b2d2454525523d9f0a19c79661f83ec45f13363dbadd5c1180887e77af35d872',
                   'port': 8085, 'bytes': 1024 * 1024 * 1024, 'target': 3210,
-                  'mount': '/app/data', 'readonly': False, 'memory': '512m',
+                  'mount': '/app/data', 'readonly': False, 'memory': '1536m',
                   'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3210/ || exit 1'],
                   'domain': False,
                   'description': 'LobeChat AI chat aggregator (ChatGPT/Claude/Gemini/Ollama keys configured in web UI); localhost only; no domain/TLS; image upgrades refused'},
