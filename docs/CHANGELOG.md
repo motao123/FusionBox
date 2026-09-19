@@ -2,6 +2,14 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.30.0 ACME 预检、签发与续期事务闭环
+
+- 新增 `fusionbox web acme preflight|status|issue|renew`：严格校验域名、邮箱、规范 webroot 和续期阈值；DNS 仅报告，同时检查 80/443、高端口测试覆盖、Nginx site 冲突、Certbot 版本和 webroot 插件。
+- 签发复用现有静态站点 webroot，或暂存 FusionBox challenge 配置；每次启用前运行 `nginx -t`，之后任何 mkdir/Certbot/证书/TLS/reload 失败均由统一 trap 恢复原配置并再次校验/reload。
+- 成功后验证 SAN、有效期和证书/私钥匹配，再原子安装受管 TLS 配置。Challenge/TLS 固定文件要求精确 owner marker 与 SHA256，外部或漂移配置一律拒绝接管。
+- renew 使用 `flock`、剩余天数阈值和证书指纹前后对比，仅在证书变化时执行 `nginx -t` 与 reload；失败向上传播。
+- 本地 ACME/P1 专项 20 项及 Web 回归通过；Linux 验证服务器完整 ACME/安全组合 32 项通过并清理测试目录。由于没有可控公网域名、DNS 和 80/443 验证条件，真实证书签发未执行、未宣称完成。
+
 ## v1.29.0 SSH 登录通知与六场景内核调优
 
 - 新增 `fusionbox system login-alert install|status|test|uninstall`：复用私有 Telegram 配置，通过 PAM session hook 发送用户、来源地址和时间等最小字段。PAM 使用 `[success=ok default=ignore]`，通知脚本所有失败路径放行，安装前后以 `sshd -t` 校验。

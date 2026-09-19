@@ -8,7 +8,7 @@ web_main() {
     lnmp|install-lnmp)     web_install_lnmp "$@" ;;
     lamp|install-lamp)     web_install_lamp "$@" ;;
     site|create)           web_create_site "$@" ;;
-    ssl|cert)              web_ssl "$@" ;;
+    ssl|cert|acme)         web_ssl "$@" ;;
     nginx|ng)              web_nginx "$@" ;;
     php)                   web_php "$@" ;;
     mysql|db)              web_mysql "$@" ;;
@@ -40,6 +40,39 @@ web_main() {
 # ---- 工具函数 ----
 _web_validate_domain() {
   [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+}
+
+_web_acme_domain_valid() {
+  local domain="${1,,}" label rest
+  [[ ${#domain} -le 253 && "$domain" == *.* && "$domain" != *..* ]] || return 1
+  rest="$domain"
+  while [[ -n "$rest" ]]; do
+    label="${rest%%.*}"
+    [[ "$label" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || return 1
+    [[ "$rest" == *.* ]] || break
+    rest="${rest#*.}"
+  done
+  [[ "$domain" != *.local && "$domain" != *.localhost && "$domain" != *.invalid && "$domain" != *.test ]]
+}
+
+_web_acme_email_valid() {
+  local email="$1" local_part email_domain
+  [[ ${#email} -le 254 && "$email" =~ ^[A-Za-z0-9.!#$%\&\'*+/=?^_\`{|}~-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,63}$ ]] || return 1
+  local_part="${email%@*}"; email_domain="${email#*@}"
+  [[ ${#local_part} -le 64 && "$local_part" != .* && "$local_part" != *. && "$local_part" != *..* ]] || return 1
+  _web_acme_domain_valid "$email_domain"
+}
+
+_web_acme_path_valid() {
+  local path="$1" current="" part
+  [[ "$path" =~ ^/[A-Za-z0-9_./-]+$ && "$path" != "/" && "$path" != *//* ]] || return 1
+  [[ "/$path/" != */../* && "/$path/" != */./* ]] || return 1
+  [[ "$(realpath -m -- "$path" 2>/dev/null)" == "$path" ]] || return 1
+  IFS='/' read -r -a _web_acme_parts <<< "${path#/}"
+  for part in "${_web_acme_parts[@]}"; do
+    current="$current/$part"
+    [[ ! -L "$current" ]] || return 1
+  done
 }
 
 # ---- Install LNMP ----
@@ -290,321 +323,452 @@ NEOF
   pause
 }
 
-# ---- SSL Certificate ----
-web_ssl() {
-  _require_root
-  local arg="${1:-}"
+# ---- ACME transaction workflow ----
+_WEB_ACME_NGINX_DIR="${WEB_ACME_NGINX_DIR:-/etc/nginx}"
+_WEB_ACME_LE_DIR="${WEB_ACME_LE_DIR:-/etc/letsencrypt}"
+_WEB_ACME_STATE_DIR="${WEB_ACME_STATE_DIR:-/var/lib/fusionbox/acme}"
+_WEB_ACME_HTTP_PORT="${WEB_ACME_HTTP_PORT:-80}"
+_WEB_ACME_HTTPS_PORT="${WEB_ACME_HTTPS_PORT:-443}"
 
-  # 子命令直达: fusionbox web ssl status|renew|auto
-  case "$arg" in
-    status|st)         web_ssl_status; return $? ;;
-    renew|now|r)       web_ssl_renew; return $? ;;
-    auto|autorenew)    web_ssl_autorenew; return $? ;;
-  esac
-
-  msg_title "SSL 证书"
-  msg ""
-
-  local domain="$arg"
-
-  # 无域名参数时显示子菜单（选项 1 保持原有签发流程）
-  if [[ -z "$domain" ]]; then
-    msg "  ${F_GREEN}1${F_RESET}) 申请/签发 SSL 证书"
-    msg "  ${F_GREEN}2${F_RESET}) 查看证书状态与到期监控"
-    msg "  ${F_GREEN}3${F_RESET}) 立即续期全部证书"
-    msg "  ${F_GREEN}4${F_RESET}) 自动续期管理 (cron)"
-    msg "  ${F_GREEN}0${F_RESET}) 返回"
-    msg ""
-    local ssl_choice=""
-    read -p "请选择 [0-4]: " ssl_choice || return
-    case "$ssl_choice" in
-      1) ;;   # 继续下方签发流程
-      2) web_ssl_status; return ;;
-      3) web_ssl_renew; return ;;
-      4) web_ssl_autorenew; return ;;
-      *) return ;;
-    esac
-  fi
-
-  if ! command -v certbot &>/dev/null; then
-    msg_info "正在安装 Certbot..."
-    case "$F_PKG_MGR" in
-      apt)
-        _install_pkg certbot python3-certbot-nginx
-        ;;
-      yum)
-        _install_pkg epel-release certbot python3-certbot-nginx
-        ;;
-      apk)
-        _install_pkg certbot certbot-nginx
-        ;;
-    esac
-  fi
-
-  if command -v certbot &>/dev/null; then
-    if [[ -z "$domain" ]]; then
-      read -p "请输入 SSL 域名: " domain
-    fi
-    if [[ -n "$domain" ]]; then
-      msg_info "正在申请 $domain 的 SSL 证书..."
-      if certbot --nginx -d "$domain" --non-interactive --agree-tos --email admin@"$domain" 2>/dev/null || \
-         certbot --nginx -d "$domain" 2>/dev/null; then
-        msg_ok "SSL 证书申请完成: $domain"
-        msg_info "已支持自动续期：fusionbox web ssl auto"
-        _log_write "SSL 证书已获取: $domain"
-      else
-        msg_err "SSL 证书申请失败，请检查域名 DNS。"
-        msg_info "详细日志: /var/log/letsencrypt/letsencrypt.log"
-      fi
-    else
-      msg_info "未指定域名，Certbot 已安装可供手动使用。"
-    fi
-  else
-    msg_err "Certbot 安装失败，请检查系统软件源。"
-  fi
-
-  msg ""
-  msg "  ${F_BOLD}已有证书:${F_RESET}"
-  certbot certificates 2>/dev/null || msg "    无"
-  pause
+_web_acme_usage() {
+  msg "用法:"
+  msg "  fusionbox web ssl preflight --domain <域名> [--email <邮箱>] [--webroot <绝对路径>]"
+  msg "  fusionbox web ssl status [--domain <域名>]"
+  msg "  fusionbox web ssl issue --domain <域名> --email <邮箱> [--webroot <绝对路径>]"
+  msg "  fusionbox web ssl renew [--days <1-90>]"
 }
 
-# ---- SSL 到期监控与自动续期 ----
-
-# 读取证书信息，输出 "到期时间|剩余天数"；无法解析时返回 1
 _web_cert_info() {
-  local cert="$1"
+  local cert="$1" enddate end_ts now_ts delta
   [[ -f "$cert" ]] || return 1
-  command -v openssl &>/dev/null || return 1
-  local enddate end_ts now_ts
-  enddate=$(openssl x509 -enddate -noout -in "$cert" 2>/dev/null | cut -d= -f2)
-  [[ -z "$enddate" ]] && return 1
+  enddate=$(openssl x509 -enddate -noout -in "$cert" 2>/dev/null | cut -d= -f2) || return 1
+  [[ -n "$enddate" ]] || return 1
   end_ts=$(date -d "$enddate" +%s 2>/dev/null) || return 1
-  now_ts=$(date +%s)
-  local delta=$((end_ts - now_ts))
-  # Round negative partial days down so recently expired certificates stay negative.
-  (( delta < 0 )) && delta=$((delta - 86399))
-  printf '%s|%s' "$enddate" "$(( delta / 86400 ))"
+  now_ts=$(date +%s) || return 1
+  delta=$((end_ts - now_ts)); (( delta < 0 )) && delta=$((delta - 86399))
+  printf '%s|%s' "$enddate" "$((delta / 86400))"
 }
 
-# 仅返回证书剩余天数
 _web_cert_days() {
   local info
-  info=$(_web_cert_info "$1" 2>/dev/null) || return 1
-  echo "${info##*|}"
+  info=$(_web_cert_info "$1") || return 1
+  printf '%s\n' "${info##*|}"
 }
 
-# 证书状态与到期监控
-web_ssl_status() {
-  _require_root
-  msg_title "SSL 证书状态与到期监控"
-  msg ""
-
-  command -v openssl &>/dev/null || _install_pkg openssl 2>/dev/null || true
-
-  # 是否有可用证书
-  local found=0 c
-  for c in /etc/letsencrypt/live/*/fullchain.pem; do
-    [[ -f "$c" ]] && { found=1; break; }
+_web_acme_parse() {
+  WEB_ACME_DOMAIN=""; WEB_ACME_EMAIL=""; WEB_ACME_WEBROOT=""; WEB_ACME_DAYS=30
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --domain|-d) [[ $# -ge 2 ]] || return 2; WEB_ACME_DOMAIN="${2,,}"; shift 2 ;;
+      --email|-m) [[ $# -ge 2 ]] || return 2; WEB_ACME_EMAIL="$2"; shift 2 ;;
+      --webroot|-w) [[ $# -ge 2 ]] || return 2; WEB_ACME_WEBROOT="$2"; shift 2 ;;
+      --days) [[ $# -ge 2 ]] || return 2; WEB_ACME_DAYS="$2"; shift 2 ;;
+      *) msg_err "未知参数: $1"; return 2 ;;
+    esac
   done
-
-  local total=0 ok=0 warning=0 expired=0
-  if [[ $found -eq 0 ]]; then
-    msg_info "未找到证书：/etc/letsencrypt/live 下没有 fullchain.pem"
-  else
-    msg "  ${F_BOLD}域名 | 到期时间 | 剩余天数${F_RESET}"
-    msg "  ------------------------------------------------------------"
-    local d name cert info enddate days color tail
-    for d in /etc/letsencrypt/live/*/; do
-      [[ -d "$d" ]] || continue
-      cert="${d}fullchain.pem"
-      [[ -f "$cert" ]] || continue
-      name=$(basename "$d")
-
-      info=$(_web_cert_info "$cert")
-      if [[ -z "$info" ]]; then
-        # openssl 缺失或日期无法解析
-        enddate="未知"; days="?"; color="$F_YELLOW"; tail=""
-      else
-        enddate="${info%%|*}"; days="${info##*|}"
-        color="$F_GREEN"; tail=""
-      fi
-
-      total=$((total + 1))
-      if [[ "$days" =~ ^-?[0-9]+$ ]]; then
-        if (( days < 0 )); then
-          color="$F_RED"; tail="  ${F_RED}(已过期)${F_RESET}"; expired=$((expired + 1))
-        elif (( days < 15 )); then
-          color="$F_YELLOW"; tail="  ${F_YELLOW}(即将过期)${F_RESET}"; warning=$((warning + 1))
-        else
-          ok=$((ok + 1))
-        fi
-      else
-        warning=$((warning + 1))
-      fi
-      msg "  ${F_BOLD}${name}${F_RESET} | ${enddate} | ${color}${days} 天${F_RESET}${tail}"
-    done
-    msg ""
-    msg "  共 ${total} 个证书：${F_GREEN}${ok} 正常${F_RESET} / ${F_YELLOW}${warning} 需关注${F_RESET} / ${F_RED}${expired} 已过期${F_RESET}"
-  fi
-
-  # certbot 自身信息作为补充
-  if command -v certbot &>/dev/null; then
-    msg ""
-    msg "  ${F_BOLD}certbot certificates（补充）:${F_RESET}"
-    local cbo line
-    cbo=$(certbot certificates 2>/dev/null | grep -E "Certificate Name|Domains|Expiry Date")
-    if [[ -n "$cbo" ]]; then
-      while IFS= read -r line; do
-        msg "  ${line#"${line%%[![:space:]]*}"}"
-      done <<< "$cbo"
-    else
-      msg "    无"
-    fi
-  elif [[ $found -eq 0 ]]; then
-    msg_warn "未安装 certbot，暂不能续期（可运行 fusionbox web ssl 安装）"
-  fi
-
-  pause
+  [[ -z "$WEB_ACME_DOMAIN" ]] || _web_acme_domain_valid "$WEB_ACME_DOMAIN" || { msg_err "域名格式不合法: $WEB_ACME_DOMAIN"; return 2; }
+  [[ -z "$WEB_ACME_EMAIL" ]] || _web_acme_email_valid "$WEB_ACME_EMAIL" || { msg_err "邮箱格式不合法: $WEB_ACME_EMAIL"; return 2; }
+  [[ -z "$WEB_ACME_WEBROOT" ]] || _web_acme_path_valid "$WEB_ACME_WEBROOT" || { msg_err "webroot 必须是无遍历片段的绝对路径"; return 2; }
+  [[ "$WEB_ACME_DAYS" =~ ^[0-9]+$ ]] && (( WEB_ACME_DAYS >= 1 && WEB_ACME_DAYS <= 90 )) || { msg_err "--days 必须为 1-90"; return 2; }
 }
 
-# 立即续期全部证书
-web_ssl_renew() {
-  _require_root
-  msg_title "证书续期 (certbot renew)"
-  msg ""
-
-  if ! command -v certbot &>/dev/null; then
-    msg_err "未安装 Certbot，请先运行: fusionbox web ssl"
-    pause; return 1
-  fi
-
-  if ! confirm "将执行 certbot renew 续期全部证书并重载 Nginx，确认继续？"; then
-    return
-  fi
-
-  local renew_log
-  renew_log=$(mktemp /tmp/fusionbox-certbot-renew.XXXXXXXX.log) || return 1
-  msg_info "正在续期（以下为 certbot 真实输出）..."
-  msg ""
-  certbot renew 2>&1 | tee "$renew_log"
-  local rc=${PIPESTATUS[0]}
-  msg ""
-
-  if [[ $rc -eq 0 ]]; then
-    if ! { systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null; }; then
-      msg_err "续期流程完成，但 Nginx 重载失败"
-      return 1
-    fi
-    msg_ok "续期流程完成，Nginx 已重载"
-    _log_write "certbot renew 执行成功"
-  else
-    msg_err "续期失败（退出码 $rc）"
-    msg_info "日志路径: /var/log/letsencrypt/letsencrypt.log"
-    msg_info "本次输出已保存: $renew_log"
-    _log_write "certbot renew 失败 rc=$rc"
-  fi
-  pause
-  return "$rc"
+_web_acme_nginx_files() {
+  local f
+  for f in "$_WEB_ACME_NGINX_DIR"/sites-enabled/* "$_WEB_ACME_NGINX_DIR"/conf.d/*.conf; do
+    [[ -f "$f" ]] && printf '%s\n' "$f"
+  done
 }
 
-# 自动续期（cron）安装/查看/卸载
+_web_acme_site_info() {
+  local domain="$1" f root proxy names
+  while IFS= read -r f; do
+    names=$(awk '/^[[:space:]]*server_name[[:space:]]/ { sub(/;.*/, ""); for (i=2;i<=NF;i++) print $i }' "$f" 2>/dev/null)
+    grep -Fxq "$domain" <<< "$names" || continue
+    root=$(awk '/^[[:space:]]*root[[:space:]]/ { gsub(/;/, "", $2); print $2; exit }' "$f")
+    proxy=$(awk '/^[[:space:]]*proxy_pass[[:space:]]/ { gsub(/;/, "", $2); print $2; exit }' "$f")
+    printf '%s|%s|%s\n' "$f" "$root" "$proxy"
+    return 0
+  done < <(_web_acme_nginx_files)
+  return 1
+}
+
+_web_acme_site_conflicts() {
+  local domain="$1" allowed="$2" f names count=0
+  while IFS= read -r f; do
+    [[ "$f" == "$allowed" ]] && continue
+    names=$(awk '/^[[:space:]]*server_name[[:space:]]/ { sub(/;.*/, ""); for (i=2;i<=NF;i++) print $i }' "$f" 2>/dev/null)
+    if grep -Fxq "$domain" <<< "$names"; then
+      msg_err "Nginx site 冲突: $domain 也出现在 $f"
+      count=$((count + 1))
+    fi
+  done < <(_web_acme_nginx_files)
+  (( count == 0 ))
+}
+
+_web_acme_dns_report() {
+  local domain="$1" records=""
+  if command -v getent >/dev/null 2>&1; then
+    records=$(getent ahosts "$domain" 2>/dev/null | awk '{print $1}' | sort -u | paste -sd, -)
+  elif command -v dig >/dev/null 2>&1; then
+    records=$(dig +short A "$domain" 2>/dev/null; dig +short AAAA "$domain" 2>/dev/null)
+    records=$(tr '\n' ',' <<< "$records" | sed 's/,$//')
+  fi
+  if [[ -n "$records" ]]; then msg_info "DNS（仅报告）: $domain -> $records"; else msg_warn "DNS（仅报告）: 未解析到 $domain"; fi
+}
+
+_web_acme_port_report() {
+  local port="$1" owner="空闲" listeners=""
+  if command -v ss >/dev/null 2>&1; then
+    listeners=$(ss -ltnp "sport = :$port" 2>/dev/null | awk 'NR>1')
+  elif command -v lsof >/dev/null 2>&1; then
+    listeners=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR>1')
+  fi
+  if [[ -n "$listeners" ]]; then
+    owner=$(tr '\n' ' ' <<< "$listeners")
+    msg_info "端口 $port: 已占用 ($owner)"
+  else
+    msg_info "端口 $port: 空闲"
+  fi
+}
+
 _web_ssl_existing_schedule() {
   local unit
   for unit in certbot.timer snap.certbot.renew.timer certbot-renew.timer; do
     if systemctl is-enabled "$unit" >/dev/null 2>&1 || systemctl is-active "$unit" >/dev/null 2>&1; then
-      printf '%s\n' "$unit"; return 0
+      printf '%s\n' "$unit"
+      return 0
     fi
   done
-  if grep -rEl '^[^#]*certbot[[:space:]].*renew' /etc/cron.d /etc/cron.daily /etc/crontab 2>/dev/null; then return 0; fi
-  crontab -l 2>/dev/null | grep -E '^[^#]*certbot[[:space:]].*renew'
+  grep -rEl '^[^#]*certbot[[:space:]].*renew' /etc/cron.d /etc/cron.daily /etc/crontab 2>/dev/null | head -1
+}
+
+_web_acme_certbot_check() {
+  command -v certbot >/dev/null 2>&1 || { msg_err "未安装 certbot"; return 1; }
+  local version plugins rc
+  version=$(certbot --version 2>&1); rc=$?
+  (( rc == 0 )) || { msg_err "无法读取 certbot 版本"; return "$rc"; }
+  [[ "$version" =~ ([0-9]+)\.([0-9]+) ]] || { msg_err "无法解析 certbot 版本: $version"; return 1; }
+  (( BASH_REMATCH[1] >= 1 )) || { msg_err "certbot 版本过旧（至少 1.0）: $version"; return 1; }
+  plugins=$(certbot plugins 2>&1); rc=$?
+  (( rc == 0 )) || { msg_err "无法读取 certbot 插件"; return "$rc"; }
+  grep -qi 'webroot' <<< "$plugins" || { msg_err "certbot 缺少 webroot 插件"; return 1; }
+  msg_info "Certbot: $version；webroot 插件可用"
+}
+
+_web_acme_preflight_run() {
+  local domain="$1" email="$2" webroot="$3" site="" site_file="" site_root=""
+  _web_acme_domain_valid "$domain" || { msg_err "必须提供有效公网域名"; return 2; }
+  [[ -z "$email" ]] || _web_acme_email_valid "$email" || { msg_err "邮箱格式不合法"; return 2; }
+  [[ -z "$webroot" ]] || _web_acme_path_valid "$webroot" || { msg_err "webroot 路径不合法"; return 2; }
+  command -v nginx >/dev/null 2>&1 || { msg_err "未安装 nginx"; return 1; }
+  _web_acme_certbot_check || return 1
+  nginx -t >/dev/null 2>&1 || { msg_err "当前 nginx 配置未通过 nginx -t"; return 1; }
+  _web_acme_dns_report "$domain"
+  _web_acme_port_report "$_WEB_ACME_HTTP_PORT"
+  _web_acme_port_report "$_WEB_ACME_HTTPS_PORT"
+  if site=$(_web_acme_site_info "$domain"); then
+    IFS='|' read -r site_file site_root _ <<< "$site"
+    msg_info "Nginx site: $site_file"
+    _web_acme_site_conflicts "$domain" "$site_file" || return 1
+    if [[ -n "$webroot" && -n "$site_root" && "$webroot" != "$site_root" ]]; then
+      msg_err "--webroot 与现有 site root 冲突: $site_root"
+      return 1
+    fi
+    if [[ -z "$site_root" || -n "${site##*|}" ]]; then
+      msg_err "现有 site 不能安全直出 webroot challenge（缺少 root 或为反向代理）"
+      return 1
+    fi
+    if grep -qE '^[[:space:]]*listen[[:space:]]+([^;[:space:]]+:)?443|^[[:space:]]*ssl_certificate[[:space:]]' "$site_file" 2>/dev/null; then
+      msg_err "现有 site 已管理 TLS；拒绝生成第二份 TLS server: $site_file"
+      return 1
+    fi
+  else
+    msg_info "未发现同名 Nginx site，将使用受管临时 challenge 配置"
+    _web_acme_site_conflicts "$domain" "" || return 1
+  fi
+  [[ -z "$webroot" || -d "$webroot" ]] || { msg_err "webroot 不存在: $webroot"; return 1; }
+  msg_ok "ACME 预检通过（DNS 结果不作为通过条件）"
+}
+
+web_ssl_preflight() {
+  _require_root
+  _web_acme_parse "$@"
+  local rc=$?
+  (( rc == 0 )) || { _web_acme_usage; return "$rc"; }
+  [[ -n "$WEB_ACME_DOMAIN" ]] || { msg_err "preflight 需要 --domain"; return 2; }
+  _web_acme_preflight_run "$WEB_ACME_DOMAIN" "$WEB_ACME_EMAIL" "$WEB_ACME_WEBROOT"
+}
+
+_web_acme_reload() {
+  if [[ -n "${WEB_ACME_RELOAD_CMD:-}" ]]; then bash -c "$WEB_ACME_RELOAD_CMD"
+  else systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null
+  fi
+}
+
+_web_acme_owner_hash() {
+  local kind="$1" domain="$2" root="$3" proxy="$4" cert="$5" key="$6"
+  printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0' \
+    "$kind" "$domain" "$root" "$proxy" "$cert" "$key" "$_WEB_ACME_HTTP_PORT" "$_WEB_ACME_HTTPS_PORT" | sha256sum | awk '{print $1}'
+}
+
+_web_acme_owned_file_ok() {
+  local target="$1" kind="$2" hash="$3" marker stored
+  [[ -f "$target" && ! -L "$target" ]] || return 1
+  IFS= read -r marker < "$target" || return 1
+  IFS= read -r stored < <(sed -n '2p' "$target") || return 1
+  [[ "$marker" == "# Managed by FusionBox ACME transaction: $kind" && "$stored" == "# Owner-State-SHA256: $hash" ]]
+}
+
+_web_acme_target_available() {
+  local target="$1" kind="$2" hash="$3"
+  [[ ! -e "$target" && ! -L "$target" ]] && return 0
+  _web_acme_owned_file_ok "$target" "$kind" "$hash" || {
+    msg_err "拒绝接管非 FusionBox 文件或状态已漂移: $target"
+    return 1
+  }
+}
+
+_web_acme_write_challenge() {
+  local domain="$1" root="$2" target="$3" tmp hash
+  hash=$(_web_acme_owner_hash challenge "$domain" "$root" "" "" "") || return 1
+  mkdir -p "$(dirname "$target")" "$root/.well-known/acme-challenge" || return 1
+  _web_acme_target_available "$target" challenge "$hash" || return 1
+  tmp=$(mktemp "$(dirname "$target")/.fusionbox-acme.XXXXXX") || return 1
+  cat > "$tmp" <<EOF
+# Managed by FusionBox ACME transaction: challenge
+# Owner-State-SHA256: $hash
+server {
+    listen $_WEB_ACME_HTTP_PORT;
+    server_name $domain;
+    location ^~ /.well-known/acme-challenge/ { root $root; default_type text/plain; }
+    location / { return 404; }
+}
+EOF
+  chmod 644 "$tmp" && mv -f "$tmp" "$target"
+}
+
+_web_acme_verify_cert() {
+  local domain="$1" cert="$2" key="$3" san cert_pub key_pub
+  [[ -f "$cert" && -f "$key" ]] || { msg_err "certbot 未生成证书/密钥文件"; return 1; }
+  [[ ! -L "$cert" || "$(readlink -f "$cert" 2>/dev/null)" == "$_WEB_ACME_LE_DIR"/* ]] || { msg_err "证书链接指向受管目录之外"; return 1; }
+  [[ ! -L "$key" || "$(readlink -f "$key" 2>/dev/null)" == "$_WEB_ACME_LE_DIR"/* ]] || { msg_err "密钥链接指向受管目录之外"; return 1; }
+  openssl x509 -in "$cert" -noout -checkend 86400 >/dev/null 2>&1 || { msg_err "证书有效期不足 24 小时"; return 1; }
+  san=$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null | tr '\n' ' ')
+  grep -Eiq "DNS:${domain//./\\.}([,[:space:]]|$)" <<< "$san" || { msg_err "证书 SAN 不包含 $domain"; return 1; }
+  cert_pub=$(openssl x509 -in "$cert" -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | sha256sum | awk '{print $1}')
+  key_pub=$(openssl pkey -in "$key" -pubout -outform DER 2>/dev/null | sha256sum | awk '{print $1}')
+  [[ -n "$cert_pub" && "$cert_pub" == "$key_pub" ]] || { msg_err "证书与私钥不匹配"; return 1; }
+}
+
+_web_acme_write_tls() {
+  local domain="$1" root="$2" proxy="$3" cert="$4" key="$5" target="$6" tmp hash
+  hash=$(_web_acme_owner_hash tls "$domain" "$root" "$proxy" "$cert" "$key") || return 1
+  mkdir -p "$(dirname "$target")" || return 1
+  _web_acme_target_available "$target" tls "$hash" || return 1
+  tmp=$(mktemp "$(dirname "$target")/.fusionbox-tls.XXXXXX") || return 1
+  {
+    printf '# Managed by FusionBox ACME transaction: tls\n'
+    printf '# Owner-State-SHA256: %s\n' "$hash"
+    printf 'server {\n'
+    printf '    listen %s ssl;\n    server_name %s;\n' "$_WEB_ACME_HTTPS_PORT" "$domain"
+    printf '    ssl_certificate %s;\n    ssl_certificate_key %s;\n' "$cert" "$key"
+    printf '    ssl_protocols TLSv1.2 TLSv1.3;\n'
+    if [[ -n "$proxy" ]]; then
+      printf '    location / {\n        proxy_pass %s;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n' "$proxy"
+    else
+      printf '    root %s;\n    location / { try_files $uri $uri/ =404; }\n' "$root"
+    fi
+    printf '}\n'
+  } > "$tmp" || { rm -f "$tmp"; return 1; }
+  chmod 644 "$tmp" && mv -f "$tmp" "$target"
+}
+
+_web_acme_restore_file() {
+  local target="$1" backup="$2" existed="$3"
+  if [[ "$existed" == 1 ]]; then cp -p "$backup" "$target"; else rm -f "$target"; fi
+}
+
+_web_acme_issue_cleanup() {
+  local original_rc="$1" challenge="$2" backup="$3" existed="$4" work="$5"
+  local cleanup_rc=0
+  _web_acme_restore_file "$challenge" "$backup" "$existed" || cleanup_rc=1
+  if ! nginx -t >/dev/null 2>&1 || ! _web_acme_reload; then
+    msg_err "challenge 回滚后的 Nginx 校验/重载失败"
+    cleanup_rc=1
+  fi
+  rm -rf -- "$work"
+  (( cleanup_rc == 0 )) || return 1
+  return "$original_rc"
+}
+
+web_ssl_issue() (
+  _require_root
+  _web_acme_parse "$@"
+  local parse_rc=$?
+  (( parse_rc == 0 )) || { _web_acme_usage; return "$parse_rc"; }
+  [[ -n "$WEB_ACME_DOMAIN" && -n "$WEB_ACME_EMAIL" ]] || { msg_err "issue 需要 --domain 和 --email"; return 2; }
+  _web_acme_preflight_run "$WEB_ACME_DOMAIN" "$WEB_ACME_EMAIL" "$WEB_ACME_WEBROOT" || return $?
+
+  local domain="$WEB_ACME_DOMAIN" webroot="$WEB_ACME_WEBROOT" site="" site_root="" proxy=""
+  local challenge="$_WEB_ACME_NGINX_DIR/conf.d/fusionbox-acme-$domain.conf"
+  local tls="$_WEB_ACME_NGINX_DIR/conf.d/fusionbox-tls-$domain.conf"
+  local work cert key challenge_active=0 challenge_existed=0 tls_existed=0 rc
+  work=$(mktemp -d "${TMPDIR:-/tmp}/fusionbox-acme.XXXXXXXX") || return 1
+  trap 'rm -rf -- "$work"' EXIT
+  if site=$(_web_acme_site_info "$domain"); then
+    IFS='|' read -r _ site_root proxy <<< "$site"
+    [[ -n "$webroot" ]] || webroot="$site_root"
+  else
+    [[ -n "$webroot" ]] || webroot="$_WEB_ACME_STATE_DIR/challenges/$domain"
+    _web_acme_path_valid "$webroot" || { msg_err "受管 webroot 路径不安全"; return 1; }
+    if [[ -e "$challenge" || -L "$challenge" ]]; then
+      local challenge_hash
+      challenge_hash=$(_web_acme_owner_hash challenge "$domain" "$webroot" "" "" "") || return 1
+      _web_acme_owned_file_ok "$challenge" challenge "$challenge_hash" || { msg_err "拒绝接管非 FusionBox challenge 配置或状态已漂移"; return 1; }
+      cp -p "$challenge" "$work/challenge.backup" || return 1
+      challenge_existed=1
+    fi
+    _web_acme_write_challenge "$domain" "$webroot" "$challenge" || { msg_err "无法暂存 challenge 配置"; return 1; }
+    challenge_active=1
+    trap '_web_acme_issue_cleanup "$?" "$challenge" "$work/challenge.backup" "$challenge_existed" "$work"' EXIT
+    if ! nginx -t >/dev/null 2>&1 || ! _web_acme_reload; then
+      msg_err "challenge 配置校验/重载失败"
+      return 1
+    fi
+  fi
+  mkdir -p "$webroot/.well-known/acme-challenge" || return 1
+  msg_info "调用 certbot webroot 签发；成功前不会声明证书已签发"
+  certbot certonly --webroot -w "$webroot" -d "$domain" --cert-name "$domain" \
+    --non-interactive --agree-tos --email "$WEB_ACME_EMAIL"
+  rc=$?
+  if (( challenge_active )); then
+    _web_acme_restore_file "$challenge" "$work/challenge.backup" "$challenge_existed" || return 1
+    challenge_active=0
+    trap 'rm -rf -- "$work"' EXIT
+    if ! nginx -t >/dev/null 2>&1 || ! _web_acme_reload; then
+      msg_err "签发后恢复临时 Nginx 配置失败"
+      return 1
+    fi
+  fi
+  if (( rc != 0 )); then
+    msg_err "certbot 签发失败（退出码 $rc），原 Nginx 配置已恢复"
+    return "$rc"
+  fi
+
+  cert="$_WEB_ACME_LE_DIR/live/$domain/fullchain.pem"; key="$_WEB_ACME_LE_DIR/live/$domain/privkey.pem"
+  _web_acme_verify_cert "$domain" "$cert" "$key" || return 1
+  [[ -n "$site_root" ]] || site_root="$webroot"
+  local tls_hash
+  tls_hash=$(_web_acme_owner_hash tls "$domain" "$site_root" "$proxy" "$cert" "$key") || return 1
+  if [[ -e "$tls" || -L "$tls" ]]; then
+    _web_acme_owned_file_ok "$tls" tls "$tls_hash" || { msg_err "拒绝接管非 FusionBox TLS 配置或状态已漂移"; return 1; }
+    cp -p "$tls" "$work/tls.backup" || return 1
+    tls_existed=1
+  fi
+  _web_acme_write_tls "$domain" "$site_root" "$proxy" "$cert" "$key" "$tls" || return 1
+  if ! nginx -t >/dev/null 2>&1 || ! _web_acme_reload; then
+    _web_acme_restore_file "$tls" "$work/tls.backup" "$tls_existed"
+    if ! nginx -t >/dev/null 2>&1 || ! _web_acme_reload; then
+      msg_err "受管 TLS 配置启用失败，回滚后的 Nginx 重载也失败"
+    else
+      msg_err "受管 TLS 配置校验/重载失败，已回滚"
+    fi
+    return 1
+  fi
+  msg_ok "证书已真实签发、验证并启用: $domain"
+  _log_write "ACME 证书签发并验证: $domain"
+)
+
+_web_acme_fingerprints() {
+  local cert
+  for cert in "$_WEB_ACME_LE_DIR"/live/*/fullchain.pem; do
+    [[ -f "$cert" ]] || continue
+    printf '%s|' "$cert"
+    openssl x509 -in "$cert" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2
+  done | sort
+}
+
+web_ssl_renew() {
+  _require_root
+  _web_acme_parse "$@"
+  local parse_rc=$?
+  (( parse_rc == 0 )) || { _web_acme_usage; return "$parse_rc"; }
+  command -v certbot >/dev/null 2>&1 || { msg_err "未安装 certbot"; return 1; }
+  local certbot_version_rc=0
+  certbot --version >/dev/null 2>&1 || certbot_version_rc=$?
+  (( certbot_version_rc == 0 )) || return "$certbot_version_rc"
+  _web_acme_certbot_check || return 1
+  command -v flock >/dev/null 2>&1 || { msg_err "renew 需要 flock"; return 1; }
+  mkdir -p "$_WEB_ACME_STATE_DIR" || return 1
+  exec 9>"$_WEB_ACME_STATE_DIR/renew.lock" || return 1
+  flock -n 9 || { msg_warn "已有 ACME 续期任务运行中"; return 75; }
+
+  local cert days due=0 before after rc
+  for cert in "$_WEB_ACME_LE_DIR"/live/*/fullchain.pem; do
+    [[ -f "$cert" ]] || continue
+    days=$(_web_cert_days "$cert" 2>/dev/null) || days=-1
+    (( days <= WEB_ACME_DAYS )) && due=$((due + 1))
+  done
+  if (( due == 0 )); then msg_ok "没有剩余 $WEB_ACME_DAYS 天以内的证书，无需续期"; return 0; fi
+  before=$(_web_acme_fingerprints)
+  certbot renew --non-interactive --deploy-hook /bin/true
+  rc=$?
+  (( rc == 0 )) || { msg_err "certbot renew 失败（退出码 $rc）"; return "$rc"; }
+  after=$(_web_acme_fingerprints)
+  if [[ "$before" == "$after" ]]; then msg_ok "续期检查完成，证书指纹未变化，不重载 Nginx"; return 0; fi
+  nginx -t >/dev/null 2>&1 || { msg_err "证书变化后 nginx -t 失败，未重载"; return 1; }
+  _web_acme_reload || { msg_err "证书已变化，但 Nginx 重载失败"; return 1; }
+  msg_ok "证书指纹已变化，Nginx 已重载"
+  _log_write "ACME 续期成功并重载 Nginx"
+}
+
+web_ssl_status() {
+  _require_root
+  _web_acme_parse "$@"
+  local parse_rc=$?
+  (( parse_rc == 0 )) || { _web_acme_usage; return "$parse_rc"; }
+  local cert domain days found=0
+  for cert in "$_WEB_ACME_LE_DIR"/live/*/fullchain.pem; do
+    [[ -f "$cert" ]] || continue
+    domain=$(basename "$(dirname "$cert")")
+    [[ -z "$WEB_ACME_DOMAIN" || "$domain" == "$WEB_ACME_DOMAIN" ]] || continue
+    found=1; days=$(_web_cert_days "$cert" 2>/dev/null) || days="未知"
+    msg "  $domain | 剩余 $days 天 | $cert"
+  done
+  (( found )) || msg_info "未找到匹配的证书"
+  _web_acme_certbot_check || true
+  command -v nginx >/dev/null 2>&1 && nginx -t 2>&1 || true
 }
 
 web_ssl_autorenew() {
-  _require_root
-  local cron_file="/etc/cron.d/fusionbox-cert-renew"
+  web_ssl_renew "$@"
+}
 
-  msg_title "证书自动续期管理"
-  msg ""
-
-  if ! command -v certbot &>/dev/null; then
-    msg_warn "未检测到 certbot，请先安装并签发证书: fusionbox web ssl"
-    msg_info "安装完成后可再次运行: fusionbox web ssl auto"
-    pause; return 1
-  fi
-
-  msg "  ${F_GREEN}1${F_RESET}) 安装/更新自动续期"
-  msg "  ${F_GREEN}2${F_RESET}) 查看自动续期状态"
-  msg "  ${F_GREEN}3${F_RESET}) 卸载自动续期"
-  msg "  ${F_GREEN}0${F_RESET}) 返回"
-  msg ""
-  local ar_choice=""
-  read -p "请选择 [0-3]: " ar_choice || return
-
-  case "$ar_choice" in
-    1)
-      local existing
-      if existing=$(_web_ssl_existing_schedule); then
-        msg_info "已有续期任务，保留现有调度: $existing"
-        return 0
-      fi
-      if ! confirm "将写入 $cron_file（每天自动续期），确认继续？"; then
-        return
-      fi
-      # 随机分钟：避免大批机器在同一分钟集中请求 CA
-      local rnd_min=$((RANDOM % 60))
-      mkdir -p /etc/cron.d || return 1
-      [[ ! -L "$cron_file" ]] || return 1
-      local cron_tmp
-      cron_tmp=$(mktemp "${cron_file}.XXXXXXXX") || return 1
-      if ! cat > "$cron_tmp" << AEOF
-# FusionBox 证书自动续期（由 fusionbox web ssl auto 生成）
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-# 每天 03:00-03:59 之间随机分钟执行，避免多机同时请求 CA
-$rnd_min 3 * * * root certbot renew --quiet --deploy-hook "systemctl reload nginx"
-AEOF
-      then
-        rm -f "$cron_tmp"
-        msg_err "写入 $cron_file 失败，请检查目录权限"
-        pause; return 1
-      fi
-      chmod 644 "$cron_tmp" && mv -T "$cron_tmp" "$cron_file" || { rm -f "$cron_tmp"; return 1; }
-      msg_ok "自动续期已配置: 每天 03:$(printf '%02d' "$rnd_min") 执行"
-      msg_info "任务内容: certbot renew --quiet --deploy-hook \"systemctl reload nginx\""
-      if ! command -v cron &>/dev/null && ! command -v crond &>/dev/null; then
-        msg_warn "未检测到 cron/crond 服务，定时任务可能不会执行（请安装 cron）"
-      fi
-      _log_write "证书自动续期已配置 (min=$rnd_min)"
-      ;;
-    2)
-      _web_ssl_existing_schedule || msg_warn "未发现已启用的系统续期任务"
-      if [[ -f "$cron_file" ]]; then
-        msg_ok "自动续期已启用: $cron_file"
-        msg ""
-        while IFS= read -r line; do
-          msg "  $line"
-        done < "$cron_file"
-      else
-        msg_info "未配置自动续期，可选择 1 安装"
-      fi
-      ;;
-    3)
-      if [[ ! -f "$cron_file" ]]; then
-        msg_info "未找到 $cron_file，无需卸载"
-      else
-        if ! confirm "确认卸载证书自动续期（删除 $cron_file）？"; then
-          return
-        fi
-        cp "$cron_file" "$cron_file.fb-bak-$(date +%s)" 2>/dev/null
-        rm -f "$cron_file"
-        msg_ok "自动续期已卸载"
-        _log_write "证书自动续期已卸载"
-      fi
-      ;;
-    *) return ;;
+web_ssl() {
+  local action="${1:-menu}"; [[ $# -eq 0 ]] || shift
+  case "$action" in
+    preflight) web_ssl_preflight "$@" ;;
+    status|st) web_ssl_status "$@" ;;
+    issue) web_ssl_issue "$@" ;;
+    renew|now|r) web_ssl_renew "$@" ;;
+    menu|main)
+      msg_title "Web / ACME 证书"
+      msg "  1) 签发前预检"
+      msg "  2) 证书状态"
+      msg "  3) 签发证书"
+      msg "  4) 按阈值续期"
+      msg "  0) 返回"
+      local choice domain email webroot
+      read -r -p "请选择 [0-4]: " choice || return
+      case "$choice" in
+        1) read -r -p "域名: " domain; read -r -p "邮箱（可空）: " email; read -r -p "webroot（可空）: " webroot; web_ssl_preflight --domain "$domain" ${email:+--email "$email"} ${webroot:+--webroot "$webroot"} ;;
+        2) web_ssl_status ;;
+        3) read -r -p "域名: " domain; read -r -p "邮箱: " email; read -r -p "webroot（可空）: " webroot; if [[ -n "$webroot" ]]; then web_ssl_issue --domain "$domain" --email "$email" --webroot "$webroot"; else web_ssl_issue --domain "$domain" --email "$email"; fi ;;
+        4) web_ssl_renew ;;
+        *) return 0 ;;
+      esac ;;
+    *) msg_err "未知 SSL/ACME 子命令: $action"; _web_acme_usage; return 2 ;;
   esac
-  pause
 }
 
 # ---- Nginx Management ----
@@ -3505,10 +3669,10 @@ web_help() {
   msg "  fusionbox web lnmp              安装 LNMP 环境"
   msg "  fusionbox web lamp              安装 LAMP 环境"
   msg "  fusionbox web site              创建网站"
-  msg "  fusionbox web ssl [domain]      申请 SSL 证书"
-  msg "  fusionbox web ssl status        证书状态与到期监控"
-  msg "  fusionbox web ssl renew         立即续期全部证书"
-  msg "  fusionbox web ssl auto          配置/查看/卸载证书自动续期"
+  msg "  fusionbox web ssl preflight -d DOMAIN [-m EMAIL] [-w WEBROOT]  ACME 签发预检"
+  msg "  fusionbox web ssl status [-d DOMAIN]                         证书与工具状态"
+  msg "  fusionbox web ssl issue -d DOMAIN -m EMAIL [-w WEBROOT]      事务化签发并启用 TLS"
+  msg "  fusionbox web ssl renew [--days 30]                          加锁按阈值续期"
   msg "  fusionbox web nginx             Nginx 管理"
   msg "  fusionbox web php               PHP 管理"
   msg "  fusionbox web mysql             MySQL 管理"
