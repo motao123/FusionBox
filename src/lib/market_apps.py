@@ -56,7 +56,7 @@ CATALOG = {
                    'port': 8086, 'bytes': 6 * 1024 * 1024 * 1024, 'target': 8080,
                    'mount': '/app/backend/data', 'readonly': False, 'memory': '1024m',
                    'health': ['CMD-SHELL', 'curl -f http://127.0.0.1:8080/health || exit 1'],
-                   'health_retries': 90, 'domain': False,
+                   'health_retries': 300, 'domain': False,
                    'description': 'OpenWebUI self-hosted AI chat (Ollama/OpenAI endpoints configured in web UI); large image ~4GiB; localhost only; no domain/TLS; image upgrades refused'},
     'n8n': {'image': 'n8nio/n8n:latest@sha256:b73045abaddb40cb4024e86eea1b1f69093501a7339f685a4cd486b7743d23ae',
             'port': 8087, 'bytes': 1024 * 1024 * 1024, 'target': 5678,
@@ -69,6 +69,7 @@ CATALOG = {
                  'port': 8088, 'bytes': 1024 * 1024 * 1024, 'target': 5244,
                  'mount': '/opt/openlist/data', 'readonly': False, 'memory': '256m',
                  'environment': {'PUID': '0', 'PGID': '0', 'UMASK': '022'},
+                 'health_retries': 60,
                  'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:5244/ || exit 1'],
                  'domain': False,
                  'description': 'OpenList file list program with WebDAV (Alist fork); admin password via container CLI; localhost only; no domain/TLS; image upgrades refused'},
@@ -111,7 +112,7 @@ def metadata(app):
             not isinstance(spec.get('health'), list) or not spec['health']):
         raise ValueError('Invalid catalog metadata')
     if 'health_retries' in spec and (type(spec['health_retries']) is not int or
-                                     not 1 <= spec['health_retries'] <= 100):
+                                     not 1 <= spec['health_retries'] <= 300):
         raise ValueError('Invalid catalog metadata')
     app_mounts(spec)
     if 'environment' in spec:
