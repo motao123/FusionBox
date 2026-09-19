@@ -56,14 +56,14 @@ CATALOG = {
                    'port': 8086, 'bytes': 6 * 1024 * 1024 * 1024, 'target': 8080,
                    'mount': '/app/backend/data', 'readonly': False, 'memory': '1024m',
                    'health': ['CMD-SHELL', 'curl -f http://127.0.0.1:8080/health || exit 1'],
-                   'domain': False,
+                   'health_retries': 90, 'domain': False,
                    'description': 'OpenWebUI self-hosted AI chat (Ollama/OpenAI endpoints configured in web UI); large image ~4GiB; localhost only; no domain/TLS; image upgrades refused'},
     'n8n': {'image': 'n8nio/n8n:latest@sha256:b73045abaddb40cb4024e86eea1b1f69093501a7339f685a4cd486b7743d23ae',
             'port': 8087, 'bytes': 1024 * 1024 * 1024, 'target': 5678,
             'mount': '/home/node/.n8n', 'readonly': False, 'memory': '512m',
             'environment': {'N8N_SECURE_COOKIE': 'false', 'GENERIC_TIMEZONE': 'Asia/Shanghai'},
             'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:5678/healthz || exit 1'],
-            'domain': False,
+            'health_retries': 30, 'domain': False,
             'description': 'n8n workflow automation; SQLite in named volume; localhost HTTP means secure cookies disabled; set owner account on first setup; no domain/TLS; image upgrades refused'},
     'openlist': {'image': 'openlistteam/openlist:latest-aria2@sha256:3d6df7eac92fd35909672fb2acab1db17e8d66bcb13abfdc12ad479de2928b41',
                  'port': 8088, 'bytes': 1024 * 1024 * 1024, 'target': 5244,
@@ -110,6 +110,9 @@ def metadata(app):
             not re.fullmatch(r'[1-9][0-9]*m', spec.get('memory', '')) or
             not isinstance(spec.get('health'), list) or not spec['health']):
         raise ValueError('Invalid catalog metadata')
+    if 'health_retries' in spec and (type(spec['health_retries']) is not int or
+                                     not 1 <= spec['health_retries'] <= 100):
+        raise ValueError('Invalid catalog metadata')
     app_mounts(spec)
     if 'environment' in spec:
         env = spec['environment']
@@ -135,7 +138,8 @@ def document(record, image=None):
         'mem_limit': spec['memory'], 'cpus': '0.50', 'pids_limit': 64,
         'logging': {'driver': 'json-file', 'options': {'max-size': '5m', 'max-file': '2'}},
         'healthcheck': {'test': spec['health'],
-                        'interval': '2s', 'timeout': '2s', 'retries': 10}}},
+                        'interval': '2s', 'timeout': '2s',
+                        'retries': spec.get('health_retries', 10)}}},
         'volumes': {m['suffix']: {'name': record['project'] + '_' + m['suffix'], 'labels': labels}
                     for m in mounts}}
     service = result['services']['app']
