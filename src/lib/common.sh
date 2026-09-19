@@ -21,6 +21,11 @@ FUSION_CONFIG_DIR="${HOME:-/root}/.config/fusionbox"
 FUSION_CONFIG="$FUSION_CONFIG_DIR/config.yaml"
 FUSION_LOG_DIR="$FUSION_CONFIG_DIR/logs"
 FUSION_I18N_DIR="$FUSION_SRC/i18n"
+FUSION_TELEMETRY_ID_FILE="$FUSION_CONFIG_DIR/telemetry-id"
+FUSION_TELEMETRY_CONSENT_FILE="$FUSION_CONFIG_DIR/telemetry-consent"
+# Production collector URL is a controlled project constant. Until deployment,
+# the empty value makes opted-in sends a silent no-op.
+readonly FUSION_TELEMETRY_ENDPOINT=""
 
 # State variables
 F_LANG="auto"
@@ -124,28 +129,254 @@ read_input() {
 
 _load_config() {
   if [[ -f "$FUSION_CONFIG" ]]; then
-    # Simple YAML parser for flat config
+    # Simple YAML parser for one level of sections containing scalar values.
     local section=""
     while IFS= read -r line; do
-      line="${line%%#*}"  # Remove comments
-      line="${line#"${line%%[! ]*}"}"  # Trim leading spaces
-      [[ -z "$line" ]] && continue
-      if [[ "$line" =~ ^[a-zA-Z_]+: ]]; then
-        section="${line%%:*}"
-      elif [[ "$line" =~ ^[[:space:]]*([a-zA-Z_]+):[[:space:]]*(.*) ]]; then
+      [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+      if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*):[[:space:]]*(#.*)?$ ]]; then
+        section="${BASH_REMATCH[1]}"
+      elif [[ -n "$section" && "$line" =~ ^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*):[[:space:]]*(.*)$ ]]; then
         local key="${section}_${BASH_REMATCH[1]}"
         local val="${BASH_REMATCH[2]}"
-        val="${val#\"}"; val="${val%\"}"; val="${val#\'}"; val="${val%\'}"
         val="${val%%#*}"
         val="${val#"${val%%[! ]*}"}"; val="${val%"${val##*[! ]}"}"
+        val="${val#\"}"; val="${val%\"}"; val="${val#\'}"; val="${val%\'}"
         [[ -n "$val" ]] && printf -v "CONFIG_$key" '%s' "$val"
       fi
     done < "$FUSION_CONFIG"
   fi
 
   # Override with env vars
-  [[ -n "$FUSION_LANG" ]] && F_LANG="$FUSION_LANG"
+  [[ -n "${FUSION_LANG:-}" ]] && F_LANG="$FUSION_LANG"
   F_LANG="${CONFIG_general_lang:-$F_LANG}"
+}
+
+_config_set_general() (
+  local key="$1" value="$2" line tmp mode="600"
+  [[ "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 2
+  [[ "$value" =~ ^[a-zA-Z0-9_.-]+$ ]] || return 2
+  mkdir -p "$FUSION_CONFIG_DIR" || return 1
+  chmod 700 "$FUSION_CONFIG_DIR" 2>/dev/null || true
+  [[ ! -L "$FUSION_CONFIG" ]] || return 1
+  tmp=$(mktemp "$FUSION_CONFIG_DIR/.config.yaml.XXXXXX") || return 1
+  trap 'rm -f -- "$tmp"' EXIT
+  [[ ! -e "$FUSION_CONFIG" ]] || mode=$(stat -c '%a' "$FUSION_CONFIG" 2>/dev/null || printf '600')
+  if [[ "$mode" =~ ^[0-7]+$ ]] && (( 8#$mode > 8#600 )); then
+    mode="600"
+  fi
+
+  local in_general=0 found_general=0 found_key=0
+  if [[ -f "$FUSION_CONFIG" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*):[[:space:]]*(#.*)?$ ]]; then
+        if (( in_general && ! found_key )); then
+          printf '  %s: %s\n' "$key" "$value" >> "$tmp"
+          found_key=1
+        fi
+        in_general=0
+        if [[ "${BASH_REMATCH[1]}" == "general" ]]; then
+          in_general=1
+          found_general=1
+        fi
+      fi
+      if (( in_general )) && [[ "$line" =~ ^([[:space:]]+)${key}:[[:space:]]*[^#]*([[:space:]]*#.*)?$ ]]; then
+        printf '%s%s: %s%s\n' "${BASH_REMATCH[1]}" "$key" "$value" "${BASH_REMATCH[2]}" >> "$tmp"
+        found_key=1
+      else
+        printf '%s\n' "$line" >> "$tmp"
+      fi
+    done < "$FUSION_CONFIG"
+  fi
+  if (( in_general && ! found_key )); then
+    printf '  %s: %s\n' "$key" "$value" >> "$tmp"
+  fi
+  if (( ! found_general )); then
+    [[ ! -s "$tmp" ]] || printf '\n' >> "$tmp"
+    printf 'general:\n  %s: %s\n' "$key" "$value" >> "$tmp"
+  fi
+  chmod "$mode" "$tmp" 2>/dev/null || chmod 600 "$tmp" || return 1
+  mv -f -- "$tmp" "$FUSION_CONFIG" || return 1
+  trap - EXIT
+)
+
+# ---- Anonymous telemetry (explicit opt-in only) ----
+
+_telemetry_endpoint() {
+  if [[ "${FUSION_TELEMETRY_TEST_MODE:-0}" == "1" &&
+        "${FUSION_TELEMETRY_TEST_ENDPOINT:-}" =~ ^https?://(127\.0\.0\.1|localhost)(:[0-9]+)?(/|$) ]]; then
+    printf '%s' "$FUSION_TELEMETRY_TEST_ENDPOINT"
+  else
+    printf '%s' "$FUSION_TELEMETRY_ENDPOINT"
+  fi
+}
+
+_telemetry_new_id() {
+  local uuid hex
+  uuid=$(command cat /proc/sys/kernel/random/uuid 2>/dev/null || true)
+  if [[ ! "$uuid" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]]; then
+    uuid=$(command uuidgen -r 2>/dev/null || true)
+  fi
+  if [[ ! "$uuid" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]]; then
+    hex=$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n') || return 1
+    [[ ${#hex} -eq 32 ]] || return 1
+    uuid="${hex:0:8}-${hex:8:4}-4${hex:13:3}-a${hex:17:3}-${hex:20:12}"
+  fi
+  printf '%s\n' "${uuid,,}"
+}
+
+_telemetry_id() (
+  local id tmp
+  if [[ -f "$FUSION_TELEMETRY_ID_FILE" && ! -L "$FUSION_TELEMETRY_ID_FILE" ]]; then
+    IFS= read -r id < "$FUSION_TELEMETRY_ID_FILE" || true
+    if [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+      chmod 600 "$FUSION_TELEMETRY_ID_FILE" 2>/dev/null || true
+      printf '%s\n' "$id"
+      return 0
+    fi
+  fi
+  [[ ! -L "$FUSION_TELEMETRY_ID_FILE" ]] || return 1
+  mkdir -p "$FUSION_CONFIG_DIR" || return 1
+  chmod 700 "$FUSION_CONFIG_DIR" 2>/dev/null || true
+  id=$(_telemetry_new_id) || return 1
+  tmp=$(mktemp "$FUSION_CONFIG_DIR/.telemetry-id.XXXXXX") || return 1
+  trap 'rm -f -- "$tmp"' EXIT
+  (umask 077; printf '%s\n' "$id" > "$tmp") || return 1
+  chmod 600 "$tmp" || return 1
+  mv -f -- "$tmp" "$FUSION_TELEMETRY_ID_FILE" || return 1
+  trap - EXIT
+  printf '%s\n' "$id"
+)
+
+_telemetry_record_consent() (
+  local decision="$1" tmp
+  [[ "$decision" == "enabled" || "$decision" == "disabled" ]] || return 2
+  [[ ! -L "$FUSION_TELEMETRY_CONSENT_FILE" ]] || return 1
+  mkdir -p "$FUSION_CONFIG_DIR" || return 1
+  chmod 700 "$FUSION_CONFIG_DIR" 2>/dev/null || true
+  tmp=$(mktemp "$FUSION_CONFIG_DIR/.telemetry-consent.XXXXXX") || return 1
+  trap 'rm -f -- "$tmp"' EXIT
+  (umask 077; printf '%s\n' "$decision" > "$tmp") || return 1
+  chmod 600 "$tmp" || return 1
+  mv -f -- "$tmp" "$FUSION_TELEMETRY_CONSENT_FILE" || return 1
+  trap - EXIT
+)
+
+_telemetry_consent_is_interactive() {
+  [[ -t 0 && -t 1 && "${FUSION_NONINTERACTIVE:-0}" != "1" ]]
+}
+
+# Called only after a successful installer deployment. Existing user configs are
+# authoritative and are never changed or used to trigger another prompt.
+_telemetry_install_consent() {
+  local config_existed="${1:-1}" decision='' answer=''
+  [[ "$config_existed" == "0" ]] || return 0
+
+  if [[ -f "$FUSION_TELEMETRY_CONSENT_FILE" && ! -L "$FUSION_TELEMETRY_CONSENT_FILE" ]]; then
+    IFS= read -r decision < "$FUSION_TELEMETRY_CONSENT_FILE" || true
+  fi
+  case "$decision" in
+    enabled)
+      _telemetry_id >/dev/null || return 1
+      _config_set_general stats true || return 1
+      CONFIG_general_stats=true
+      return 0
+      ;;
+    disabled)
+      CONFIG_general_stats=false
+      return 0
+      ;;
+  esac
+
+  if _telemetry_consent_is_interactive; then
+    printf '是否允许发送匿名安装与使用统计？不包含命令参数或业务数据 [y/N]: '
+    read -r answer || answer=''
+  fi
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    _telemetry_id >/dev/null || return 1
+    _config_set_general stats true || return 1
+    if ! _telemetry_record_consent enabled; then
+      _config_set_general stats false >/dev/null 2>&1 || true
+      _telemetry_record_consent disabled >/dev/null 2>&1 || true
+      CONFIG_general_stats=false
+      return 1
+    fi
+    CONFIG_general_stats=true
+  else
+    _config_set_general stats false || return 1
+    CONFIG_general_stats=false
+    _telemetry_record_consent disabled
+  fi
+}
+
+_telemetry_event() {
+  [[ "${CONFIG_general_stats:-false}" == "true" ]] || return 0
+  local event="$1" endpoint id payload os arch
+  case "$event" in
+    install|update|uninstall|heartbeat) ;;
+    *) return 2 ;;
+  esac
+  command -v curl &>/dev/null || return 0
+  endpoint=$(_telemetry_endpoint)
+  [[ -n "$endpoint" ]] || return 0
+  id=$(_telemetry_id) || return 0
+  [[ "$FUSION_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+  case "${F_OS:-other}" in
+    debian|ubuntu|centos|rocky|almalinux|fedora|arch) os="$F_OS" ;;
+    *) os="other" ;;
+  esac
+  case "$(uname -m 2>/dev/null)" in
+    x86_64) arch="x86_64" ;;
+    aarch64|arm64) arch="aarch64" ;;
+    armv7l) arch="armv7l" ;;
+    *) arch="other" ;;
+  esac
+  printf -v payload '{"schema_version":1,"event":"%s","installation_id":"%s","version":"%s","os":"%s","arch":"%s"}' \
+    "$event" "${id//-/}" "$FUSION_VER" "$os" "$arch"
+  (curl -fsS --connect-timeout 2 --max-time 3 \
+    -H 'Content-Type: application/json' --data-binary "$payload" \
+    "$endpoint" </dev/null >/dev/null 2>&1) &
+}
+
+privacy_command() {
+  local action="${1:-status}"
+  case "$action" in
+    status)
+      if [[ "${CONFIG_general_stats:-false}" == "true" ]]; then
+        msg_ok "$(_tr MSG_PRIVACY_ENABLED "匿名统计: 已开启")"
+      else
+        msg "$(_tr MSG_PRIVACY_DISABLED "匿名统计: 已关闭")"
+      fi
+      ;;
+    on)
+      local old_stats="${CONFIG_general_stats:-false}"
+      _telemetry_id >/dev/null || { msg_err "$(_tr MSG_PRIVACY_ID_FAILED "无法创建匿名标识")"; return 1; }
+      _config_set_general stats true || { msg_err "$(_tr MSG_PRIVACY_SAVE_FAILED "无法保存隐私设置")"; return 1; }
+      _telemetry_record_consent enabled || { msg_err "$(_tr MSG_PRIVACY_SAVE_FAILED "无法保存隐私设置")"; return 1; }
+      CONFIG_general_stats=true
+      msg_ok "$(_tr MSG_PRIVACY_ENABLED "匿名统计: 已开启")"
+      [[ "$old_stats" == "true" ]] || _telemetry_event heartbeat
+      ;;
+    off)
+      _config_set_general stats false || { msg_err "$(_tr MSG_PRIVACY_SAVE_FAILED "无法保存隐私设置")"; return 1; }
+      _telemetry_record_consent disabled || { msg_err "$(_tr MSG_PRIVACY_SAVE_FAILED "无法保存隐私设置")"; return 1; }
+      CONFIG_general_stats=false
+      msg_ok "$(_tr MSG_PRIVACY_DISABLED "匿名统计: 已关闭")"
+      ;;
+    reset-id)
+      if [[ "${CONFIG_general_stats:-false}" != "true" ]]; then
+        msg_err "$(_tr MSG_PRIVACY_RESET_DISABLED "请先开启匿名统计")"
+        return 1
+      fi
+      [[ ! -L "$FUSION_TELEMETRY_ID_FILE" ]] || { msg_err "$(_tr MSG_PRIVACY_ID_FAILED "无法创建匿名标识")"; return 1; }
+      rm -f -- "$FUSION_TELEMETRY_ID_FILE" || return 1
+      _telemetry_id >/dev/null || { msg_err "$(_tr MSG_PRIVACY_ID_FAILED "无法创建匿名标识")"; return 1; }
+      msg_ok "$(_tr MSG_PRIVACY_ID_RESET "匿名标识已重置")"
+      ;;
+    *)
+      msg_err "$(_tr MSG_PRIVACY_USAGE "用法: fusionbox privacy status|on|off|reset-id")"
+      return 2
+      ;;
+  esac
 }
 
 # ---- System detection ----

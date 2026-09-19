@@ -92,6 +92,8 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
 .ft .lk a{color:var(--muted);font-size:.85em;text-decoration:none}
 .ft .lk a:hover{color:var(--dim)}
 .ft p{font-size:.82em;color:var(--muted)}
+.ft .ack{margin-bottom:8px}
+.metric-note{font-size:.78em;color:var(--muted);margin-top:6px}
 
 /* responsive */
 @media(max-width:860px){
@@ -137,9 +139,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.24.2 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.25.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">v1.24.0 受管市场大扩容（G51/G53/G54）：新增 LobeChat、OpenWebUI、n8n、OpenList、Navidrome 五款模板——digest 固定镜像实拉验证、支持多具名卷与环境变量、每应用健康重试窗口（compose wait-timeout 随之缩放，修复慢启动应用必然失败的问题）。真机验证五款应用完整生命周期 27 项全过（含真实 HTTP 服务：307/200/200/302/200）。真实部署驱动修复：lobe-chat 内存 OOM、openlist 卷权限、慢启动窗口。Linux 验证目标 42 基础 + 584 行为，SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34。ACME/Cloudflare/Telegram 仍待凭据验证，未完成全部待办。<a href="https://github.com/motao123/FusionBox/blob/main/docs/implementation-status.md">查看实施范围与待办</a></p>
+        <p class="sub">v1.25.0 增加默认关闭的匿名使用统计与开源 Cloudflare Worker 后端，安装和更新改用 SHA256 校验的 Release 主包，并加入严格固定、失败回退的声明式应用目录。统计后端在配置 Cloudflare 凭据与 D1 之前不会接收数据；页面展示的是 GitHub 主包下载量，不等同于用户数。<a href="https://github.com/motao123/FusionBox/blob/main/docs/privacy.md">查看隐私说明</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>
@@ -166,7 +168,7 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
     <div class="container">
       <div class="stats-inner">
         <div class="sc"><div class="num">9</div><div class="lbl">核心模块</div></div>
-        <div class="sc"><div class="num">80+</div><div class="lbl">应用市场</div></div>
+        <div class="sc"><div class="num" id="release-downloads">—</div><div class="lbl">GitHub 主包下载</div><div class="metric-note">不是用户数</div></div>
         <div class="sc"><div class="num">15</div><div class="lbl">代理协议</div></div>
         <div class="sc"><div class="num">4</div><div class="lbl">代理后端</div></div>
       </div>
@@ -259,6 +261,7 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
       <a href="https://github.com/motao123/FusionBox/blob/main/README.md">Guide</a>
       <a href="https://github.com/motao123/FusionBox/blob/main/LICENSE">License</a>
     </div>
+    <p class="ack">赞助鸣谢：棉花云，优质网络提供商 <a href="https://www.88sup.com">www.88sup.com</a></p>
     <p>FusionBox &copy; 2026 &middot; MIT License</p>
   </div>
 </footer>
@@ -274,6 +277,14 @@ function cpy(btn){
     }, 2000);
   });
 }
+fetch('generated/github-metrics.json')
+  .then(function(response){ return response.ok ? response.json() : Promise.reject(); })
+  .then(function(data){
+    if(Number.isSafeInteger(data.total_downloads) && data.total_downloads >= 0){
+      document.getElementById('release-downloads').textContent = data.total_downloads.toLocaleString('zh-CN');
+    }
+  })
+  .catch(function(){});
 </script>
 </body>
 </html>

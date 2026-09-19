@@ -1,9 +1,11 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.24.2-blue)
+![version](https://img.shields.io/badge/version-1.25.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
+![GitHub 主包下载量](https://img.shields.io/endpoint?url=https%3A%2F%2Fmotao123.github.io%2FFusionBox%2Fgenerated%2Fgithub-downloads-shield.json)
+![GitHub Stars](https://img.shields.io/github/stars/motao123/FusionBox)
 
 > 一站式 Linux 服务器全能管理工具箱：9 大模块 + 受管应用市场，Bash 为主、受控 Python 辅助，
 > 安全事务化设计（暂存/备份/校验/回滚），全部功能经真机隔离验证。
@@ -56,15 +58,16 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.24.2）
+## 最近更新（v1.25.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 仓库不再随附 tests/（测试在本地与验证服务器进行，详见 [实施跟踪](docs/implementation-status.md)）；CI 保留发布脚本语法检查
-- 补充 MIT LICENSE 文件（与既有力声明对齐）
-- README 重构为产品式分层结构（v1.24.1）
+- 新增透明的棉花云赞助鸣谢，仅在交互主菜单、README 与 Pages 展示，不含联盟参数或点击跟踪
+- 新增默认关闭的匿名统计、隐私开关及开源 Cloudflare Worker 后端；Worker 尚待 Cloudflare 凭据和 D1 ID 才会上线
+- 安装/更新优先使用 SHA256 校验的 Release 主包；README/Pages 展示严格口径的 GitHub 主包下载量
+- 新增固定摘要、HTTPS pin、原子缓存的声明式应用目录，并为 Docker socket/设备/host network 应用设置高权限确认边界
 
-完整版本历史（v1.24.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+完整版本历史（v1.24.2 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考
 
@@ -361,7 +364,9 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 - 测试结论严格区分：**本地 mock / 隔离夹具 / 真机实测 / 未验证**，发布说明随版本附带精确范围
 - 待真实凭据/环境才能验证（代码已有、持续标注未验证）：ACME 公网域名签发、Cloudflare API 联动、Telegram 送达、真实多节点集群、OCI Oracle 项（G32-34）
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见下方实施跟踪文档
-- 不做项（安全/定位原因）：操作统计上报、明文集群密码、DD 重装、第三方仓库动态执行等
+- 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
+- 当前统计 Worker 尚待 Cloudflare 凭据与 D1 ID 配置；上线前客户端不会发送数据，README/Pages 仅展示 GitHub 主 Release 包下载量
+- 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围
 
 完整对账与待办：[docs/implementation-status.md](docs/implementation-status.md)
 
@@ -446,6 +451,7 @@ fusionbox cluster     # 集群控制
 fusionbox status      # 系统状态概览
 fusionbox version     # 查看版本
 fusionbox update      # 更新 FusionBox
+fusionbox privacy status|on|off|reset-id  # 匿名统计（默认关闭）
 fusionbox uninstall   # 卸载 FusionBox 本体（不动各模块安装的服务）
 fusionbox help        # 查看帮助
 
@@ -456,8 +462,14 @@ fusionbox <模块> help # 查看模块详细帮助
 ## 文档索引
 
 - [实施范围与逐项对账（G 表）](docs/implementation-status.md)
+- [匿名统计与隐私说明](docs/privacy.md)
+- [声明式应用目录与高权限边界](docs/market-catalog.md)
 - [完整变更历史](docs/CHANGELOG.md)
 - [项目主页（Pages）](https://motao123.github.io/FusionBox/)
+
+## 鸣谢
+
+感谢 **棉花云** 为项目提供支持：优质网络提供商，[www.88sup.com](https://www.88sup.com)。
 
 ## 开源协议
 

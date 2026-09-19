@@ -2,6 +2,15 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.25.0 隐私统计、可信下载与声明式市场基础
+
+- 固定鸣谢“棉花云：优质网络提供商 www.88sup.com”仅出现在交互主菜单、README 与 Pages，不提供商业广告专栏、联盟参数或点击跟踪。
+- 修复一层 YAML 配置读取；新增 `fusionbox privacy status|on|off|reset-id`。匿名统计默认关闭，首次交互安装默认拒绝，非交互安装始终关闭；随机安装 ID 与同意记录均原子写入私有配置目录。
+- 新增开源 Cloudflare Worker + D1 聚合后端，包含严格事件协议、HMAC 假名化、双主体原子限流、公开 summary/badge 与隐私说明。真实 Worker 尚待 Cloudflare 凭据、D1 ID 和迁移后上线，客户端生产端点在此之前保持为空。
+- 安装与自更新优先下载 `FusionBox-vX.Y.Z.tar.gz` 和 `SHA256SUMS`，严格校验摘要、归档路径、条目类型、版本与发行结构；只有 GitHub latest API 不可用时才明确回退 main 快照，Release 下载或校验失败不会降级。
+- GitHub Actions 每日只累计 `FusionBox-v*.tar.gz` 主资产下载量，并向 README/Pages 提供确定性 JSON；下载量不冒充用户数。
+- 新增版本化声明式应用目录：严格 JSON、digest 固定镜像、HTTPS + SHA256/revision pin、原子缓存、内置回退、撤回条目、多服务/TCP/UDP/NAS/device/host network/Docker socket 能力，以及高权限精确确认。v1 声明式生命周期当前限定为 install/status/uninstall。
+
 ## v1.24.2 仓库瘦身与 LICENSE
 
 - tests/ 退出仓库（本地与验证服务器保留；行为测试规模不变：42 基础 + 584 行为，零跳过），CI 改为仅对发布脚本做语法检查后打包

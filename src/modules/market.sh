@@ -550,9 +550,12 @@ market_managed_menu() {
   _require_root
   local action port domain cert key app
   local -a args=()
-  read -r -p "受管应用 nginx/ntfy（默认 nginx）: " app || return 1
+  read -r -p "受管应用 ID（默认 nginx；可用 catalog 查看）: " app || return 1
   app="${app:-nginx}"
-  case "$app" in nginx|ntfy) ;; *) msg_err "不支持的受管应用"; return 1 ;; esac
+  if ! python3 "$FUSION_SRC/lib/market_apps.py" catalog 2>/dev/null | grep -q "^${app}:"; then
+    msg_err "不支持的受管应用 ID"
+    return 1
+  fi
   read -r -p "操作 catalog/status/install/reinstall/update/uninstall/domain/tls/tls-refresh: " action || return 1
   case "$action" in
     tls-refresh)
@@ -575,6 +578,15 @@ market_managed_menu() {
       if [[ -n "$domain" ]]; then args+=(--domain "$domain"); else args+=(--remove-domain); fi ;;
     catalog|status) ;;
     install|reinstall|update|uninstall)
+      if [[ "$action" == install ]]; then
+        local details
+        details=$(python3 "$FUSION_SRC/lib/market_apps.py" catalog "$app" 2>/dev/null | grep -F "$app:" | head -1) || true
+        if [[ "$details" == *"HIGH PRIVILEGE"* ]]; then
+          msg_warn "高权限应用：可访问 Docker socket、宿主设备或 host 网络；等同授予宿主控制能力。仅允许 localhost 默认入口，不能配置受管域名。"
+          read -r -p "输入目录要求的完整高权限确认文本: " risk_ack || return 1
+          args+=(--risk-ack "$risk_ack")
+        fi
+      fi
       confirm "确认执行 $action？可能停机；卸载保留数据；失败需检查恢复状态" || return 1
       args+=(--confirm)
       if [[ "$action" == reinstall ]]; then

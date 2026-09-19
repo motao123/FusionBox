@@ -219,4 +219,4 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G68 | x86-64 psABI 级别检测（v1/v2/v3） | 受管范围完成 | v1.19.0 _psabi_from_flags 并入 system info；真机 CPU 识别为 v4 |
 | G69 | hermes / deepseek harness 管理器（AI Agent 服务管理，含 systemd/WebUI/域名+BasicAuth） | 大范围后续 | 独立生态与生命周期设计，未纳入本次实现 |
 
-后续优先顺序：市场部署登记/锁与端口预检 → 经过验证的少量 AI/现代面板模板 → 通用同步与迁移 → 站点克隆/缓存/运行时优化。SSH 加固、密码登录开关、全量卸载、内核源码升级等需专项回滚验证。商业推广、统计上报、明文集群密码、任意远端配置 source、DD 重装不纳入默认能力。
+后续优先顺序：完整 Docker 跨机迁移与系统备份扩围 → DD 重装/OpenSSH/密码集群等高风险事务能力 → Web/ACME 闭环 → 应用与 AI Agent 生态扩容。v1.25.0 已建立默认关闭的匿名统计、可信 Release 下载和声明式远程目录基础；远程目录只解析严格 JSON，禁止任意配置 `source`。商业广告/联盟推广及私有 KPanel/.kpb 协议不纳入能力范围。
