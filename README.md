@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.24.1-blue)
+![version](https://img.shields.io/badge/version-1.24.2-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -56,13 +56,13 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.24.0）
+## 最近更新（v1.24.2）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 受管市场新增五款模板：**lobe-chat / open-webui / n8n / openlist / navidrome**（digest 实拉固定、真机完整生命周期 27 项验证）
-- 受管框架支持**多具名卷**与**环境变量**；`compose up` 等待时长随每应用健康重试窗口缩放（修复慢启动应用必然失败）
-- 真实部署驱动修复：lobe-chat 内存 OOM（1.5G）、openlist 新卷权限（root+全 cap 丢弃）
+- 仓库不再随附 tests/（测试在本地与验证服务器进行，详见 [实施跟踪](docs/implementation-status.md)）；CI 保留发布脚本语法检查
+- 补充 MIT LICENSE 文件（与既有力声明对齐）
+- README 重构为产品式分层结构（v1.24.1）
 
 完整版本历史（v1.24.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -412,9 +412,7 @@ FusionBox/
 ├── templates/
 │   ├── nginx/
 │   └── docker/
-└── tests/
-    ├── test_basic.sh          # 基础测试
-    └── comprehensive_test.sh  # 综合测试
+└── tests/                     # 行为测试（本地与验证服务器使用，不随仓库发布）
 ```
 
 </details>
@@ -463,4 +461,4 @@ fusionbox <模块> help # 查看模块详细帮助
 
 ## 开源协议
 
-MIT License
+MIT License（见仓库根目录 [LICENSE](LICENSE) 文件）
