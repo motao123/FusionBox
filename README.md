@@ -4,6 +4,25 @@
 
 FusionBox 是一个功能全面的 Linux 服务器管理脚本，集成了代理管理、系统管理、网络工具、网站部署、Docker 管理、应用市场、WARP 管理、后台工作区、集群控制等九大核心模块，覆盖常见日常运维场景。
 
+## v1.24.0 受管市场大扩容：五款新模板（G51/G53/G54）
+
+以对标项目的应用定义为配置规格（镜像/端口/挂载/环境变量），全部转换为 FusionBox 受管目录自有格式，digest 均经测试服务器实拉验证：
+
+```bash
+fusionbox market managed install lobe-chat --confirm    # AI 聚合对话，8085 -> 3210，内存 1.5G（实测 OOM 调高）
+fusionbox market managed install open-webui --confirm   # AI 对话（Ollama/OpenAI），8086 -> 8080，首启约 5-10 分钟
+fusionbox market managed install n8n --confirm          # 工作流自动化，8087 -> 5678，localhost HTTP 已关安全 Cookie
+fusionbox market managed install openlist --confirm     # 文件列表/WebDAV，8088 -> 5244，root+全 cap 丢弃运行
+fusionbox market managed install navidrome --confirm    # 音乐流媒体，8089 -> 4533，music 卷只读挂载
+```
+
+- **框架扩展**：受管模板支持多具名卷（`mounts` 列表，navidrome 的 data+music 只读组合）与环境变量（`environment`，经校验）；`compose up --wait-timeout` 随每应用 `health_retries` 缩放（原 45 秒硬编码导致慢启动应用必然失败）。
+- 真机验证中发现并修复：lobe-chat 512M 内存 OOM（调至 1.5G）、openlist 非 root 无法写新卷（改为 root+全 cap 丢弃）、openlist/open-webui 首启超过固定健康窗口（60/300 次重试）。
+- 真机验证 **27/27 全过**：五款应用各一轮完整生命周期（安装/健康/HTTP 服务实测——lobe-chat 307、n8n 200、openlist 200、navidrome 302 / open-webui 200——重复安装与端口占用拒绝、卸载保留数据、清理核对）。
+- 各应用安全语义：localhost 发布、mem/cpus/pids 限额、日志轮转、digest 固定拒绝升级；new-api/lobe-chat 首次设置凭证的提醒在 catalog 描述中。
+
+Linux 验证目标：42 基础 + 584 行为（新增 8），SSH 21、Compose 13、Docker 诊断 15、Nginx 市场 20、ntfy 17、TLS 34；受管应用真机 27/27。ACME/Cloudflare/Telegram 仍待凭据验证，全部剩余待办未宣称完成，优先级见[实施跟踪](docs/implementation-status.md)。
+
 ## v1.23.0 自动更新开关与 new-api 受管模板（G66/G51）
 
 ```bash
@@ -497,6 +516,7 @@ fusionbox web brotli                    # brotli 压缩开关
 fusionbox system rsync                  # rsync 同步任务 (add/list/run/cron)
 fusionbox update --cron on|off          # 自动更新开关 (每周)
 fusionbox market managed install new-api  # LLM API 网关受管模板
+fusionbox market managed install lobe-chat/open-webui/n8n/openlist/navidrome  # 五款新模板
 fusionbox system file                   # 文件管理器 (ls/cat/cp/mv/del/tar/send)
 fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
 fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)

@@ -1,4 +1,8 @@
-# v1.23.0 自动更新开关与 new-api 受管模板
+# v1.24.0 受管市场大扩容：五款新模板
+
+G51/G53/G54 扩容：受管目录新增 lobe-chat（G51）、open-webui（G51）、n8n（G51）、openlist（G53）、navidrome（G54）。框架扩展：`mounts` 多具名卷列表、`environment` 映射、每应用 `health_retries` 并使 `compose up --wait-timeout` 随之缩放（修复 45 秒硬编码导致慢启动应用必然失败）、document() 的 command 变为可选（root+全 cap 丢弃运行 openlist）。真机验证 27/27：五款应用完整生命周期（安装/健康/HTTP 服务实测/守卫/卸载清理），测试产物已清理。真实部署驱动修复：lobe-chat 512M OOM 调至 1.5G、openlist 新卷权限改 root 运行、openlist/open-webui 慢启动健康窗口。最终 Linux 验证目标：42 基础 + 584 行为。剩余：G51/G53-55 其余应用按需扩容、G32-34（OCI 环境）、G52 socket 依赖面板、G13 shutdown（不可真机验证）。
+
+## v1.23.0 自动更新开关与 new-api 受管模板（历史）
 
 G66/G51 限定范围完成：`update --cron on|off|status`（受管 cron.d 条目复用既有带校验回滚的 self_update，需已安装部署，0600）；受管目录新增 `new-api`（LLM API 网关，digest 实拉验证，SQLite 具名卷，/api/status 真实健康检查，首启无认证警告写入描述）。真机验证 15 项全过：cron 全往返、真实部署/健康/HTTP 200/守卫/清理。最终 Linux 验证目标：42 基础 + 576 行为。**至此 69 项差距中：受管范围完成 55 项、部分覆盖 6 项、明确不做 8 项；未实现仅剩 G32-34（需真实 OCI 环境）、G51 其余 AI 应用（逐项评估）、G52 中需 Docker socket 的面板（与受管安全模型冲突）、G13 shutdown 分支（不能真机关机，mock 已覆盖）——均为环境/安全边界所限，列入后续观察。**
 
@@ -195,10 +199,10 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G48 | 运行时调优模板注入 | 并入 tune 档位 | v1.21.0 tune 档位覆盖 PHP-FPM 池/MySQL buffer/nginx；opcache 细项与 valkey 未单独覆盖 |
 | G49 | 组件热更新（单独升级 nginx/mysql/php/redis） | 受管范围完成 | v1.18.0 web upgrade：真机 nginx 升级路径验证；失败保持原版本，不提供降级 |
 | G50 | LDNMP 环境卸载 | 受管范围完成 | v1.18.0 uninstall-lnmp：真机完整卸载（备份/purge/wipe），验证后恢复原状 |
-| G51 | AI/LLM 类应用 | 部分扩容 | v1.23.0 new-api 受管模板（真机部署验证）；其余 AI 应用逐项评估后续 |
+| G51 | AI/LLM 类应用 | 部分扩容 | v1.23.0 new-api + v1.24.0 lobe-chat/open-webui/n8n 受管模板（真机验证）；Dify/RAGFlow 等多容器应用需框架支持 compose 多服务，后续 |
 | G52 | 面板类应用 | 部分扩容 | v1.20.0 uptime-kuma 监控面板受管模板（真机全生命周期）；1Panel/Dockge 等未实现（Dockge 需 Docker socket，与受管安全模型冲突） |
-| G53 | 网盘/同步类（Cloudreve/OpenList/小雅/immich/Syncthing/ZFile/FileCodeBox） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G54 | 媒体/影音类（Navidrome/LibreTV/MoonTV/SyncTV/Owncast/QB/迅雷/Gopeed） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G53 | 网盘/同步类 | 部分扩容 | v1.24.0 openlist 受管模板（真机全生命周期）；其余应用按需扩容；Syncthing 的 P2P UDP 端口与受管 localhost 模型冲突未收录 |
+| G54 | 媒体/影音类 | 部分扩容 | v1.24.0 navidrome 受管模板（data+music 多卷，真机验证）；其余应用按需扩容 |
 | G55 | 远程/安全/协作类（RustDesk/WireGuard/Webtop/Nexterm/JumpServer/雷池/ONLYOFFICE/RocketChat/VoceChat/2FAuth） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G56 | 运维工具类（Lucky/ddns-go/AllinSSL/searxng/Umami/Beszel/komari/思源/Wallos） | 部分扩容 | v1.13.0 ntfy + v1.20.0 ddns-go 受管模板；其余列举应用未实现 |
 | G57 | 市场机制：统一登记（appno.txt 原子写 0600）+ flock 并发锁 + 端口占用探测分配 + 已装检测 + 镜像更新检测 + 卸载清理 | 部分实现 | v1.6.1 复用 Compose JSON 登记/锁、20 端口有界探测、归属/健康、镜像 ID 更新与回滚；卸载保留数据并支持显式重装；旧安装迁移后续 |
