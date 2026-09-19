@@ -158,7 +158,12 @@ class Market(unittest.TestCase):
     def test_new_catalog_entries_validate(self):
         for app, target, min_bytes in (('uptime-kuma', 3001, 1024 * 1024 * 1024),
                                        ('ddns-go', 9876, 256 * 1024 * 1024),
-                                       ('new-api', 3000, 512 * 1024 * 1024)):
+                                       ('new-api', 3000, 512 * 1024 * 1024),
+                                       ('lobe-chat', 3210, 512 * 1024 * 1024),
+                                       ('open-webui', 8080, 4 * 1024 * 1024 * 1024),
+                                       ('n8n', 5678, 512 * 1024 * 1024),
+                                       ('openlist', 5244, 512 * 1024 * 1024),
+                                       ('navidrome', 4533, 512 * 1024 * 1024)):
             spec = m.metadata(app)
             self.assertEqual(spec['target'], target)
             self.assertGreaterEqual(spec['bytes'], min_bytes)
@@ -169,6 +174,25 @@ class Market(unittest.TestCase):
                                          'image': spec['image']},
                               'compose': 'x'})
             self.assertIn('127.0.0.1:12345:' + str(target), doc['services']['app']['ports'])
+
+    def test_multi_volume_document(self):
+        spec = m.metadata('navidrome')
+        doc = m.document({'project': 'fb-market-navidrome',
+                          'market': {'token': 'a' * 32, 'app': 'navidrome', 'port': 12345,
+                                     'image': spec['image']},
+                          'compose': 'x'})
+        service = doc['services']['app']
+        self.assertIn('data:/data', service['volumes'])
+        self.assertIn('music:/music:ro', service['volumes'])
+        self.assertEqual(doc['volumes']['music']['name'], 'fb-market-navidrome_music')
+
+    def test_environment_passthrough(self):
+        spec = m.metadata('n8n')
+        doc = m.document({'project': 'fb-market-n8n',
+                          'market': {'token': 'a' * 32, 'app': 'n8n', 'port': 12345,
+                                     'image': spec['image']},
+                          'compose': 'x'})
+        self.assertEqual(doc['services']['app']['environment']['N8N_SECURE_COOKIE'], 'false')
 
     def test_ntfy_metadata_runtime_and_identity(self):
         m.operate('install', app='ntfy', accepted=True)

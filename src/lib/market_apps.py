@@ -46,21 +46,77 @@ CATALOG = {
                 'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/status || exit 1'],
                 'domain': False,
                 'description': 'LLM API gateway and billing panel (new-api); SQLite in named volume; runs as container root user (image default); no auth on first setup, set admin password immediately; localhost only; no domain/TLS; image upgrades refused'},
+    'lobe-chat': {'image': 'lobehub/lobe-chat:latest@sha256:b2d2454525523d9f0a19c79661f83ec45f13363dbadd5c1180887e77af35d872',
+                  'port': 8085, 'bytes': 1024 * 1024 * 1024, 'target': 3210,
+                  'mount': '/app/data', 'readonly': False, 'memory': '512m',
+                  'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3210/ || exit 1'],
+                  'domain': False,
+                  'description': 'LobeChat AI chat aggregator (ChatGPT/Claude/Gemini/Ollama keys configured in web UI); localhost only; no domain/TLS; image upgrades refused'},
+    'open-webui': {'image': 'ghcr.io/open-webui/open-webui:main',
+                   'port': 8086, 'bytes': 6 * 1024 * 1024 * 1024, 'target': 8080,
+                   'mount': '/app/backend/data', 'readonly': False, 'memory': '1024m',
+                   'health': ['CMD-SHELL', 'curl -f http://127.0.0.1:8080/health || exit 1'],
+                   'domain': False,
+                   'description': 'OpenWebUI self-hosted AI chat (Ollama/OpenAI endpoints configured in web UI); large image ~4GiB; localhost only; no domain/TLS; image upgrades refused'},
+    'n8n': {'image': 'n8nio/n8n:latest',
+            'port': 8087, 'bytes': 1024 * 1024 * 1024, 'target': 5678,
+            'mount': '/home/node/.n8n', 'readonly': False, 'memory': '512m',
+            'environment': {'N8N_SECURE_COOKIE': 'false', 'GENERIC_TIMEZONE': 'Asia/Shanghai'},
+            'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:5678/healthz || exit 1'],
+            'domain': False,
+            'description': 'n8n workflow automation; SQLite in named volume; localhost HTTP means secure cookies disabled; set owner account on first setup; no domain/TLS; image upgrades refused'},
+    'openlist': {'image': 'openlistteam/openlist:latest-aria2',
+                 'port': 8088, 'bytes': 1024 * 1024 * 1024, 'target': 5244,
+                 'mount': '/opt/openlist/data', 'readonly': False, 'memory': '256m',
+                 'environment': {'PUID': '0', 'PGID': '0', 'UMASK': '022'},
+                 'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:5244/ || exit 1'],
+                 'domain': False,
+                 'description': 'OpenList file list program with WebDAV (Alist fork); admin password via container CLI; localhost only; no domain/TLS; image upgrades refused'},
+    'navidrome': {'image': 'deluan/navidrome:latest',
+                  'port': 8089, 'bytes': 1024 * 1024 * 1024, 'target': 4533,
+                  'mounts': [{'suffix': 'data', 'dest': '/data', 'readonly': False},
+                             {'suffix': 'music', 'dest': '/music', 'readonly': True}],
+                  'memory': '256m',
+                  'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:4533/ || exit 1'],
+                  'domain': False,
+                  'description': 'Navidrome music streaming server; copy audio files into the music named volume (docker cp); localhost only; no domain/TLS; image upgrades refused'},
 }
+
+
+def app_mounts(spec):
+    """Normalize a catalog spec into the internal mount list."""
+    if 'mounts' in spec:
+        mounts = spec['mounts']
+    else:
+        mounts = [{'suffix': 'data', 'dest': spec['mount'], 'readonly': spec['readonly']}]
+    for m in mounts:
+        if (not isinstance(m, dict) or not re.fullmatch(r'[a-z][a-z0-9-]{0,15}', m.get('suffix', '')) or
+                not isinstance(m.get('dest'), str) or not m.get('dest', '').startswith('/') or
+                not isinstance(m.get('readonly'), bool)):
+            raise ValueError('Invalid catalog metadata')
+    return mounts
 
 
 def metadata(app):
     if app not in CATALOG:
         raise ValueError('Unsupported managed application')
     spec = CATALOG[app]
+    has_mount = type(spec.get('mount')) is str and spec['mount'].startswith('/')
     if (type(spec.get('bytes')) is not int or spec['bytes'] <= 0 or
             type(spec.get('target')) is not int or not 1 <= spec['target'] <= 65535 or
             type(spec.get('port')) is not int or not 1024 <= spec['port'] <= 65535 or
-            type(spec.get('readonly')) is not bool or not spec.get('mount', '').startswith('/') or
+            (not has_mount and 'mounts' not in spec) or
             not re.fullmatch(r'[a-z0-9./:_@-]+', spec.get('image', '')) or
             not re.fullmatch(r'[1-9][0-9]*m', spec.get('memory', '')) or
             not isinstance(spec.get('health'), list) or not spec['health']):
         raise ValueError('Invalid catalog metadata')
+    app_mounts(spec)
+    if 'environment' in spec:
+        env = spec['environment']
+        if (not isinstance(env, dict) or not env or
+                any(not isinstance(k, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', k) or
+                    not isinstance(v, str) for k, v in env.items())):
+            raise ValueError('Invalid catalog metadata')
     return spec
 
 
@@ -68,17 +124,23 @@ def document(record, image=None):
     m = record['market']
     spec = metadata(m['app'])
     labels = {'io.fusionbox.market': m['token']}
+    mounts = app_mounts(spec)
     result = {'services': {'app': {
         'image': image or m['image'], 'container_name': record['project'] + '-app',
         'network_mode': 'bridge', 'restart': 'unless-stopped',
         'ports': ['127.0.0.1:%s:%s' % (m['port'], spec['target'])],
-        'volumes': ['data:' + spec['mount'] + (':ro' if spec['readonly'] else '')], 'labels': labels,
+        'volumes': [('' + suffix + ':' + mount['dest'] + (':ro' if mount['readonly'] else ''))
+                    for suffix, mount in ((m['suffix'], m) for m in mounts)],
+        'labels': labels,
         'mem_limit': spec['memory'], 'cpus': '0.50', 'pids_limit': 64,
         'logging': {'driver': 'json-file', 'options': {'max-size': '5m', 'max-file': '2'}},
         'healthcheck': {'test': spec['health'],
                         'interval': '2s', 'timeout': '2s', 'retries': 10}}},
-        'volumes': {'data': {'name': record['project'] + '_data', 'labels': labels}}}
+        'volumes': {m['suffix']: {'name': record['project'] + '_' + m['suffix'], 'labels': labels}
+                    for m in mounts}}
     service = result['services']['app']
+    if 'environment' in spec:
+        service['environment'] = dict(spec['environment'])
     if 'user' in spec:
         service.update(user=spec['user'], command=spec['command'], init=True,
                        cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
@@ -127,23 +189,27 @@ def resources(record):
             raise ValueError('Unknown container ownership/type')
         if 'user' in spec and c['Config'].get('User') != spec['user']:
             raise ValueError('Unexpected application runtime user')
-        for mount in c.get('Mounts', []):
-            if (mount['Type'] != 'volume' or mount.get('Name') != project + '_data' or
-                    mount.get('Destination') != spec['mount'] or mount.get('RW') != (not spec['readonly'])):
-                raise ValueError('Unexpected application storage')
+        expected = {(project + '_' + m['suffix'], m['dest'], not m['readonly'])
+                    for m in app_mounts(spec)}
+        actual = {(mount.get('Name'), mount.get('Destination'), mount['RW'])
+                  for mount in c.get('Mounts', []) if mount['Type'] == 'volume'}
+        if actual != expected:
+            raise ValueError('Unexpected application storage')
     volumes = cb.docker('volume', 'ls', '-q').decode().split()
-    if project + '_data' in volumes:
-        v = cb.js('volume', 'inspect', project + '_data')[0]
-        labels = v.get('Labels') or {}
-        if (labels.get('io.fusionbox.market') != token or
-                labels.get('com.docker.compose.project') != project or
-                v['Driver'] != 'local' or v.get('Options')):
-            raise ValueError('Unknown data volume ownership')
-        users = cb.docker('ps', '-aq', '--filter', 'volume=' + project + '_data').decode().split()
-        if set(users) - set(ids):
-            raise ValueError('Data volume shared outside managed app')
-    elif containers:
-        raise ValueError('Managed data volume missing')
+    for m in app_mounts(spec):
+        name = project + '_' + m['suffix']
+        if name in volumes:
+            v = cb.js('volume', 'inspect', name)[0]
+            labels = v.get('Labels') or {}
+            if (labels.get('io.fusionbox.market') != token or
+                    labels.get('com.docker.compose.project') != project or
+                    v['Driver'] != 'local' or v.get('Options')):
+                raise ValueError('Unknown data volume ownership')
+            users = cb.docker('ps', '-aq', '--filter', 'volume=' + name).decode().split()
+            if set(users) - set(ids):
+                raise ValueError('Data volume shared outside managed app')
+        elif containers:
+            raise ValueError('Managed data volume missing')
     return containers
 
 
