@@ -2,6 +2,14 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.26.0 显式范围系统备份与事务恢复
+
+- 系统备份使用显式 `fusion/web/docker/ssh/cron/usr-local/home` scope；默认仍为保守的 `fusion,web,docker`，敏感范围逐项输入确认，定时任务固定使用非交互默认范围。
+- format-2 manifest 记录 owner、scope/root 映射以及逐文件 UID/GID、mode、size、SHA256；创建时拒绝链接、特殊文件、跨文件系统和源路径变化。
+- 恢复支持 scope 子集、当前状态预览及 abort/replace/skip 冲突策略；先暂存再激活，失败逆序回滚并保留 recovery directory。提取文件时重新校验 SHA256。
+- 只读兼容 format-1 历史备份和旧的第四位置 root 参数；站点入口继续同时覆盖 Web 与 `/opt/docker` 数据。
+- 当前仍是文件级离线备份，不自动停写入服务，不保证数据库一致性；数据库原生 dump/restore 和跨机 Docker 重建继续后续实现。
+
 ## v1.25.0 隐私统计、可信下载与声明式市场基础
 
 - 固定鸣谢“棉花云：优质网络提供商 www.88sup.com”仅出现在交互主菜单、README 与 Pages，不提供商业广告专栏、联盟参数或点击跟踪。

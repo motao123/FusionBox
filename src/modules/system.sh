@@ -860,21 +860,38 @@ system_monitor() {
 }
 
 # ---- System Backup ----
+_fb_backup_scopes() {
+  local scopes="fusion,web,docker" answer scope
+  msg "  默认范围: fusion,web,docker（FusionBox、站点/代理配置、/opt/docker）" >&2
+  msg "  可选敏感范围: ssh cron usr-local home；每项单独确认，默认不选。" >&2
+  for scope in ssh cron usr-local home; do
+    read -r -p "包含 $scope scope？输入 INCLUDE-$scope 确认，回车跳过: " answer || return 1
+    if [[ "$answer" == "INCLUDE-$scope" ]]; then
+      scopes+=",$scope"
+    elif [[ -n "$answer" ]]; then
+      msg_warn "$scope 确认文本不匹配，已跳过" >&2
+    fi
+  done
+  printf '%s' "$scopes"
+}
+
 system_backup() {
   _require_root
-  local backup_dir="${1:-/root/backups}"
-  mkdir -p "$backup_dir"
+  local backup_dir="${1:-/root/backups}" scopes="${2:-}"
+  mkdir -p "$backup_dir" || return 1
 
   local date_str; date_str=$(date '+%Y%m%d_%H%M%S')
   local backup_file="$backup_dir/fusionbox_backup_$date_str.tar.gz"
 
   msg_title "系统备份"
   msg ""
-
-  msg_warn "请先停止写入服务；文件备份不是数据库一致性快照。链接与特殊文件将被拒绝。"
-  python3 "$FUSION_SRC/lib/archive.py" create system "$backup_file" || return 1
+  msg_warn "请先停止写入服务；数据库不在一致性保证内，需另做应用原生 dump。"
+  msg_warn "只归档显式 scope；拒绝符号链接、特殊文件、跨文件系统和路径逃逸，不做整机 tar。"
+  [[ -n "$scopes" ]] || scopes=$(_fb_backup_scopes) || return 1
+  msg_info "将备份 scope: $scopes"
+  python3 "$FUSION_SRC/lib/archive.py" create "$scopes" "$backup_file" || return 1
   msg_ok "备份已创建: $backup_file"
-  _log_write "系统备份已创建: $backup_file"
+  _log_write "系统备份已创建: $backup_file (scopes=$scopes)"
   pause
 }
 
@@ -887,7 +904,7 @@ system_restore() {
 
   local backups=()
   for f in "$backup_dir"/fusionbox_backup_*.tar.gz; do
-    [[ -f "$f" ]] && backups+=("$f")
+    [[ -f "$f" && ! -L "$f" ]] && backups+=("$f")
   done
 
   if [[ ${#backups[@]} -eq 0 ]]; then
@@ -900,32 +917,39 @@ system_restore() {
   local i=1
   for f in "${backups[@]}"; do
     local size; size=$(du -h "$f" | cut -f1)
-    local date_str; date_str=$(basename "$f" .tar.gz | sed 's/fusionbox_backup_//')
-    msg "  $i) $date_str ($size)"
+    msg "  $i) $(basename "$f") ($size)"
     i=$((i+1))
   done
   msg ""
 
+  local choice idx restore_file scopes conflict confirm_input
   read -r -p "请选择要恢复的备份: " choice
   [[ "$choice" =~ ^[1-9][0-9]{0,5}$ ]] || return 1
-  local idx=$((choice - 1))
-  if [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]]; then
-    local restore_file="${backups[$idx]}"
-    msg_info "校验备份与恢复范围:"
-    python3 "$FUSION_SRC/lib/archive.py" verify system "$restore_file" || return 1
-    msg ""
-    if confirm "确认已停止写入服务？将替换清单目录并保留旧目录"; then
-      local confirm_input=""
-      read -r -p "请输入大写 YES 确认恢复: " confirm_input
-      if [[ "$confirm_input" == "YES" ]]; then
-        python3 "$FUSION_SRC/lib/archive.py" restore system "$restore_file" || return 1
-        msg_ok "恢复完成"
-        _log_write "系统已从备份恢复: $restore_file"
-      else
-        msg_warn "输入不匹配，已取消恢复"
-      fi
-    fi
-  fi
+  idx=$((choice - 1))
+  [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]] || return 1
+  restore_file="${backups[$idx]}"
+  read -r -p "输入要恢复的 scope（逗号分隔，可从归档中选择子集）: " scopes
+  [[ -n "$scopes" ]] || return 1
+
+  msg_info "归档校验与按 scope 预览（当前目标状态会显示 present/absent）:"
+  python3 "$FUSION_SRC/lib/archive.py" verify "$scopes" "$restore_file" || return 1
+  python3 "$FUSION_SRC/lib/archive.py" preview "$scopes" "$restore_file" --conflict replace || return 1
+  msg_warn "数据库恢复不包含在本操作中；恢复失败会回滚已激活 scope，旧目录保留在 recovery directory。"
+  msg "  冲突策略: 1) abort（有现状即停止）  2) replace（备份现状后替换）  3) skip（保留冲突 scope）"
+  read -r -p "请选择冲突策略 [1]: " choice
+  case "${choice:-1}" in
+    1) conflict="abort" ;;
+    2) conflict="replace" ;;
+    3) conflict="skip" ;;
+    *) msg_err "无效策略"; return 1 ;;
+  esac
+  python3 "$FUSION_SRC/lib/archive.py" preview "$scopes" "$restore_file" --conflict "$conflict" || return 1
+  confirm "确认已停止这些 scope 的所有写入者，并按以上策略恢复？" || return 0
+  read -r -p "请输入大写 RESTORE 确认: " confirm_input
+  [[ "$confirm_input" == "RESTORE" ]] || { msg_warn "输入不匹配，已取消恢复"; return 0; }
+  python3 "$FUSION_SRC/lib/archive.py" restore "$scopes" "$restore_file" --conflict "$conflict" || return 1
+  msg_ok "恢复完成；请检查输出中的 recovery directory 后再重载服务"
+  _log_write "系统已从备份恢复: $restore_file (scopes=$scopes conflict=$conflict)"
   pause
 }
 
@@ -1812,7 +1836,7 @@ system_cron() {
       crontab -e 2>/dev/null || msg_err "请安装编辑器"
       ;;
     4)
-      local backup_cron="0 3 * * * /bin/bash -c 'source /etc/fusionbox/src/init.sh && system_backup /root/backups'"
+      local backup_cron="0 3 * * * /bin/bash -c 'source /etc/fusionbox/src/init.sh && system_backup /root/backups fusion,web,docker'"
       if crontab -l 2>/dev/null | grep -qF "$backup_cron"; then
         msg_warn "自动备份定时任务已存在，跳过添加"
       else

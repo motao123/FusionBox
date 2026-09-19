@@ -210,7 +210,8 @@ def main():
     p.add_argument('node')
     p.add_argument('name', help='Remote archive basename ending .tar.gz')
     p.add_argument('--file', help='Local source/destination; private owned regular file for push')
-    p.add_argument('--scope', choices=tuple(archive.SCOPES), required=True)
+    p.add_argument('--scope', required=True,
+                   help='Comma-separated explicit archive scopes')
     p.add_argument('--sha256', required=True, help='Trusted expected archive SHA256, not a signature')
     p.add_argument('--remote-root', required=True)
     p.add_argument('--key', required=True)
@@ -219,6 +220,7 @@ def main():
     p.add_argument('--timeout', type=int, default=300)
     p.add_argument('--confirm-owned-store', action='store_true')
     args = p.parse_args()
+    archive.normalize_scopes(args.scope)
     if args.action != 'status' and not args.file:
         p.error('--file required for push/pull')
     run(args)

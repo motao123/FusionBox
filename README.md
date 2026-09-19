@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.25.0-blue)
+![version](https://img.shields.io/badge/version-1.26.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,16 +58,16 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.25.0）
+## 最近更新（v1.26.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增透明的棉花云赞助鸣谢，仅在交互主菜单、README 与 Pages 展示，不含联盟参数或点击跟踪
-- 新增默认关闭的匿名统计、隐私开关及开源 Cloudflare Worker 后端；Worker 尚待 Cloudflare 凭据和 D1 ID 才会上线
-- 安装/更新优先使用 SHA256 校验的 Release 主包；README/Pages 展示严格口径的 GitHub 主包下载量
-- 新增固定摘要、HTTPS pin、原子缓存的声明式应用目录，并为 Docker socket/设备/host network 应用设置高权限确认边界
+- 系统备份改为显式 scope：默认 `fusion,web,docker`，可逐项确认加入 SSH、cron、`/usr/local` 和用户 home
+- manifest v2 记录 scope、UID/GID、mode、size 与逐文件 SHA256；恢复前预览冲突并支持 abort/replace/skip，失败逆序回滚
+- 保持 format-1 历史归档只读兼容；站点备份继续覆盖 `/var/www`、Web 配置和 `/opt/docker`
+- 数据库仍要求应用原生 dump 与停写协调，不把文件归档宣称为数据库一致性备份
 
-完整版本历史（v1.24.2 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+完整版本历史（v1.25.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考
 
