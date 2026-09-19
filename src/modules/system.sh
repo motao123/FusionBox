@@ -30,7 +30,9 @@ system_main() {
     log)              system_log "$@" ;;
     traffic-guard)    system_traffic_guard "$@" ;;
     notify)           system_notify "$@" ;;
+    login-alert)      system_login_alert "$@" ;;
     netopt)           system_netopt "$@" ;;
+    tuning|tune)      system_tuning "$@" ;;
     fail2ban|f2b)     system_fail2ban "$@" ;;
     env)              system_env "$@" ;;
     rsync)            system_rsync "$@" ;;
@@ -3574,6 +3576,68 @@ system_notify() {
   done
 }
 
+# ---- SSH 登录 Telegram 通知 ----
+system_login_alert() {
+  _require_root
+  local action="${1:-status}"
+  case "$action" in
+    install)
+      [[ -n "$(_notify_conf_get TG_BOT_TOKEN)" && -n "$(_notify_conf_get TG_CHAT_ID)" ]] || {
+        msg_err "请先通过 fusionbox system notify 配置 Telegram 凭据"
+        return 1
+      }
+      python3 "$FUSION_SRC/lib/system_safety.py" login-alert install || return 1
+      msg_ok "SSH 登录通知已安装（PAM optional，通知失败不阻断登录）"
+      _log_write "SSH 登录 Telegram 通知已安装"
+      ;;
+    status)
+      python3 "$FUSION_SRC/lib/system_safety.py" login-alert status
+      ;;
+    test)
+      python3 "$FUSION_SRC/lib/system_safety.py" login-alert test || return 1
+      msg_ok "测试通知已触发"
+      ;;
+    uninstall)
+      python3 "$FUSION_SRC/lib/system_safety.py" login-alert uninstall || return 1
+      msg_ok "SSH 登录通知已卸载，Telegram 配置已保留"
+      _log_write "SSH 登录 Telegram 通知已卸载"
+      ;;
+    *)
+      msg_err "用法: fusionbox system login-alert {install|status|test|uninstall}"
+      return 1
+      ;;
+  esac
+}
+
+# ---- 六场景内核调优 ----
+system_tuning() {
+  _require_root
+  local action="${1:-status}" profile="${2:-}"
+  case "$action" in
+    apply)
+      case "$profile" in high|balanced|web|stream|game|db) ;; *)
+        msg_err "场景必须是 high/balanced/web/stream/game/db"
+        return 1 ;;
+      esac
+      python3 "$FUSION_SRC/lib/system_safety.py" tuning apply "$profile" || return 1
+      msg_ok "内核调优已应用: $profile"
+      _log_write "内核调优已应用 ($profile)"
+      ;;
+    status)
+      python3 "$FUSION_SRC/lib/system_safety.py" tuning status
+      ;;
+    restore)
+      python3 "$FUSION_SRC/lib/system_safety.py" tuning restore || return 1
+      msg_ok "调优前运行值与文件已恢复"
+      _log_write "内核调优已恢复"
+      ;;
+    *)
+      msg_err "用法: fusionbox system tuning {apply <high|balanced|web|stream|game|db>|status|restore}"
+      return 1
+      ;;
+  esac
+}
+
 # ---- 网络优化分级 ----
 # 探测默认路由网卡的协商速率
 _system_netopt_speed() {
@@ -4317,6 +4381,8 @@ system_help() {
   msg "  fusionbox system log            系统日志查看与清理"
   msg "  fusionbox system traffic-guard  流量阈值保护 (超限告警/关机)"
   msg "  fusionbox system notify         Telegram 资源告警"
+  msg "  fusionbox system login-alert    SSH 登录通知 (install/status/test/uninstall)"
+  msg "  fusionbox system tuning         六场景内核调优 (apply/status/restore)"
   msg "  fusionbox system netopt         网络优化分级 (按网卡速率)"
   msg "  fusionbox system fail2ban       Fail2Ban 面板 (状态/解封/日志/参数/卸载)"
   msg "  fusionbox system env            环境变量管理 (list/show/check/edit)"

@@ -1,6 +1,9 @@
 """Small, checked transactions for legacy system menus. Never run on import."""
 import argparse
+import base64
 import glob
+import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -469,11 +472,466 @@ def f2b_uninstall(directory=Path('/etc/fail2ban')):
           'package removal and remaining /etc/fail2ban files are handled separately.')
 
 
+LOGIN_MARKER = '# FusionBox managed SSH login alert v1\n'
+LOGIN_CONTROL = '[success=ok default=ignore]'
+LOGIN_COMMAND = ('session ' + LOGIN_CONTROL +
+                 ' pam_exec.so quiet /usr/local/bin/fusionbox-login-alert\n')
+LOGIN_SCRIPT_MARKER = '# FusionBox managed SSH login alert script v1\n'
+
+
+def _sha256(data):
+    if isinstance(data, str):
+        data = data.encode()
+    return hashlib.sha256(data).hexdigest()
+
+
+def _managed_record(path, content):
+    return {'path': str(path), 'content': base64.b64encode(content.encode()).decode(),
+            'sha256': _sha256(content)}
+
+
+def _managed_matches(path, record):
+    return (path.is_file() and not path.is_symlink() and
+            _sha256(path.read_bytes()) == record.get('sha256') and
+            path.read_bytes() == base64.b64decode(record.get('content', '')))
+
+
+def _validate_managed(path, record, purpose):
+    if record is None:
+        if path.exists():
+            raise ValueError('Unexpected managed path; refusing ' + purpose + ': ' + str(path))
+    elif not _managed_matches(path, record):
+        raise ValueError('Managed file drift; refusing ' + purpose + ': ' + str(path))
+
+
+def _thp_current(path):
+    if not path.exists():
+        return None
+    matches = re.findall(r'\[([^\[\]\s]+)\]', path.read_text())
+    if len(matches) != 1:
+        raise ValueError('Expected exactly one active THP mode')
+    return matches[0]
+
+
+def _unit_state(unit_file):
+    unit_file = Path(unit_file)
+    if not unit_file.exists():
+        return {'exists': False}
+    state = {'exists': True, 'enabled': False, 'active': False}
+    if shutil.which('systemctl'):
+        state.update({
+            'enabled': subprocess.run(['systemctl', 'is-enabled', '--quiet', 'fusionbox-thp.service'],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE).returncode == 0,
+            'active': subprocess.run(['systemctl', 'is-active', '--quiet', 'fusionbox-thp.service'],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE).returncode == 0,
+        })
+    return state
+
+
+def _restore_unit_state(saved, unit_file):
+    if saved is None:
+        return
+    unit_file = Path(unit_file)
+    if not saved['exists']:
+        if shutil.which('systemctl'):
+            subprocess.run(['systemctl', 'disable', '--now', 'fusionbox-thp.service'],
+                           check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            run('systemctl', 'daemon-reload')
+            active = subprocess.run(['systemctl', 'is-active', '--quiet', 'fusionbox-thp.service'],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE).returncode == 0
+            enabled = subprocess.run(['systemctl', 'is-enabled', '--quiet', 'fusionbox-thp.service'],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE).returncode == 0
+            if active or enabled:
+                raise ValueError('THP service remained active or enabled after restore')
+        unit_file.unlink(missing_ok=True)
+        if shutil.which('systemctl'):
+            run('systemctl', 'daemon-reload')
+        return
+    if not unit_file.exists():
+        raise ValueError('THP unit file missing during state restore')
+    if not shutil.which('systemctl'):
+        if saved['enabled'] or saved['active']:
+            raise ValueError('systemctl required to restore THP unit state')
+        return
+    run('systemctl', 'daemon-reload')
+    run('systemctl', 'enable' if saved['enabled'] else 'disable',
+        'fusionbox-thp.service')
+    run('systemctl', 'start' if saved['active'] else 'stop',
+        'fusionbox-thp.service')
+    if _unit_state(unit_file) != saved:
+        raise ValueError('systemd unit state restore validation failed')
+
+
+def _owned_path(path, mode=None):
+    path = Path(path)
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError('Symlink path refused: ' + str(path))
+    if path.exists():
+        st = regular(path)
+        if st.st_uid != 0 and os.geteuid() == 0:
+            raise ValueError('Root ownership required: ' + str(path))
+        if mode is not None and stat.S_IMODE(st.st_mode) != mode:
+            raise ValueError('Unexpected permissions on ' + str(path))
+    return path
+
+
+def _login_script(conf_path='/etc/fusionbox/notify.conf'):
+    conf_path = str(conf_path).replace("'", "'\\''")
+    return '''#!/bin/bash
+''' + LOGIN_SCRIPT_MARKER + '''set +x
+umask 077
+[[ "${1:-}" == "--test" || "${PAM_TYPE:-}" == "open_session" ]] || exit 0
+CONF=''' + "'" + conf_path + "'" + '''
+[[ -f "$CONF" && ! -L "$CONF" ]] || exit 0
+perm=$(stat -c '%u %a' "$CONF" 2>/dev/null) || exit 0
+[[ "$perm" == "0 600" || "$perm" == "0 400" ]] || exit 0
+get_conf() { sed -n "s/^[[:space:]]*$1=//p" "$CONF" | tail -1 | tr -d '\"' | tr -d "'" | tr -d '\\r'; }
+token=$(get_conf TG_BOT_TOKEN)
+chat=$(get_conf TG_CHAT_ID)
+[[ "$token" =~ ^[0-9]+:[A-Za-z0-9_-]+$ && "$chat" =~ ^-?[0-9]+$ ]] || exit 0
+if [[ "${1:-}" == "--test" ]]; then
+  user=${SUDO_USER:-root}; source_ip=test
+else
+  user=${PAM_USER:-unknown}; source_ip=${PAM_RHOST:-local}
+fi
+user=${user//[^A-Za-z0-9_.@-]/_}
+source_ip=${source_ip//[^A-Fa-f0-9:._-]/_}
+text="[FusionBox] SSH login user=$user source=$source_ip time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+response=$(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\\ndata-urlencode = "chat_id=%s"\\n' "$token" "$chat" |
+  curl -q -fsS --max-time 5 --config - --data-urlencode "text=$text" 2>/dev/null) || exit 0
+printf '%s' "$response" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(not isinstance(d,dict) or d.get("ok") is not True)' 2>/dev/null || true
+exit 0
+'''
+
+
+def login_alert(action, pam=Path('/etc/pam.d/sshd'),
+                script=Path('/usr/local/bin/fusionbox-login-alert'),
+                conf=Path('/etc/fusionbox/notify.conf'),
+                state_file=Path('/var/lib/fusionbox/login-alert.json')):
+    pam, script, conf, state_file = map(Path, (pam, script, conf, state_file))
+    block = LOGIN_MARKER + LOGIN_COMMAND
+    state = None
+    if state_file.exists():
+        _owned_path(state_file, 0o600)
+        state = json.loads(state_file.read_text())
+    if action == 'status':
+        installed = bool(state and _managed_matches(script, state.get('script')) and
+                         _managed_matches(pam, state.get('pam')))
+        print('installed' if installed else 'not-installed')
+        return
+    if action == 'test':
+        if not state:
+            raise ValueError('Managed login alert is not installed')
+        _validate_managed(script, state.get('script'), 'test')
+        _validate_managed(pam, state.get('pam'), 'test')
+        subprocess.run([str(script), '--test'], check=True)
+        print('Test notification dispatched (transport failures never affect login).')
+        return
+    _owned_path(pam)
+    if not pam.exists():
+        raise ValueError('OpenSSH PAM service file missing: ' + str(pam))
+    original_pam = pam.read_text()
+    if action == 'uninstall':
+        if not state:
+            raise ValueError('Managed login alert state missing; refusing removal')
+        _validate_managed(script, state.get('script'), 'removal')
+        _validate_managed(pam, state.get('pam'), 'removal')
+        replace(pam, base64.b64decode(state['pam_original']).decode())
+        script.unlink()
+        state_file.unlink()
+        print('SSH login alert removed; Telegram configuration preserved.')
+        return
+    if action != 'install':
+        raise ValueError('Expected install, status, test or uninstall')
+    _owned_path(conf, 0o600)
+    if not conf.exists():
+        raise ValueError('Telegram configuration missing: ' + str(conf))
+    values = dict(re.findall(r'^\s*(TG_BOT_TOKEN|TG_CHAT_ID)=([^\r\n]+)', conf.read_text(), re.M))
+    token = values.get('TG_BOT_TOKEN', '').strip('"\'')
+    chat = values.get('TG_CHAT_ID', '').strip('"\'')
+    if not re.fullmatch(r'[0-9]+:[A-Za-z0-9_-]+', token) or not re.fullmatch(r'-?[0-9]+', chat):
+        raise ValueError('Telegram credentials are missing or invalid')
+    if state:
+        _validate_managed(script, state.get('script'), 'overwrite')
+        _validate_managed(pam, state.get('pam'), 'overwrite')
+        pam_original = state['pam_original']
+    else:
+        if script.exists():
+            raise ValueError('Existing login alert script refused: ' + str(script))
+        if LOGIN_MARKER in original_pam:
+            raise ValueError('Untracked PAM block refused')
+        pam_original = base64.b64encode(original_pam.encode()).decode()
+    script_content = _login_script(conf)
+    pam_content = original_pam if block in original_pam else original_pam.rstrip('\n') + '\n' + block
+    record = {'version': 1, 'pam_original': pam_original,
+              'script': _managed_record(script, script_content),
+              'pam': _managed_record(pam, pam_content)}
+    original_script = script.read_bytes() if script.exists() else None
+    original_state = state_file.read_bytes() if state_file.exists() else None
+    try:
+        script.parent.mkdir(parents=True, exist_ok=True)
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        replace(script, script_content)
+        os.chmod(script, 0o755)
+        if os.geteuid() == 0:
+            os.chown(script, 0, 0)
+        replace(pam, pam_content)
+        if not shutil.which('sshd'):
+            raise ValueError('sshd is required for configuration validation')
+        run('sshd', '-t')
+        replace(state_file, json.dumps(record, sort_keys=True) + '\n')
+        os.chmod(state_file, 0o600)
+        if os.geteuid() == 0:
+            os.chown(state_file, 0, 0)
+    except Exception:
+        replace(pam, original_pam)
+        if original_script is None:
+            script.unlink(missing_ok=True)
+        else:
+            replace(script, original_script.decode())
+            os.chmod(script, 0o755)
+        if original_state is None:
+            state_file.unlink(missing_ok=True)
+        else:
+            replace(state_file, original_state.decode())
+            os.chmod(state_file, 0o600)
+        raise
+    print('SSH login alert installed with explicit PAM ignore-on-failure control.')
+
+
+TUNING_MARKER = '# FusionBox managed kernel tuning v1\n'
+TUNING_PROFILES = {
+    'balanced': {'swappiness': 10, 'dirty_bg': 10, 'dirty': 20, 'somax': 4096, 'backlog': 4096, 'syn': 4096, 'map': 262144, 'nofile': 262144, 'nproc': 65535, 'thp': 'madvise'},
+    'high': {'swappiness': 10, 'dirty_bg': 5, 'dirty': 15, 'somax': 16384, 'backlog': 32768, 'syn': 16384, 'map': 524288, 'nofile': 1048576, 'nproc': 131072, 'thp': 'madvise'},
+    'web': {'swappiness': 10, 'dirty_bg': 5, 'dirty': 15, 'somax': 8192, 'backlog': 16384, 'syn': 8192, 'map': 262144, 'nofile': 524288, 'nproc': 65535, 'thp': 'madvise'},
+    'stream': {'swappiness': 10, 'dirty_bg': 5, 'dirty': 20, 'somax': 8192, 'backlog': 32768, 'syn': 8192, 'map': 262144, 'nofile': 524288, 'nproc': 65535, 'thp': 'madvise'},
+    'game': {'swappiness': 5, 'dirty_bg': 5, 'dirty': 10, 'somax': 4096, 'backlog': 8192, 'syn': 4096, 'map': 262144, 'nofile': 262144, 'nproc': 65535, 'thp': 'never'},
+    'db': {'swappiness': 1, 'dirty_bg': 5, 'dirty': 15, 'somax': 4096, 'backlog': 8192, 'syn': 4096, 'map': 1048576, 'nofile': 524288, 'nproc': 65535, 'thp': 'never'},
+}
+
+
+def _sysctl_get(key):
+    return run('sysctl', '-n', key).strip()
+
+
+def _tuning_values(profile, ram_kib):
+    p = TUNING_PROFILES[profile]
+    values = {
+        'vm.swappiness': str(p['swappiness']), 'vm.dirty_background_ratio': str(p['dirty_bg']),
+        'vm.dirty_ratio': str(p['dirty']), 'vm.max_map_count': str(p['map']),
+        'fs.file-max': str(max(p['nofile'] * 2, 524288)), 'net.core.somaxconn': str(p['somax']),
+        'net.core.netdev_max_backlog': str(p['backlog']), 'net.ipv4.tcp_max_syn_backlog': str(p['syn']),
+        'net.ipv4.tcp_fastopen': '3', 'net.ipv4.tcp_tw_reuse': '1',
+    }
+    if ram_kib and ram_kib < 2 * 1024 * 1024:
+        values['vm.max_map_count'] = str(min(int(values['vm.max_map_count']), 262144))
+        values['fs.file-max'] = str(min(int(values['fs.file-max']), 524288))
+    if profile == 'stream':
+        buf = 16777216 if ram_kib and ram_kib < 4 * 1024 * 1024 else 67108864
+        values.update({'net.core.rmem_max': str(buf), 'net.core.wmem_max': str(buf),
+                       'net.ipv4.tcp_rmem': '4096 262144 ' + str(buf),
+                       'net.ipv4.tcp_wmem': '4096 262144 ' + str(buf)})
+    return values
+
+
+def _file_snapshot(path):
+    if not path.exists():
+        return None
+    _owned_path(path)
+    return {'content': base64.b64encode(path.read_bytes()).decode(),
+            'mode': stat.S_IMODE(path.stat().st_mode)}
+
+
+def _restore_file(path, saved):
+    if saved is None:
+        path.unlink(missing_ok=True)
+    else:
+        replace(path, base64.b64decode(saved['content']).decode())
+        os.chmod(path, saved['mode'])
+
+
+def _restore_components(runtime, files, thp_path, thp_mode, unit_state, unit_file,
+                        state_dir):
+    errors = []
+    rollback = state_dir / '.rollback.conf'
+    try:
+        replace(rollback, ''.join(f'{k} = {v}\n' for k, v in runtime.items()))
+        run('sysctl', '-p', str(rollback))
+    except Exception as error:
+        errors.append('sysctl: ' + str(error))
+    finally:
+        rollback.unlink(missing_ok=True)
+    for path, saved in files.items():
+        try:
+            _restore_file(Path(path), saved)
+        except Exception as error:
+            errors.append(str(path) + ': ' + str(error))
+    if thp_mode is not None and thp_path.exists():
+        try:
+            thp_path.write_text(thp_mode)
+            if _thp_current(thp_path) != thp_mode:
+                raise ValueError('THP restore validation failed')
+        except Exception as error:
+            errors.append('THP: ' + str(error))
+    try:
+        _restore_unit_state(unit_state, unit_file)
+    except Exception as error:
+        errors.append('systemd: ' + str(error))
+    if errors:
+        raise RuntimeError('Rollback incomplete: ' + '; '.join(errors))
+
+
+def tuning(action, profile=None, etc=Path('/etc'), state_dir=Path('/var/lib/fusionbox/tuning'),
+           thp=Path('/sys/kernel/mm/transparent_hugepage/enabled')):
+    etc, state_dir, thp = Path(etc), Path(state_dir), Path(thp)
+    sysctl_file = etc / 'sysctl.d/99-fusionbox-tuning.conf'
+    limits_file = etc / 'security/limits.d/99-fusionbox-tuning.conf'
+    unit_file = etc / 'systemd/system/fusionbox-thp.service'
+    state_file = state_dir / 'snapshot.json'
+    managed = (sysctl_file, limits_file, unit_file)
+    if action == 'status':
+        active = state_file.is_file() and sysctl_file.is_file()
+        selected = 'unknown'
+        if active:
+            try:
+                selected = json.loads(state_file.read_text()).get('profile', 'unknown')
+            except (OSError, ValueError):
+                selected = 'invalid-state'
+        print(('active ' + selected) if active else 'not-active')
+        return
+    if action == 'restore':
+        if not state_file.exists():
+            raise ValueError('No tuning snapshot; refusing to claim restoration')
+        state = json.loads(state_file.read_text())
+        expected = state.get('managed', {})
+        for path in managed:
+            _validate_managed(path, expected.get(str(path)), 'restore')
+        runtime_before = {key: _sysctl_get(key) for key in state['sysctl']}
+        files_before = {str(path): _file_snapshot(path) for path in managed}
+        thp_before = _thp_current(thp)
+        unit_before = _unit_state(unit_file)
+        try:
+            restore_conf = state_dir / '.restore.conf'
+            replace(restore_conf, ''.join(f'{k} = {v}\n' for k, v in state['sysctl'].items()))
+            run('sysctl', '-p', str(restore_conf))
+            restore_conf.unlink(missing_ok=True)
+            for path in managed:
+                _restore_file(path, state['files'][str(path)])
+            if state.get('thp') is not None and thp.exists():
+                thp.write_text(state['thp'])
+                if _thp_current(thp) != state['thp']:
+                    raise ValueError('THP restore validation failed')
+            _restore_unit_state(state.get('unit_state'), unit_file)
+        except Exception as error:
+            try:
+                _restore_components(runtime_before, files_before, thp, thp_before,
+                                    unit_before, unit_file, state_dir)
+            except Exception as rollback_error:
+                raise RuntimeError(str(error) + '; ' + str(rollback_error)) from error
+            raise
+        state_file.unlink()
+        print('Kernel tuning runtime values, THP state and managed files restored from snapshot.')
+        return
+    if action != 'apply' or profile not in TUNING_PROFILES:
+        raise ValueError('Tuning profile must be one of: ' + ', '.join(TUNING_PROFILES))
+    for path in managed:
+        if path.exists() and not path.read_text().startswith(TUNING_MARKER):
+            raise ValueError('Existing external file refused: ' + str(path))
+    ram_kib = 0
+    try:
+        match = re.search(r'^MemTotal:\s+(\d+)', Path('/proc/meminfo').read_text(), re.M)
+        ram_kib = int(match.group(1)) if match else 0
+    except (OSError, ValueError):
+        pass
+    requested = _tuning_values(profile, ram_kib)
+    supported = {}
+    for key, value in requested.items():
+        try:
+            _sysctl_get(key)
+            supported[key] = value
+        except subprocess.SubprocessError:
+            pass
+    if not supported:
+        raise ValueError('No requested sysctl keys are supported by this kernel')
+    state_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    os.chmod(state_dir, 0o700)
+    first = not state_file.exists()
+    previous_snapshot = state_file.read_bytes() if not first else None
+    if first:
+        state = {'version': 2, 'profile': profile,
+                 'sysctl': {key: _sysctl_get(key) for key in supported},
+                 'files': {str(path): _file_snapshot(path) for path in managed},
+                 'thp': _thp_current(thp), 'unit_state': _unit_state(unit_file), 'managed': {}}
+    else:
+        state = json.loads(state_file.read_text())
+        for path in managed:
+            _validate_managed(path, state.get('managed', {}).get(str(path)), 'overwrite')
+        state['profile'] = profile
+        for key in supported:
+            if key not in state['sysctl']:
+                state['sysctl'][key] = _sysctl_get(key)
+    before = {key: _sysctl_get(key) for key in supported}
+    previous_files = {str(path): _file_snapshot(path) for path in managed}
+    previous_thp = _thp_current(thp)
+    previous_unit = _unit_state(unit_file)
+    p = TUNING_PROFILES[profile]
+    sysctl_content = TUNING_MARKER + '# profile: ' + profile + '\n' + ''.join(f'{k} = {v}\n' for k, v in sorted(supported.items()))
+    limits_content = (TUNING_MARKER + '# profile: ' + profile + '\n' +
+                      f'* soft nofile {p["nofile"]}\n* hard nofile {p["nofile"]}\n' +
+                      f'* soft nproc {p["nproc"]}\n* hard nproc {p["nproc"]}\n')
+    unit_content = (TUNING_MARKER + '[Unit]\nDescription=FusionBox transparent hugepage policy\nAfter=sysinit.target\n\n'
+                    '[Service]\nType=oneshot\nExecStart=/bin/sh -c \'echo ' + p['thp'] + ' > /sys/kernel/mm/transparent_hugepage/enabled\'\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n')
+    expected_content = {sysctl_file: sysctl_content, limits_file: limits_content}
+    if thp.exists() and shutil.which('systemctl'):
+        expected_content[unit_file] = unit_content
+    state['managed'] = {str(path): (_managed_record(path, expected_content[path])
+                                   if path in expected_content else None)
+                        for path in managed}
+    replace(state_file, json.dumps(state, sort_keys=True) + '\n')
+    os.chmod(state_file, 0o600)
+    try:
+        for path, content in ((sysctl_file, sysctl_content), (limits_file, limits_content)):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            replace(path, content)
+            os.chmod(path, 0o644)
+        run('sysctl', '-p', str(sysctl_file))
+        for key, expected in supported.items():
+            if ' '.join(_sysctl_get(key).split()) != ' '.join(expected.split()):
+                raise ValueError('sysctl validation failed for ' + key)
+        if thp.exists() and shutil.which('systemctl'):
+            unit_file.parent.mkdir(parents=True, exist_ok=True)
+            replace(unit_file, unit_content)
+            os.chmod(unit_file, 0o644)
+            run('systemctl', 'daemon-reload')
+            run('systemctl', 'enable', '--now', 'fusionbox-thp.service')
+            if _thp_current(thp) != p['thp']:
+                raise ValueError('THP policy validation failed')
+    except Exception as error:
+        try:
+            _restore_components(before, previous_files, thp, previous_thp,
+                                previous_unit, unit_file, state_dir)
+        except Exception as rollback_error:
+            if first:
+                state_file.unlink(missing_ok=True)
+            else:
+                replace(state_file, previous_snapshot.decode())
+                os.chmod(state_file, 0o600)
+            raise RuntimeError(str(error) + '; ' + str(rollback_error)) from error
+        if first:
+            state_file.unlink(missing_ok=True)
+        else:
+            replace(state_file, previous_snapshot.decode())
+            os.chmod(state_file, 0o600)
+        raise
+
+    print(f'Applied {profile} tuning with {len(supported)} supported sysctl keys; snapshot retained for restore.')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['keys-add', 'keys-list', 'keys-check', 'keys-delete', 'ssh', 'swap', 'fail2ban',
                                            'user-add', 'user-del', 'passwd-set', 'sudo-grant', 'sudo-revoke', 'user-key-install',
-                                           'f2b-unban', 'f2b-uninstall'])
+                                           'f2b-unban', 'f2b-uninstall', 'login-alert', 'tuning'])
     parser.add_argument('values', nargs='*')
     args = parser.parse_args()
     try:
@@ -517,6 +975,14 @@ def main():
             f2b_unban(args.values[0])
         elif args.action == 'f2b-uninstall':
             f2b_uninstall()
+        elif args.action == 'login-alert':
+            if len(args.values) != 1:
+                raise ValueError('login-alert takes install, status, test or uninstall')
+            login_alert(args.values[0])
+        elif args.action == 'tuning':
+            if not args.values or len(args.values) > 2:
+                raise ValueError('tuning takes apply PROFILE, status, or restore')
+            tuning(args.values[0], args.values[1] if len(args.values) == 2 else None)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         # Do not print command output; daemon diagnostics may contain secrets.
         print('Operation failed: ' + (str(error) if not isinstance(error, subprocess.SubprocessError) else 'command validation/activation failed'))

@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.28.0-blue)
+![version](https://img.shields.io/badge/version-1.29.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,16 +58,16 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.28.0）
+## 最近更新（v1.29.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- Docker 迁移 P1b 新增目标机只读 preflight：检查平台、Docker/Compose、磁盘/inode、端口、名称、网络/IPAM、bind 与镜像标签冲突
-- 干净目标 restore 采用私有 staging 和 root-owned journal，逐步记录网络、卷、bind、容器、镜像与数据状态
-- 新增 `rollback`/`resume`，只处理带事务标签或 marker 的本轮资源；bind 恢复/回滚基于固定目录 FD，避免路径置换误删
-- 本地 13 项恢复安全测试及 Linux 验证服务器 13/13 通过；真实双主机跨机恢复仍待独立第二目标机验收
+- 新增 SSH 登录 Telegram 通知 `install/status/test/uninstall`，通过明确 PAM ignore-on-failure 控制，通知失败不会阻断登录
+- 通知脚本、PAM 配置及状态记录使用完整内容 SHA256 漂移保护；Bot Token/Chat ID 不进入命令参数或日志
+- 新增 high/balanced/web/stream/game/db 六场景内核调优：按 RAM/内核逐键探测，管理 sysctl、limits 与 THP
+- 调优使用首次运行值、文件内容与 THP systemd 状态快照；应用、切换或恢复失败均事务回滚，Linux 验证服务器专项事务测试通过
 
-完整版本历史（v1.27.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+完整版本历史（v1.28.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考
 
