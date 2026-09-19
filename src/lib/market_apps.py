@@ -69,10 +69,10 @@ CATALOG = {
                  'port': 8088, 'bytes': 1024 * 1024 * 1024, 'target': 5244,
                  'mount': '/opt/openlist/data', 'readonly': False, 'memory': '256m',
                  'environment': {'PUID': '0', 'PGID': '0', 'UMASK': '022'},
-                 'health_retries': 60,
+                 'user': '0:0', 'health_retries': 60,
                  'health': ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:5244/ || exit 1'],
                  'domain': False,
-                 'description': 'OpenList file list program with WebDAV (Alist fork); admin password via container CLI; localhost only; no domain/TLS; image upgrades refused'},
+                 'description': 'OpenList file list program with WebDAV (Alist fork); admin password via container CLI; runs as root with all capabilities dropped (writable volume); localhost only; no domain/TLS; image upgrades refused'},
     'navidrome': {'image': 'deluan/navidrome:latest@sha256:a384948b81bd1529986c5960169e7fc4fa00f46bde6bd517971a4c36671db2af',
                   'port': 8089, 'bytes': 1024 * 1024 * 1024, 'target': 4533,
                   'mounts': [{'suffix': 'data', 'dest': '/data', 'readonly': False},
@@ -147,8 +147,10 @@ def document(record, image=None):
     if 'environment' in spec:
         service['environment'] = dict(spec['environment'])
     if 'user' in spec:
-        service.update(user=spec['user'], command=spec['command'], init=True,
-                       cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
+        service['user'] = spec['user']
+        if 'command' in spec:
+            service['command'] = spec['command']
+        service.update(init=True, cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
     return result
 
 
