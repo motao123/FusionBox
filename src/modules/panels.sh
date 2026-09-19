@@ -1011,6 +1011,9 @@ panels_docker_backup() {
       msg_warn "文件级导出不提供跨文件事务快照；数据库必须先做原生 dump/一致性停写。bundle 含环境变量等秘密。"
       python3 "$FUSION_SRC/lib/docker_migration.py" --help
       msg "CLI: fusionbox panels docker migration export BUNDLE (--container NAME ... | --compose-project PROJECT) --confirm-stop-writers [--bind ABS_SOURCE=LOGICAL --confirm-bind ABS_SOURCE]"
+      msg "只读预检: fusionbox panels docker migration preflight BUNDLE [--bind-target LOGICAL=ABS_TARGET]"
+      msg "干净目标恢复: fusionbox panels docker migration restore BUNDLE --confirm-clean-target [--bind-target LOGICAL=ABS_TARGET]"
+      msg "事务恢复: fusionbox panels docker migration rollback|resume TRANSACTION_ID"
       msg "校验: fusionbox panels docker migration verify BUNDLE"
       ;;
     2)
@@ -1249,7 +1252,7 @@ panels_docker_menu() {
     msg "  ${F_GREEN}15${F_RESET}) 只读容器详情（环境变量隐藏）"
     msg "  ${F_GREEN}16${F_RESET}) 容器端口封禁（DOCKER-USER 按容器）"
     msg "  ${F_GREEN}17${F_RESET}) Docker 一键卸载（YES 门禁）"
-    msg "  ${F_GREEN}18${F_RESET}) 完整迁移 bundle 导出/校验帮助（不恢复）"
+    msg "  ${F_GREEN}18${F_RESET}) 完整迁移 bundle 导出/预检/恢复/回滚帮助"
     msg "  ${F_GREEN} 0${F_RESET}) 返回"
     msg ""
     read -p "请选择 [0-18]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
@@ -1521,7 +1524,7 @@ panels_help() {
   msg_title "面板与工具 帮助"
   msg ""
   msg "  fusionbox panels compose-backup   受管 Compose register/backup/restore（--help）"
-  msg "  fusionbox panels docker-migration --help  完整 Docker 离线迁移 bundle 导出/verify（不恢复）"
+  msg "  fusionbox panels docker-migration --help  Docker 离线迁移导出/校验/只读预检/恢复/回滚/续跑"
   msg "  fusionbox panels docker           Docker 管理"
   msg "  fusionbox panels docker summary [--all]  只读计数/磁盘用量；--all 完整列表"
   msg "  fusionbox panels docker detail NAME_OR_ID  只读详情/限额/占用；环境变量隐藏"

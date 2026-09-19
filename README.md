@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.27.0-blue)
+![version](https://img.shields.io/badge/version-1.28.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,16 +58,16 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.27.0）
+## 最近更新（v1.28.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增 Docker 迁移 P1a 导出包：保存容器声明、镜像、网络、本地卷和经逐项确认的 bind 数据，并逐文件校验 hash/size
-- 支持普通容器集合或完整已创建 Compose project；FusionBox 停止选中容器并复核其他 Docker 写入者，宿主/外部写入者仍须操作者自行冻结
-- 不可无损表达的特权、设备、tmpfs、host PID/IPC、远程/rootless daemon 等配置会被拒绝，不静默降级
-- `archive_transfer --kind docker-v1` 只负责可信 SSH 传输和校验；目标机预检、恢复与事务回滚将在 P1b 提供
+- Docker 迁移 P1b 新增目标机只读 preflight：检查平台、Docker/Compose、磁盘/inode、端口、名称、网络/IPAM、bind 与镜像标签冲突
+- 干净目标 restore 采用私有 staging 和 root-owned journal，逐步记录网络、卷、bind、容器、镜像与数据状态
+- 新增 `rollback`/`resume`，只处理带事务标签或 marker 的本轮资源；bind 恢复/回滚基于固定目录 FD，避免路径置换误删
+- 本地 13 项恢复安全测试及 Linux 验证服务器 13/13 通过；真实双主机跨机恢复仍待独立第二目标机验收
 
-完整版本历史（v1.26.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+完整版本历史（v1.27.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考
 
