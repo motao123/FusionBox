@@ -308,8 +308,10 @@ def pull(app='nginx'):
 
 
 def up(record):
-    spec = metadata(record['market']['app'])
-    wait_timeout = 45 + spec.get('health_retries', 10) * 2
+    wait_timeout = 45
+    app = record.get('market', {}).get('app')
+    if app:
+        wait_timeout = 45 + metadata(app).get('health_retries', 10) * 2
     cb.docker('compose', '-p', record['project'], '-f', record['compose'],
               'up', '-d', '--wait', '--wait-timeout', str(wait_timeout), '--pull', 'never')
     if health(record) != 'healthy':
