@@ -170,7 +170,7 @@ def recover(root, job, name, accepted=False):
         if name not in data['archives']:
             raise ValueError('Archive is not registered to this job')
         source = owned(state, name, data['archives'][name])
-        archive.restore(source, 'config', root)
+        archive.restore(source, 'config', root, conflict='replace')
         print('Restore verified and activated; previous directories retained; services not reloaded')
 
 

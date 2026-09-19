@@ -2042,7 +2042,7 @@ web_site_data() {
       local date_str=$(date '+%Y%m%d_%H%M%S')
       local backup_file="$backup_dir/site_data_$date_str.tar.gz"
       msg_warn "请先停止写入服务；文件备份不是数据库快照，链接与特殊文件将被拒绝。"
-      python3 "$FUSION_SRC/lib/archive.py" create web "$backup_file" || return 1
+      python3 "$FUSION_SRC/lib/archive.py" create web,docker "$backup_file" || return 1
       msg_ok "备份已创建: $backup_file"
       _log_write "站点数据已备份: $backup_file"
       ;;
@@ -2065,7 +2065,7 @@ web_site_data() {
         local idx=$((choice-1))
         if [[ $idx -ge 0 && $idx -lt ${#backups[@]} ]]; then
           if confirm "确认已停止所有写入服务？校验后替换整个清单目录并保留旧目录"; then
-            python3 "$FUSION_SRC/lib/archive.py" restore web "${backups[$idx]}" || return 1
+            python3 "$FUSION_SRC/lib/archive.py" restore web,docker "${backups[$idx]}" --conflict replace || return 1
             msg_ok "恢复完成"
           fi
         fi
