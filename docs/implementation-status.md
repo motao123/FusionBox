@@ -1,6 +1,6 @@
-# 当前实施状态（v1.33.0）
+# 当前实施状态（v1.34.0）
 
-2026-09-20 本批验证：Linux 42 基础 + 632 行为测试通过、零跳过；独立 sshd 11/11 实际验收，生产 5522 配置未切换。新增只读 SSH 预检、保守 OCI 识别及状态查询，修复集群 ASKPASS/进程组/主机密钥追加问题。Cloudflare Worker/D1 在线，GitHub Secrets 与真实自动部署已验证；首页累计装机采用 opt-in 安装标识去重，不计下载量。
+2026-09-20 本批（v1.34.0）只做一致性修复，不新增能力：`fusionbox help <模块>` 真正分发到 `<模块>_help()`（与 `fusionbox <模块> help` 逐字节一致、无需 root）并附本机安装状态；9 个模块未知子命令统一报错（退出码 2）不再静默进菜单；`configs/config.yaml` 只保留有读取点的键并兑现 `general.color`/`system.monitor_interval`/`system.backup_dir`/`network.speedtest_server`；G07 时区预设扩到 29 个城市；G18 修正文档与代码不一致。回归套件从本地口径变为仓库 + CI 口径（`tests/` 纳入版本控制，`.gitattributes` 用 `export-ignore` 保证发布包不含测试），补齐过去静默漏跑的 5 个 Python + 1 个 bash 测试并加「未登记测试文件」自检；CI 增加完整回归 job 且发版依赖回归通过。验证服务器（Ubuntu 24.04）完整回归：bash 217 项 + Python 697 项全部通过、零失败，另有真机 CLI 验收 95 项全过。上一批（v1.33.0）的 Linux 42 基础 + 632 行为、独立 sshd 11/11 结论继续有效，生产 5522 配置未切换。
 
 尚未完成：OpenSSH 源码候选升级/回连/切换/回滚，DD 重装，Oracle lookbusy 安装与生命周期、oci-helper、root/IPv6 专项，真实两主机迁移、真实 ACME 和 Telegram 凭据验收，以及计划中的应用/AI Agent 扩容。只读预检和“拒绝执行”的入口不算这些能力完成。后文版本记录与旧统计属于历史范围，以逐项状态及本段为当前边界。
 
@@ -161,7 +161,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G04 | 修改登录密码 / 一键开启 root 密码登录 | 受管范围完成 | v1.14.0 users passwd（stdin chpasswd）+ sshkey 菜单 root 密码登录开/关（PermitRootLogin yes/prohibit-password 事务化）；PAM 限策未验证 |
 | G05 | 禁用 root 登录并新建密钥用户 | 受管范围完成 | v1.14.0 system hardening 向导：建用户→公钥→sudo→登录验证门禁→收紧 root（prohibit-password/no）；验证未通过不修改策略 |
 | G06 | Swap 任意大小 + 旧 swap 清理 | 部分实现 | 自定义 Swap；未自动清理未知旧 swap |
-| G07 | 时区预设 20+ 城市 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G07 | 时区预设 20+ 城市 | 受管范围完成 | v1.34.0 时区预设扩到 29 个城市（亚洲/欧洲/美洲/大洋洲/非洲分区、数据表驱动）+ 自定义 IANA 时区 + NTP；`_system_tz_apply` 做标识白名单与 zoneinfo 存在性校验，拒绝路径穿越，仅在真正改动时写日志 |
 | G08 | 系统日志管理菜单（journalctl 查询/服务日志/secure 登录日志/实时跟踪/清理） | 已提供入口 | system log；未实测所有日志后端 |
 | G09 | 系统环境变量管理（查看/编辑 bashrc/profile/source 重载） | 受管范围完成 | v1.16.0 system env：允许清单内文件查看/编辑/语法检查，备份+恢复；source 重载属用户 shell 行为，只提示不代执 |
 | G10 | 网卡管理（ip link up/down、ethtool 详情） | 受管范围完成 | v1.16.0 network nic list/info/up/down；默认路由停用双确认；真机仅只读路径 |
@@ -172,7 +172,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G15 | SSH 出站连接工具（收藏与管理） | 受管范围完成 | v1.19.0 cluster sshout：0600 受管清单+严格校验+connect 直连；connect 真实目标需第二台主机，未验证 |
 | G16 | rsync 远程同步任务管理 | 受管范围完成 | v1.22.0 system rsync：任务清单+可选 cron 真机验证；远端执行依赖第二台主机未验证；密钥管理沿用 cluster 模型 |
 | G17 | 系统备份范围扩展 + 备份管理 | 部分实现 | 配置任务归属登记、完整性校验、显式保留/恢复；系统范围扩展与旧归档迁移仍后续 |
-| G18 | 内核参数优化面板（6 场景自适应 + 恢复） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G18 | 内核参数优化面板（6 场景自适应 + 恢复） | 受管范围完成 | v1.34.0 修正文档与代码不一致：`system tuning apply` 已支持 high/balanced/web/stream/game/db 六个场景 + status/restore，此前误标「后续」；未改动的运行值快照恢复由 mock 断言覆盖，未改服务器真实 sysctl |
 | G19 | 病毒扫描（ClamAV 全盘/指定目录+日志） | 受管范围完成 | v1.19.0 market clamav 扫描动作（按需安装、0600 日志、威胁 rc 传播）；真实扫描 mock 覆盖 |
 | G20 | 修复 OpenSSH 高危版本（源码编译升级） | 只读预检 | v1.33.0 `system ssh-preflight` 检查 sshd 配置/有效策略/监听/socket activation；不做源码替换或服务切换，候选升级与回滚仍后续 |
 | G21 | SSH 密钥远端导入（GitHub / URL 一键抓取） | 受管范围完成 | v1.19.0 sshkey 菜单 7：https 拉取+逐条校验确认；真机 GitHub 拉取验证，拒绝时零改动 |

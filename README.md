@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.33.0-blue)
+![version](https://img.shields.io/badge/version-1.34.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,15 +58,15 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.33.0）
+## 最近更新（v1.34.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增 `fusionbox system ssh-preflight`：只读检查 `sshd -t/-T`、有效端口/认证策略、systemd/socket activation 和当前监听，不编辑配置、不 reload 服务
-- 预检入口跳过日志和统计，服务查询失败保留未知状态；`switch_allowed` 恒为 false，不能用配置检查代替候选版本登录与回滚验收
-- 修复集群一次性 ASKPASS、退出进程组清理、主机密钥锁内复核；Oracle 识别拒绝普通 Oracle 设备误判与畸形 metadata
-- 首页仅显示“累计装机 N 次”，连接 Cloudflare/D1 公开汇总；统计仍默认关闭，安装 ID 去重口径见隐私说明
-- DD 重装、OpenSSH 候选版本切换、Oracle lookbusy 生命周期仍未完成；现有验证服务器未执行破坏性操作
+- `fusionbox help <模块>` 真正生效：过去它只是打印一句「提示」，参数被忽略；现在会打开该模块完整的命令说明，并附上本机安装状态。`fusionbox help system` / `fusionbox system help` / `fusionbox help sys` 三种写法等价
+- 9 个模块的未知子命令不再静默弹交互菜单：改为明确报错 + 指出 `help`/菜单两条出路，退出码 2。此前 `fusionbox network bogus` 会直接卡在菜单里（无 tty 时阻塞脚本）
+- `configs/config.yaml` 只保留**真实会被读取**的键；新兑现 `general.color`（关闭彩色输出）、`system.monitor_interval`、`system.backup_dir`、`network.speedtest_server`，其余写了不生效的键全部移除并注明真实归属
+- G07 时区预设由 4 个城市扩到 **29 个**（亚洲/欧洲/美洲/大洋洲/非洲分区展示，数据驱动）；G18 修正文档与代码不一致（`tuning apply` 早已支持 6 个场景）
+- 回归套件补齐了过去被静默漏跑的 5 个 Python 测试 + 1 个 bash 测试，并新增「未登记测试文件」自检；CI 增加完整回归 job，打标签发布必须等回归通过
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -364,6 +364,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 ## 诚实边界
 
 - 测试结论严格区分：**本地 mock / 隔离夹具 / 真机实测 / 未验证**，发布说明随版本附带精确范围
+- 回归套件随仓库提供（`bash tests/comprehensive_test.sh`），并在 CI 中以 root 运行——与工具的实际运行时一致；测试为 mock 驱动，不装软件包、不改系统配置、不发起外部下载。测试目录经 `export-ignore` 不进入发布包
 - 待真实凭据/环境才能验证：ACME 公网域名签发、Cloudflare API 联动、Telegram 送达、真实多节点集群；OCI G32 仅完成只读识别，lookbusy 负载、oci-helper（G33）和 root/IPv6（G34）仍未实现
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见下方实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
@@ -393,16 +394,29 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 
 ```
 FusionBox/
-├── fusion.sh                  # 主入口脚本
+├── fusion.sh                  # 主入口脚本（命令路由 / 帮助分发 / 自更新）
 ├── install.sh                 # 一键安装脚本
-├── version.txt                # 版本号
+├── version.txt                # 版本号（唯一来源，init.sh 与 CI 都读它）
 ├── README.md                  # 项目文档
+├── .github/workflows/         # CI：语法检查 + 完整回归 + Release
+│   ├── release.yml            # syntax / tests / release 三个 job
+│   ├── metrics.yml            # 每日刷新 GitHub 下载量指标
+│   └── telemetry-worker.yml   # 匿名统计 Worker 部署
 ├── configs/
-│   └── config.yaml            # 默认配置文件
+│   └── config.yaml            # 默认配置（只含真实生效的键）
+├── docs/
+│   ├── index.html             # GitHub Pages 主页（main /docs 部署）
+│   ├── implementation-status.md  # G 表逐项对账
+│   ├── CHANGELOG.md           # 完整变更历史
+│   └── generated/             # CI 生成的指标 JSON
+├── scripts/
+│   └── release_downloads.py   # Release 下载量采集
 ├── src/
-│   ├── init.sh                # 初始化脚本
+│   ├── init.sh                # 初始化：环境探测、模块加载、语言
 │   ├── lib/
-│   │   └── common.sh          # 公共函数库
+│   │   ├── common.sh          # 公共函数库（日志/交互/配置/统计）
+│   │   ├── deploy.sh          # 安装与自更新的部署事务
+│   │   └── *.py               # 受控 Python 辅助（归档/集群/市场/安全预检...）
 │   ├── i18n/
 │   │   ├── en.sh              # 英文语言包
 │   │   └── zh_CN.sh           # 中文语言包
@@ -419,7 +433,9 @@ FusionBox/
 ├── templates/
 │   ├── nginx/
 │   └── docker/
-└── tests/                     # 行为测试（本地与验证服务器使用，不随仓库发布）
+└── tests/                     # 行为测试（mock 驱动；随仓库提供并接入 CI，经 export-ignore 不进发布包）
+    ├── comprehensive_test.sh  # 完整回归入口（bash + python 清单，含"未登记测试"自检）
+    └── test_*.sh|test_*.py    # 各模块行为测试
 ```
 
 </details>
@@ -455,11 +471,42 @@ fusionbox version     # 查看版本
 fusionbox update      # 更新 FusionBox
 fusionbox privacy status|on|off|reset-id  # 匿名统计（默认关闭）
 fusionbox uninstall   # 卸载 FusionBox 本体（不动各模块安装的服务）
-fusionbox help        # 查看帮助
 
-# 模块帮助
-fusionbox <模块> help # 查看模块详细帮助
+# 帮助（以下写法等价，都会输出该模块完整命令说明 + 本机安装状态；只读，无需 root）
+fusionbox help                  # 总帮助：9 大模块 + 全局命令
+fusionbox help system           # 系统管理模块详细帮助
+fusionbox system help           # 逐字节相同的输出
+fusionbox help sys              # 别名同样可用（p/net/w/tools/m/ws/cl ...）
+fusionbox panels docker help    # 子分发也可取帮助
 ```
+
+### 未知命令与退出码
+
+```bash
+fusionbox network bogus
+# [ERROR] 未知子命令: bogus
+# [INFO]  用法: fusionbox network help      查看该模块全部命令
+# [INFO]        fusionbox help network      查看该模块详细帮助
+# [INFO]        fusionbox network           进入交互菜单
+# 退出码 2（成功为 0，未知模块为 1）
+```
+
+设计意图：拼错命令时给出可执行的下一步，并且**不进入交互菜单**——菜单在脚本/CI 里会阻塞。
+
+### 配置文件
+
+`~/.config/fusionbox/config.yaml` 只声明**会被实际读取**的键，避免"改了开关却没生效"：
+
+| 键 | 作用 |
+|---|---|
+| `general.lang` | 输出语言 `auto` / `zh_CN` / `en` |
+| `general.stats` | 匿名统计（默认关闭，等同 `fusionbox privacy`） |
+| `general.color` | `false` 关闭全部 ANSI 颜色（适合日志重定向） |
+| `system.monitor_interval` | `fusionbox system monitor` 刷新间隔（秒） |
+| `system.backup_dir` | `fusionbox system backup\|restore` 默认目录 |
+| `network.speedtest_server` | 测速节点：`auto` 或数值节点 ID |
+
+自动更新等不在此文件的设置，请在文件末尾的说明中找到它们的真实归属。
 
 ## 文档索引
 

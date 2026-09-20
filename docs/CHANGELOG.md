@@ -2,6 +2,21 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.34.0 帮助分发、未知子命令与配置诚实性
+
+本批不新增功能能力，只处理「文档/提示承诺了、代码没兑现」的一致性问题——边界内的不一致最伤信任。
+
+- `fusionbox help <模块>` 从空头支票变成真实分发：`show_help` 过去打印「提示: fusionbox help <模块>」却完全忽略该参数，用户被自己的提示误导一次。现在 `_help_module_spec` 把别名映射到模块文件与 `<模块>_help()`，覆盖 9 个模块与全部别名（`p/sys/s/net/w/tools/m/ws/cl` 等），退出码为 0（成功）/1（未知模块）/2（模块加载失败）。`fusionbox help <模块>` 与 `fusionbox <模块> help` 在 `route()` 层归一化到同一条路径，**输出逐字节相同**；两者都是纯只读帮助，因此 `FUSION_HELPONLY` 让它们无需 root（`panels docker help` 同样放行），而真实操作仍被 root 门禁拦住。模块帮助后追加**本机安装状态**（只读、3 秒超时探测），补齐 `status` 有依赖自检而 `help` 没有的短板。
+- 9 个模块（含 `panels docker` 子分发）的未知子命令不再静默滑进交互菜单：统一走 `_module_unknown_cmd`，明确报错并给出 `help` / 菜单两条出路，退出码 2。此前 `fusionbox network bogus` 会直接渲染菜单并等输入，无 tty 时 `read` 报错后仍继续，脚本/CI 场景直接卡死。
+- `configs/config.yaml` 重写为「只声明真实会被读取的键」：移除 `general.auto_update`、`proxy.*`、`web.php_version`、`docker.auto_clean`、`panels.*_port`、`network.streaming_test` 等全部无读取点的键，并在文件末尾列出它们的真实归属（自动更新走 `update --cron`，代理路径由安装布局固定，等等）。同时新兑现四个键：`general.color`（false 清空全部 ANSI 变量，i18n 文案不含内嵌转义码，因此关色完整）、`system.monitor_interval`（正整校验 + 非法回退）、`system.backup_dir`（backup/restore 默认目录）、`network.speedtest_server`（`auto` 或数值 ID，非法值告警回退而非静默忽略）。
+- G07 时区预设从硬编码 4 个城市扩到 **29 个**，按亚洲/欧洲/美洲/大洋洲/非洲分区展示，改为数据表驱动（`SYSTEM_TZ_PRESETS`，新增城市只需追加一行）；新增 `_system_tz_apply` 做 IANA 标识白名单校验与 zoneinfo 存在性检查，拒绝路径穿越式输入（如 `../../etc/passwd`），`timedatectl` 失败回退软链接 + 写 `/etc/timezone`。仅在真正改动时写日志（旧实现取消也记「已更改」）。
+- G18 修正文档与代码不一致：`implementation-status.md` 标记为「后续」，而 `system tuning apply` 早已支持 `high/balanced/web/stream/game/db` 六个场景，本批改为如实标注。
+- 回归套件从「本地口径」变为「仓库 + CI 口径」：`tests/` 此前被 `.gitignore` 排除，导致 README 与 CI 都无从验证——`test_basic.sh` 里写着「Runs in CI so unauthorized project references can never ship again」，实际根本进不了 CI。本批把 `tests/` 纳入版本控制（新增 `.gitattributes`，`tests/ export-ignore`，因此**发布包仍不含测试**，"不随发布"由 git 强制保证而非靠约定），并补齐被静默漏跑的 5 个 Python 测试（`test_acme_transaction` / `test_archive_scopes` / `test_docker_migration_restore` / `test_market_catalog` / `test_release_downloads`）与 1 个 bash 测试（`test_privacy_telemetry.sh`）。`comprehensive_test.sh` 重写为显式清单 + 「未登记测试文件」自检，新增测试若忘记登记会直接失败。顺带修掉 `test_acme_transaction.py` 文档字符串「intentionally ignored by git」与实际状态不符的陈述。
+- 新增两个测试：`tests/test_help_dispatch.sh`（帮助分发端到端 / 未知子命令 / 配置生效，145 项）与 `tests/test_config_keys.py`（把「配置里的每个键都必须有读取点」固化为断言，新增装饰性键时直接失败）。
+- CI 增加完整回归 job（`sudo` 下运行，与 root-only 的生产运行时一致），并把 `release` job 改为 `needs: [syntax, tests]`——打标签发版必须等回归通过；`syntax` job 增加全部 shell/测试脚本语法检查与**版本一致性检查**（`version.txt` / `init.sh` / README 徽章 / Pages 首页）。
+- 验证：Linux 验证服务器（Ubuntu 24.04）完整回归通过——bash 217 项（42 基础 + 145 帮助/配置 + 30 隐私统计）与 Python 697 项（31 个测试模块）全部 OK、零失败；另有真机 CLI 验收 95 项全过（三种等价帮助写法逐字节一致、10 组别名、未知模块退出码 1、未知子命令退出码 2 且不进菜单、帮助探测 0 秒返回、29 城市时区菜单设置与非法值拒绝后原时区已恢复、`color=false` 关闭全部 ANSI）。
+- 未变：受环境限制仍未验证的项（真实容器生命周期、真实 ACME 签发、两主机集群、TG/CF 真实凭据）与明确不做的四项（KPanel、广告联盟、一键 DD、受管模板追数量）保持原状，本批不声称任何新增的外部集成完成度。
+
 ## v1.33.0 OpenSSH 只读预检与破坏性边界
 
 - 新增 `fusionbox system ssh-preflight`：只读运行 `sshd -t/-T`，汇总有效端口、认证策略、授权密钥路径、systemd 服务/socket activation 和当前 TCP listeners；不会写配置、切换版本或 reload 服务。

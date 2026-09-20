@@ -11,11 +11,33 @@ case "${1:-}:${2:-}:${3:-}" in
   cl:oc:detect|cl:oc:status|cl:oc:help|cl:oc:--help)
     FUSION_READONLY=1 ;;
 esac
+
+# 纯帮助入口可以无 root 运行：`fusionbox help`、`fusionbox version`，
+# 以及模块帮助 `fusionbox <模块> help`（等价于 `fusionbox help <模块>`）。
+# 必须把 $2 纳入判断，否则模块帮助会被下面的 root 门禁误拦（只读帮助不该要 root）。
+FUSION_HELPONLY=0
+# `fusionbox <模块> help`（帮助关键字在 $2）
+case "${2:-}" in
+  help|-h|--help)
+    case "${1:-}" in
+      proxy|p|system|sys|s|network|net|n|web|w|lnmp|panels|panel|tools|t|\
+      market|m|apps|warp|workspace|ws|cluster|cl)
+        FUSION_HELPONLY=1 ;;
+    esac ;;
+esac
+# `fusionbox panels docker help`（帮助关键字在 $3）
+case "${1:-}" in
+  panels|panel|tools|t)
+    case "${2:-}" in
+      docker|dk) case "${3:-}" in help|-h|--help) FUSION_HELPONLY=1 ;; esac ;;
+    esac ;;
+esac
+
 case "${1:-}" in
   help|h|version|v) ;;
   privacy)
     [[ "${2:-status}" == status || $EUID -eq 0 ]] || { echo "需要 root 权限"; exit 1; } ;;
-  *) [[ $EUID -eq 0 || $FUSION_READONLY -eq 1 ]] || { echo "需要 root 权限"; exit 1; } ;;
+  *) [[ $EUID -eq 0 || $FUSION_READONLY -eq 1 || $FUSION_HELPONLY -eq 1 ]] || { echo "需要 root 权限"; exit 1; } ;;
 esac
 
 # Resolve script path through symlinks (install.sh links /usr/local/bin/fusionbox
@@ -45,6 +67,16 @@ esac
 
 route() {
   local cmd="$1"; shift || true
+
+  # 统一帮助入口：`fusionbox <模块> help` 与 `fusionbox help <模块>` 完全等价。
+  # 在这里归一化，而不是让 9 个模块各自调用 show_help——模块保持可独立 source。
+  if [[ $# -eq 1 && ( "$1" == "help" || "$1" == "-h" || "$1" == "--help" ) ]]; then
+    case "$cmd" in
+      proxy|p|system|sys|s|network|net|n|web|w|lnmp|panels|panel|tools|t|\
+      market|m|apps|warp|workspace|ws|cluster|cl)
+        show_help "$cmd"; return $? ;;
+    esac
+  fi
 
   case "$cmd" in
     # Proxy module
@@ -393,8 +425,134 @@ self_uninstall() {
 }
 
 # ---- Help ----
+# 模块帮助分发表：别名 -> "<模块文件> <帮助函数> <显示名>"
+# 只读入口（非 root 也可用），新增模块时在此登记即可被 `fusionbox help <模块>` 命中。
+_help_module_spec() {
+  case "${1:-}" in
+    proxy|p)              printf '%s\n' 'proxy proxy_help 代理管理' ;;
+    system|sys|s)         printf '%s\n' 'system system_help 系统管理' ;;
+    network|net|n)        printf '%s\n' 'network network_help 网络工具' ;;
+    web|w|lnmp)           printf '%s\n' 'web web_help 网站部署' ;;
+    panels|panel|tools|t) printf '%s\n' 'panels panels_help 面板与工具' ;;
+    market|m|apps)        printf '%s\n' 'market market_help 应用市场' ;;
+    warp)                 printf '%s\n' 'warp warp_help WARP 管理' ;;
+    workspace|ws)         printf '%s\n' 'workspace workspace_help 后台工作区' ;;
+    cluster|cl)           printf '%s\n' 'cluster cluster_help 集群控制' ;;
+    *) return 1 ;;
+  esac
+}
+
+# 帮助里的本机探测必须有界：`docker info` 等在守护进程未运行时会阻塞十几秒，
+# 帮助不应该因此卡住，因此统一加 3 秒超时（无 timeout 命令时退化为直接执行）。
+_help_probe() {
+  if command -v timeout &>/dev/null; then
+    timeout 3 "$@" 2>/dev/null
+  else
+    "$@" 2>/dev/null
+  fi
+}
+
+# 本机安装状态探测（纯只读：只查文件/命令/服务，不做任何修改）
+# 帮助内容列出的是“能力清单”，与“本机装没装”是两件事，这里把后者补齐。
+_help_module_state() {
+  local present=()
+  case "$1" in
+    proxy)
+      if _singbox_233_installed 2>/dev/null; then
+        msg_ok "已安装 233boy/sing-box"
+      elif [[ -d /etc/fusionbox/proxy/bin && -n "$(ls -A /etc/fusionbox/proxy/bin 2>/dev/null)" ]]; then
+        msg_ok "已安装 FusionBox 代理核心"
+      else
+        msg_warn "未安装代理核心（fusionbox proxy install）"
+      fi
+      ;;
+    system)
+      msg_ok "常驻可用（系统自带命令，无需安装）"
+      ;;
+    network)
+      msg_ok "常驻可用（系统自带命令，无需安装）"
+      ;;
+    web)
+      command -v nginx &>/dev/null && present+=("nginx $(_help_probe nginx -v 2>&1 | awk -F/ '{print $2}')")
+      command -v php   &>/dev/null && present+=("php $(_help_probe php -r 'echo PHP_VERSION;')")
+      command -v mysql &>/dev/null && present+=("mysql")
+      if [[ ${#present[@]} -gt 0 ]]; then
+        msg_ok "已安装: ${present[*]}"
+      else
+        msg_warn "未检测到 Nginx/PHP/MySQL（fusionbox web lnmp）"
+      fi
+      ;;
+    panels)
+      if command -v docker &>/dev/null; then
+        local dver; dver="$(_help_probe docker info --format '{{.ServerVersion}}')"
+        msg_ok "Docker ${dver:-已安装，守护进程未运行}"
+      else
+        msg_warn "未安装 Docker"
+      fi
+      ;;
+    market)
+      msg_ok "常驻可用（依赖系统包管理器）"
+      ;;
+    warp)
+      if command -v warp-cli &>/dev/null; then
+        msg_ok "已安装 warp-cli"
+      else
+        msg_warn "未安装 WARP（fusionbox warp install）"
+      fi
+      ;;
+    workspace)
+      command -v screen &>/dev/null && present+=("screen")
+      command -v tmux   &>/dev/null && present+=("tmux")
+      if [[ ${#present[@]} -gt 0 ]]; then
+        msg_ok "已安装: ${present[*]}"
+      else
+        msg_warn "未安装 screen/tmux（可在模块菜单内安装）"
+      fi
+      ;;
+    cluster)
+      local node_count=0
+      if [[ -f /etc/fusionbox/cluster/nodes.conf ]]; then
+        node_count=$(grep -cve '^[[:space:]]*$' /etc/fusionbox/cluster/nodes.conf 2>/dev/null || echo 0)
+      fi
+      msg_ok "常驻可用；已登记节点 $node_count 个"
+      ;;
+  esac
+}
+
 show_help() {
   _print_banner
+  local mod="${1:-}"
+
+  # `fusionbox help <模块>`：直接把该模块完整的 <模块>_help() 打出来。
+  # 返回码：0 成功 / 1 未知模块 / 2 模块加载失败，便于脚本判断。
+  if [[ -n "$mod" && "$mod" != "all" ]]; then
+    local spec module helpfn label
+    if ! spec="$(_help_module_spec "$mod")"; then
+      msg_err "未知模块: $mod"
+      msg ""
+      msg "  可用模块: proxy system network web panels market warp workspace cluster"
+      msg "  用法: fusionbox help <模块>     例如 fusionbox help system"
+      msg ""
+      [[ -t 0 ]] && pause    # 非交互下不暂停，保证退出码能传回调用脚本
+      return 1
+    fi
+    read -r module helpfn label <<< "$spec"
+    if ! _load_module "$module"; then
+      msg_err "无法加载模块 $module（缺少 src/modules/$module.sh）"
+      [[ -t 0 ]] && pause
+      return 2
+    fi
+    "$helpfn"
+    msg "  ${F_BOLD}本机状态 (${label}):${F_RESET}"
+    msg "    $(_help_module_state "$module")"
+    msg ""
+    msg "  ${F_BOLD}提示:${F_RESET} fusionbox $module <命令>   直接执行，如 fusionbox $module help"
+    msg "  ${F_BOLD}提示:${F_RESET} fusionbox help             查看全部模块"
+    msg ""
+    pause
+    return 0
+  fi
+
   msg_title "FusionBox 帮助"
   msg ""
   msg "  ${F_BOLD}用法:${F_RESET} fusionbox <命令> [选项]"
@@ -430,12 +588,11 @@ show_help() {
   msg "  fusionbox warp install           # 安装 WARP"
   msg "  fusionbox cluster game           # 游戏服务端"
   msg ""
-
-  # Quick reference per module
-  local mod="${1:-all}"
-  if [[ "$mod" == "all" ]]; then
-    msg "  ${F_BOLD}提示:${F_RESET} fusionbox help <模块> 查看模块详细帮助"
-  fi
+  msg "  ${F_BOLD}模块详细帮助:${F_RESET}"
+  msg "  fusionbox help <模块>           如 fusionbox help system"
+  msg "  fusionbox <模块> help           等价写法，如 fusionbox system help"
+  msg "  模块别名: p/sys/net/w/panels/m/warp/ws/cl 均可使用"
+  msg ""
   pause
 }
 

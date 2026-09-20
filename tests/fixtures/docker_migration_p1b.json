@@ -1,0 +1,14 @@
+{
+  "fixture": "docker-migration-p1b-local",
+  "purpose": "真实 Linux/Docker 验证脚本消费的最小拓扑描述；tests/ 被仓库忽略",
+  "topology": {
+    "container": "fusionbox-p1b-fixture",
+    "image": "busybox:1.36",
+    "network": "fusionbox-p1b-net",
+    "subnet": "172.30.251.0/24",
+    "volume": "fusionbox-p1b-volume",
+    "bind_logical": "fixture_bind",
+    "healthcheck": "test -f /volume/ready && test -f /bind/ready"
+  },
+  "boundary": "需两台同 OS/arch Docker 主机或同机彻底清空事务资源后验证；当前 Windows Git Bash 不执行真实 Docker restore"
+}
