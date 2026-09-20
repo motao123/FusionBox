@@ -2,6 +2,13 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.33.0 OpenSSH 只读预检与破坏性边界
+
+- 新增 `fusionbox system ssh-preflight`：只读运行 `sshd -t/-T`，汇总有效端口、认证策略、授权密钥路径、systemd 服务/socket activation 和当前 TCP listeners；不会写配置、切换版本或 reload 服务。
+- 提供候选升级前的配置有效性与监听状态证据；测试服务器 5522 端口真实预检通过，并如实报告 `PermitRootLogin yes`、`PasswordAuthentication yes`，未修改 SSH。
+- DD 重装、OpenSSH 候选版本并行启动/切换和自动回滚仍未实现；必须先有专用机器、固定下载摘要、双重确认、救援通道和独立故障演练。
+- 本地 Python/Bash 回归与测试服务器只读预检通过；未执行破坏性操作。
+
 ## v1.32.0 Oracle 只读识别与旧保活边界
 
 - 新增 `fusionbox cluster oracle detect|status`：本机 OCI 证据识别，可选一次有界、禁止代理和重定向的 OCI metadata 只读探测；不读取实例凭据、不输出实例标识。

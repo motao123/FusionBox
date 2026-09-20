@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.32.0-blue)
+![version](https://img.shields.io/badge/version-1.33.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,14 +58,14 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.32.0）
+## 最近更新（v1.33.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增 `fusionbox cluster oracle detect|status`：OCI 本机证据与可选 metadata 只读识别，禁止代理/重定向，不读取实例凭据
-- 状态检查区分受管登记、Docker 可用性和旧 `oracle-keepalive` 残留；只读入口不创建日志、锁或统计标识
-- lookbusy 负载安装、启停和卸载在固定镜像 digest 与 Linux 隔离验收前明确拒绝，不自动接管旧 cron
-- v1.31 集群会话仍提供临时密码 FIFO、严格 known_hosts 和密钥迁移；真实多节点与 Oracle Docker 生命周期继续未验证
+- 新增 `fusionbox system ssh-preflight`：只读检查 `sshd -t/-T`、有效端口/认证策略、systemd/socket activation 和当前监听，不编辑配置、不 reload 服务
+- 测试服务器 5522 端口预检通过；当前 `PermitRootLogin yes` 与 `PasswordAuthentication yes` 被如实报告，未执行切换
+- DD 重装与 OpenSSH 候选版本切换仍要求专用机器、固定来源、救援通道和独立回滚验证，不在现有测试服务器执行
+- v1.32 OCI 只读识别、v1.31 集群会话与匿名装机统计保持可用
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
