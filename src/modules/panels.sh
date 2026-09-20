@@ -193,37 +193,47 @@ panels_docker_install() {
   fi
 
   msg_info "正在安装 Docker..."
+  progress_begin 4
   case "$F_PKG_MGR" in
     apt)
+      progress_step "$(_tr MSG_DOCKER_STAGES_1)"
       curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
       sh /tmp/get-docker.sh 2>/dev/null
       ;;
     yum)
+      progress_step "$(_tr MSG_DOCKER_STAGES_1)"
       curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
       sh /tmp/get-docker.sh 2>/dev/null
       ;;
     apk)
+      progress_step "$(_tr MSG_DOCKER_STAGES_1)"
       _install_pkg docker docker-compose
+      progress_step "$(_tr MSG_DOCKER_STAGES_2)"
       rc-update add docker default 2>/dev/null
       rc-service docker start 2>/dev/null
+      progress_end
       return
       ;;
   esac
 
+  progress_step "$(_tr MSG_DOCKER_STAGES_2)"
   systemctl enable docker 2>/dev/null
   systemctl start docker 2>/dev/null
 
+  progress_step "$(_tr MSG_DOCKER_STAGES_3)"
   if ! command -v docker-compose &>/dev/null && ! docker compose version &>/dev/null; then
     local compose_ver=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d'"' -f4)
     curl -L "https://github.com/docker/compose/releases/download/$compose_ver/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose 2>/dev/null && \
       chmod +x /usr/local/bin/docker-compose
   fi
 
+  progress_step "$(_tr MSG_DOCKER_STAGES_4)"
   if command -v docker &>/dev/null; then
     msg_ok "Docker 安装完成: $(docker --version 2>/dev/null)"
     docker compose version 2>/dev/null | xargs -I{} msg_ok "Docker Compose: {}"
     _log_write "Docker 已安装"
   fi
+  progress_end
 }
 
 panels_docker_ps() {

@@ -65,7 +65,8 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 - `fusionbox update` 更新成功后展示本次版本的变更摘要（直接读取归档内 `docs/CHANGELOG.md`，读不到时说明而非静默）
 - 长任务增加阶段反馈：LNMP 安装按 `[1/4] 安装 Nginx`…逐阶段显示；受管应用安装前说明「校验端口 → 拉取镜像 → 创建容器 → 等待健康检查」
 - 编号工作区支持 SSH 常驻重连：`fusionbox ws w3` 在槽位不存在时自动创建，`ws w3 ensure` 显式确保存在，`ws w3 ssh` 打印重连方法
-- 回归检查扩展到 71 项，新增更新变更摘要、阶段进度、工作区常驻三类覆盖
+- 回归检查扩展到 83 项，新增更新变更摘要、阶段进度、工作区常驻三类覆盖，并把 Docker/代理安装的长等待接入阶段反馈
+- 补齐 CNB 侧流水线 `.cnb.yml`：main/PR 跑语法与回归检查，Tag 推送时校验版本一致性并打包 `FusionBox-vX.Y.Z.tar.gz` + `SHA256SUMS` 作为发布附件
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -418,6 +419,8 @@ FusionBox/
 ├── templates/
 │   ├── nginx/
 │   └── docker/
+├── .cnb.yml                   # CNB 流水线：语法/回归检查 + Tag 发布打包
+├── .github/workflows/         # GitHub Actions：发布与统计（install.sh 默认安装源）
 └── tests/                     # CI 回归检查 run_checks.sh（v1.34.0 起随仓库发布，覆盖首次使用体验修复）
 ```
 
