@@ -12,6 +12,8 @@
 - 受管应用菜单文案改为从 catalog 动态读取数量，并修正为「受管应用生命周期」；README 同步。
 - `en.sh` 鸣谢串补英文翻译；`status` 与应用信息同时显示可用核数与宿主核数（容器内不再误报宿主核数）。
 - 缺 `ping` 等可选命令时给出安装建议，不再只报「未找到」。
+- 重新纳入 `tests/run_checks.sh` CI 回归检查（59 项）：覆盖依赖前置检查、空 scope 跳过、无参中文帮助、i18n 英文环境、CPU 口径、编号工作区槽位归一化与新入口；此前 v1.24.2 移出仓库的 `tests/` 仅供 CI 使用，不含本地/验证服务器专用用例。
+- 修复 `show_dependency_status` 与 `show_logs` 未走 i18n 的问题：英文环境不再输出中文依赖自检与日志标题。
 - 新增 `fusionbox log`/`system log fusionbox` 日志入口、`fusionbox rescue` 只读救援指引、`fusionbox cluster alias` 中文速查表。
 - 编号工作区升级为固定槽位 `w1`-`w10`，支持 tmux/screen 自动选择，可直接 `fusionbox ws w3` 进入、`ws w3 send/capture` 注入与查看回显。
 - `fusionbox help` 增加依赖说明；版本号同步为 1.34.0。

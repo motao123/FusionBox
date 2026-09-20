@@ -36,6 +36,11 @@ MSG_DEP_MISSING_PY="python3 missing -> affected: system backup/restore, user & S
 MSG_DEP_MISSING_COMPOSE="docker compose v2 missing -> affected: managed app market, Compose backup/migration"
 MSG_DEP_OK="All key dependencies present"
 MSG_LOG_TITLE="FusionBox logs"
+MSG_INSTALL_HINT="Install"
+MSG_LOG_FILE="Log file"
+MSG_LOG_EMPTY="No log file yet (nothing recorded)"
+MSG_LOG_SHOW="Showing latest"
+MSG_LOG_FULL="Full log"
 
 # Module names
 MOD_PROXY="Proxy Management"

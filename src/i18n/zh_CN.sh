@@ -36,6 +36,11 @@ MSG_DEP_MISSING_PY="python3 缺失 → 受影响: 系统备份/恢复、用户�
 MSG_DEP_MISSING_COMPOSE="docker compose v2 缺失 → 受影响: 受管应用市场、Compose 备份/迁移"
 MSG_DEP_OK="关键依赖齐备"
 MSG_LOG_TITLE="FusionBox 日志"
+MSG_INSTALL_HINT="安装"
+MSG_LOG_FILE="日志文件"
+MSG_LOG_EMPTY="暂无日志文件（尚未产生记录）"
+MSG_LOG_SHOW="显示最近"
+MSG_LOG_FULL="完整日志"
 
 # Module names
 MOD_PROXY="代理管理"

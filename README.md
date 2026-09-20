@@ -420,7 +420,7 @@ FusionBox/
 ├── templates/
 │   ├── nginx/
 │   └── docker/
-└── tests/                     # 行为测试（本地与验证服务器使用，不随仓库发布）
+└── tests/                     # CI 回归检查 run_checks.sh（v1.34.0 起随仓库发布，覆盖首次使用体验修复）
 ```
 
 </details>

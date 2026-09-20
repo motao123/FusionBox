@@ -675,18 +675,22 @@ show_dependency_status() {
   command -v docker &>/dev/null && dk='✓'
   _docker_compose_v2_present && dc='✓'
   command -v curl &>/dev/null && cur='✓'
-  msg "${F_BOLD}依赖自检:${F_RESET} python3 $py | docker $dk | docker compose v2 $dc | curl $cur"
+  # i18n: keep English locale free of Chinese here too (the menu shows this line
+  # on every entry, so an untranslated literal would be very visible).
+  local line_fmt; line_fmt=$(_tr MSG_DEP_LINE "依赖自检: python3 %s | docker %s | docker compose v2 %s | curl %s")
+  # shellcheck disable=SC2059
+  msg "${F_BOLD}$(printf "$line_fmt" "$py" "$dk" "$dc" "$cur")${F_RESET}"
   if [[ "$py" == '✗' ]]; then
-    msg "  ${F_YELLOW}python3 缺失 → 受影响: 系统备份/恢复、用户与 SSH 管理、受管应用市场、集群${F_RESET}"
-    msg "  安装: $(_pkg_install_hint python3)"
+    msg "  ${F_YELLOW}$(_tr MSG_DEP_MISSING_PY "python3 缺失 → 受影响: 系统备份/恢复、用户与 SSH 管理、受管应用市场、集群")${F_RESET}"
+    msg "  $(_tr MSG_INSTALL_HINT "安装") : $(_pkg_install_hint python3)"
   fi
   if [[ "$dc" == '✗' ]]; then
-    msg "  ${F_YELLOW}docker compose v2 缺失 → 受影响: 受管应用市场、Compose 备份/迁移${F_RESET}"
-    [[ "$dk" == '✗' ]] && msg "  安装: $(_pkg_install_hint docker.io)"
-    msg "  安装 compose 插件: $(_pkg_install_hint docker-compose-plugin)"
+    msg "  ${F_YELLOW}$(_tr MSG_DEP_MISSING_COMPOSE "docker compose v2 缺失 → 受影响: 受管应用市场、Compose 备份/迁移")${F_RESET}"
+    [[ "$dk" == '✗' ]] && msg "  $(_tr MSG_INSTALL_HINT "安装") : $(_pkg_install_hint docker.io)"
+    msg "  $(_tr MSG_INSTALL_HINT "安装") compose: $(_pkg_install_hint docker-compose-plugin)"
   fi
   if [[ "$py" == '✓' && "$dc" == '✓' ]]; then
-    msg_ok "关键依赖齐备"
+    msg_ok "$(_tr MSG_DEP_OK "关键依赖齐备")"
   fi
 }
 
@@ -704,17 +708,17 @@ _require_optional_cmd() {
 # ---- Log viewer ----
 show_logs() {
   local lines="${1:-200}" log_file="$FUSION_LOG_DIR/fusionbox.log"
-  msg_title "FusionBox 日志"
-  msg "  日志文件: $log_file"
+  msg_title "$(_tr MSG_LOG_TITLE "FusionBox 日志")"
+  msg "  $(_tr MSG_LOG_FILE "日志文件") : $log_file"
   msg ""
   if [[ ! -f "$log_file" ]]; then
-    msg_warn "暂无日志文件（尚未产生记录）"
+    msg_warn "$(_tr MSG_LOG_EMPTY "暂无日志文件（尚未产生记录）")"
     return 0
   fi
   local total; total=$(wc -l < "$log_file" 2>/dev/null || echo 0)
-  msg "  共 $total 行，显示最近 $lines 行:"
+  msg "  $(_tr MSG_LOG_SHOW "显示最近") $lines / $total:"
   msg ""
   tail -n "$lines" "$log_file"
   msg ""
-  msg_info "完整日志: $log_file"
+  msg_info "$(_tr MSG_LOG_FULL "完整日志") : $log_file"
 }
