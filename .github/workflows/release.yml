@@ -39,6 +39,17 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
+      - name: Release version consistency
+        run: |
+          set -e
+          version="$(tr -d '[:space:]' < version.txt)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          grep -Fqx "export FUSION_VER=\"$version\"" src/init.sh
+          grep -Fq "version-$version" README.md
+          grep -Fq "v$version" docs/index.html
+          grep -Fq "v$version" docs/implementation-status.md
+          echo "version.txt / init.sh / README / Pages / 实施状态 版本一致: $version"
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
     needs: syntax

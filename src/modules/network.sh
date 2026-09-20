@@ -41,7 +41,7 @@ network_main() {
     nic|iface)        network_nic "$@" ;;
     menu|main)        network_menu ;;
     help|h)           network_help ;;
-    *)                network_menu ;;
+    *)                _module_unknown_cmd "network" "$cmd" ;;
   esac
 }
 
@@ -153,16 +153,33 @@ network_streaming() {
 network_speedtest() {
   msg_title "网速测试"
   msg ""
+
+  # network.speedtest_server：auto（自动就近）或 speedtest 的数值节点 ID。
+  # 非法值不静默忽略，明确告警后回退 auto，避免“配了但没生效”的错觉。
+  local server_id="${CONFIG_network_speedtest_server:-auto}"
+  local -a st_args=()
+  if [[ "$server_id" != "auto" ]]; then
+    if [[ "$server_id" =~ ^[0-9]+$ ]]; then
+      st_args=(--server "$server_id")
+      msg_info "指定测速节点 ID: $server_id"
+    else
+      msg_warn "配置 network.speedtest_server 无效（应为 auto 或数字 ID）: $server_id，已回退 auto"
+      server_id="auto"
+    fi
+  fi
+
   msg_info "正在测试网络速度..."
   msg ""
 
   # Try speedtest-cli first
   if command -v speedtest-cli &>/dev/null; then
-    speedtest-cli --simple 2>/dev/null | while read -r line; do
+    speedtest-cli ${st_args[@]+"${st_args[@]}"} --simple 2>/dev/null | while read -r line; do
       msg "  $line"
     done
   elif command -v speedtest &>/dev/null; then
-    speedtest --progress no --format human 2>/dev/null || speedtest --simple 2>/dev/null
+    local -a okla_args=()
+    [[ ${#st_args[@]} -gt 0 ]] && okla_args=(--server-id "$server_id")
+    speedtest ${okla_args[@]+"${okla_args[@]}"} --progress no --format human 2>/dev/null || speedtest --simple 2>/dev/null
   else
     # Fallback: download test from Cloudflare
     msg_info "正在安装 speedtest-cli..."

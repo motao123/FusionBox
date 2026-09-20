@@ -374,6 +374,147 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+section "16. 帮助分发 / 未知子命令 / 配置键闭环（v1.36.3）"
+# ---------------------------------------------------------------------------
+# `help` 是只读入口，不需要 root，因此可以直接走真实 CLI。
+FUSION_CLI=(bash "$REPO_ROOT/fusion.sh")
+MODULES="proxy system network web panels market warp workspace cluster"
+
+# 16.1 help <模块> 必须真的分发：输出该模块命令清单 + 本机安装状态
+for m in $MODULES; do
+  out="$("${FUSION_CLI[@]}" help "$m" < /dev/null 2>&1)"
+  if grep -qF -- "fusionbox $m" <<<"$out" && grep -qF "本机状态" <<<"$out"; then
+    ok "fusionbox help $m 输出模块命令清单 + 本机状态"
+  else
+    bad "fusionbox help $m 输出模块命令清单 + 本机状态"
+  fi
+done
+
+# 16.2 help <模块> 与 <模块> help 必须逐字节一致（route 层归一化）
+for m in proxy system network web panels market warp workspace cluster; do
+  a="$("${FUSION_CLI[@]}" help "$m" < /dev/null 2>&1)"
+  b="$("${FUSION_CLI[@]}" "$m" help < /dev/null 2>&1)"
+  if [[ "$a" == "$b" ]]; then
+    ok "help $m 与 $m help 输出一致"
+  else
+    bad "help $m 与 $m help 输出一致"
+  fi
+done
+
+# 16.3 别名必须命中规范模块
+for pair in "p:proxy" "sys:system" "s:system" "net:network" "n:network" "w:web"\
+            "lnmp:web" "panels:panels" "tools:panels" "m:market" "apps:market"\
+            "ws:workspace" "cl:cluster"; do
+  alias_name="${pair%%:*}"
+  canonical="${pair##*:}"
+  out="$("${FUSION_CLI[@]}" help "$alias_name" < /dev/null 2>&1)"
+  if grep -qF -- "fusionbox $canonical" <<<"$out"; then
+    ok "别名 help $alias_name -> $canonical"
+  else
+    bad "别名 help $alias_name -> $canonical"
+  fi
+done
+
+# 16.4 模块帮助条目数不能再退化成「空头支票」
+help_total=0
+for m in $MODULES; do
+  n="$("${FUSION_CLI[@]}" help "$m" < /dev/null 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -cE '^  +fusionbox ')"
+  help_total=$((help_total + n))
+done
+if (( help_total >= 100 )); then
+  ok "模块帮助命令条目 $help_total >= 100"
+else
+  bad "模块帮助命令条目 $help_total >= 100"
+fi
+
+# 16.5 未知模块 -> 退出码 1 + 列出可用模块
+check_exit "help <未知模块> 退出码 1" 1 "${FUSION_CLI[@]}" help no-such-module
+check_contains "help <未知模块> 列出可用模块" "可用模块" \
+  "${FUSION_CLI[@]}" help no-such-module
+
+# 16.6 未知子命令：退出码 2、明确报错、且不进交互菜单
+# 函数层验证，避免 fusion.sh 对非 help 命令的 root 门禁（本脚本必须能非 root 运行）。
+for m in $MODULES; do
+  out="$(bash -c "export HOME='$WORK' FUSION_BASE='$REPO_ROOT' FUSION_SRC='$SRC'; \
+    . \"$SRC/init.sh\" >/dev/null 2>&1; _load_module '$m' >/dev/null 2>&1; \
+    ${m}_main definitely-not-a-command" 2>&1)"
+  rc=$?
+  if [[ "$rc" == "2" ]] && grep -qF "未知子命令" <<<"$out" && ! grep -qF "返回主菜单" <<<"$out"; then
+    ok "$m 未知子命令 rc=2 且不渲染菜单"
+  else
+    bad "$m 未知子命令 rc=2 且不渲染菜单 (rc=$rc)"
+  fi
+done
+
+# 16.7 help 参数不能被未知子命令守卫误伤
+for m in $MODULES; do
+  out="$(bash -c "export HOME='$WORK' FUSION_BASE='$REPO_ROOT' FUSION_SRC='$SRC'; \
+    . \"$SRC/init.sh\" >/dev/null 2>&1; _load_module '$m' >/dev/null 2>&1; \
+    ${m}_main help" 2>&1)"
+  if grep -qF -- "fusionbox $m" <<<"$out"; then
+    ok "$m help 仍输出命令清单"
+  else
+    bad "$m help 仍输出命令清单"
+  fi
+done
+
+# 16.8 配置文件里的每个键都必须有真实读取点（禁止「装饰性开关」）
+CFG="$REPO_ROOT/configs/config.yaml"
+src_text="$(cat "$REPO_ROOT/fusion.sh" "$SRC/init.sh" "$SRC"/lib/*.sh "$SRC"/modules/*.sh 2>/dev/null)"
+cfg_keys="$(awk '
+  /^[[:space:]]*#/ { next }
+  /^[a-zA-Z_][A-Za-z0-9_]*:[[:space:]]*$/ { s=$1; sub(/:$/, "", s); next }
+  /^[[:space:]]+[a-zA-Z_][A-Za-z0-9_]*:/ { k=$1; sub(/:$/, "", k); if (s != "") print s "_" k }
+' "$CFG")"
+cfg_missing=0
+while IFS= read -r key; do
+  [[ -n "$key" ]] || continue
+  if ! grep -qF -- "CONFIG_$key" <<<"$src_text"; then
+    bad "配置键 $key 无读取点（写了不生效）"
+    cfg_missing=1
+  fi
+done <<<"$cfg_keys"
+if (( cfg_missing == 0 )); then
+  ok "config.yaml 全部键都有读取点"
+fi
+check_contains "config.yaml 声明了不受本文件控制的设置" "不由本文件控制" cat "$CFG"
+check_absent "config.yaml 不再含装饰性的 auto_update" "auto_update" cat "$CFG"
+
+# 16.9 general.color=false 必须真正关闭 ANSI
+color_out="$(bash -c "export HOME='$WORK' FUSION_BASE='$REPO_ROOT' FUSION_SRC='$SRC'; \
+  mkdir -p \"\$HOME/.config/fusionbox\"; \
+  printf 'general:\n  color: false\n' > \"\$HOME/.config/fusionbox/config.yaml\"; \
+  . \"$SRC/init.sh\" >/dev/null 2>&1; printf 'RED=[%s] BOLD=[%s]\\n' \"\$F_RED\" \"\$F_BOLD\"" 2>&1)"
+if grep -qE 'RED=\[\] BOLD=\[\]' <<<"$color_out"; then
+  ok "general.color=false 清空 ANSI 变量"
+else
+  bad "general.color=false 清空 ANSI 变量"
+fi
+
+# 16.10 G07 时区预设
+tz_count="$(sed -n '/^SYSTEM_TZ_PRESETS=(/,/^)/p' "$SRC/modules/system.sh" | grep -cE '^  "[^|]+\|[^|]+\|[^|]+"$')"
+if (( tz_count >= 20 )); then
+  ok "时区预设 $tz_count >= 20"
+else
+  bad "时区预设 $tz_count >= 20"
+fi
+check_contains "时区校验函数存在（防路径穿越）" "_system_tz_apply()" \
+  grep -n '^_system_tz_apply()' "$SRC/modules/system.sh"
+
+# 16.11 发布版本号在五处保持一致
+ver="$(tr -d '[:space:]' < "$REPO_ROOT/version.txt")"
+ver_bad=0
+grep -Fqx "export FUSION_VER=\"$ver\"" "$SRC/init.sh" || ver_bad=1
+grep -Fq "version-$ver" "$REPO_ROOT/README.md" || ver_bad=1
+grep -Fq "v$ver" "$REPO_ROOT/docs/index.html" || ver_bad=1
+grep -Fq "v$ver" "$REPO_ROOT/docs/implementation-status.md" || ver_bad=1
+if (( ver_bad == 0 )); then
+  ok "version.txt / init.sh / README / Pages / 实施状态 版本一致 ($ver)"
+else
+  bad "version.txt / init.sh / README / Pages / 实施状态 版本一致 ($ver)"
+fi
+
+# ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'
 printf '通过 %d / 失败 %d\n' "$PASS" "$FAIL"
 if (( FAIL > 0 )); then

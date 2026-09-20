@@ -132,7 +132,7 @@ proxy_main() {
     url|share)      proxy_url "$@" ;;
     menu|main)      proxy_menu ;;
     help|h)         proxy_help ;;
-    *)              proxy_menu ;;
+    *)              _module_unknown_cmd "proxy" "$cmd" ;;
   esac
 }
 

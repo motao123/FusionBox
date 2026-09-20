@@ -66,7 +66,7 @@ panels_main() {
     nezha|nezuta)         panels_nezha ;;
     menu|main)            panels_menu ;;
     help|h)               panels_help ;;
-    *)                    panels_menu ;;
+    *)                    _module_unknown_cmd "panels" "$cmd" ;;
   esac
 }
 
@@ -93,8 +93,9 @@ panels_docker() {
     mirror|mirrors) panels_docker_mirror "${2:-}" ;;
     port-block|pb)  shift; panels_docker_port_block "$@" ;;
     uninstall)      panels_docker_uninstall ;;
+    help|h)         panels_help ;;
     menu|"")      panels_docker_menu ;;
-    *)            panels_docker_menu ;;
+    *)            _module_unknown_cmd "panels docker" "$action" ;;
   esac
 }
 

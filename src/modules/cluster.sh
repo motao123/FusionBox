@@ -24,7 +24,7 @@ cluster_main() {
     sshout|out)       cluster_sshout "$@" ;;
     menu|main)        cluster_menu ;;
     help|h)           cluster_help ;;
-    *)                cluster_menu ;;
+    *)                _module_unknown_cmd "cluster" "$cmd" ;;
   esac
 }
 

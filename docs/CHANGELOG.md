@@ -2,6 +2,21 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.36.3 帮助分发、未知子命令与配置诚实性
+
+本批不新增功能能力，只处理「文档/提示承诺了、代码没兑现」的一致性问题——边界内的不一致最伤信任。
+
+- `fusionbox help <模块>` 从空头支票变成真实分发：`show_help` 过去打印「提示: fusionbox help <模块>」却完全忽略该参数，用户被自己的提示误导一次。现在 `_help_module_spec` 把别名映射到模块文件与 `<模块>_help()`，覆盖 9 个模块与全部别名（`p/sys/s/net/w/tools/m/ws/cl` 等），退出码为 0（成功）/1（未知模块）/2（模块加载失败）。
+- `fusionbox help <模块>` 与 `fusionbox <模块> help` 在 `route()` 层归一化到同一条路径，**输出逐字节相同**；两者都是纯只读帮助，因此 `FUSION_HELPONLY` 让它们无需 root（`panels docker help` 同样放行），真实操作仍被 root 门禁拦住。模块帮助后追加**本机安装状态**（只读、3 秒超时探测，避免 `docker info` 在守护进程未运行时卡住），补齐 `status` 有依赖自检而 `help` 没有的短板。
+- 9 个模块（含 `panels docker` 子分发）的未知子命令不再静默滑进交互菜单：统一走 `_module_unknown_cmd`，明确报错并给出 `help` / 菜单两条出路，退出码 2。此前 `fusionbox network bogus` 会直接渲染菜单并等输入，无 tty 时 `read` 报错后仍继续，脚本与 CI 场景直接卡死。
+- `configs/config.yaml` 重写为「只声明真实会被读取的键」：移除 `general.auto_update`、`proxy.*`、`web.php_version`、`docker.auto_clean`、`panels.*_port`、`network.streaming_test` 等全部无读取点的键，并在文件末尾列出它们的真实归属（自动更新走 `update --cron`，代理路径由安装布局固定）。同时新兑现四个键：`general.color`（false 清空全部 ANSI 变量；i18n 文案不含内嵌转义码，因此关色完整）、`system.monitor_interval`（正整校验 + 非法回退）、`system.backup_dir`（backup/restore 默认目录）、`network.speedtest_server`（`auto` 或数值 ID，非法值告警回退而非静默忽略）。
+- G07 时区预设从硬编码 4 个城市扩到 **29 个**，按亚洲/欧洲/美洲/大洋洲/非洲分区展示，改为数据表驱动（`SYSTEM_TZ_PRESETS`，新增城市只需追加一行）；新增 `_system_tz_apply` 做 IANA 标识白名单校验与 zoneinfo 存在性检查，拒绝路径穿越式输入（如 `../../etc/passwd`），`timedatectl` 失败回退软链接 + 写 `/etc/timezone`。仅在真正改动时写日志（旧实现取消也记「已更改」）。
+- G18 修正文档与代码不一致：`implementation-status.md` 标记为「后续」，而 `system tuning apply` 早已支持 `high/balanced/web/stream/game/db` 六个场景，本批改为如实标注。
+- `tests/run_checks.sh` 回归检查由 94 项扩到 153 项，新增第 16 节：帮助分发（9 模块 + 13 组别名 + 两种写法逐字节一致 + 条目数不少于 100）、未知子命令（rc=2 且不渲染菜单、help 参数不被误伤）、配置键闭环（每个键都有读取点、声明了不受控设置、不再含装饰性的 `auto_update`）、`general.color=false` 清空 ANSI、时区预设数量与校验函数、发布版本号在五处一致。全部在非 root / 无 Docker / 无网络下可跑。
+- CI 增加发布版本一致性检查步骤（`version.txt` / `src/init.sh` / README / Pages / 实施状态）；GitHub 侧另有完整套件 job（bash 217 项 + Python 697 项），而本仓库按既有约定只随仓库发布 `tests/run_checks.sh`。
+- 验证：Linux 验证服务器（Ubuntu 24.04）完整回归通过——bash 217 项（42 基础 + 145 帮助/配置 + 30 隐私统计）与 Python 697 项（31 个测试模块）全部 OK、零失败；另有真机 CLI 验收 95 项全过（三种等价帮助写法逐字节一致、13 组别名、未知模块 rc=1、未知子命令 rc=2 且不进菜单、`help panels` 0 秒返回、29 城市时区菜单设置与非法值拒绝后原时区已恢复、`color=false` 关闭全部 ANSI）。
+- 未变：受环境限制仍未验证的项（真实容器生命周期、真实 ACME 签发、两主机集群、TG/CF 真实凭据）与明确不做的四项（KPanel、广告联盟、一键 DD、受管模板追数量）保持原状，本批不声称任何新增的外部集成完成度。
+
 ## v1.36.2 修复发布附件上传
 
 - 修复 CNB `tag_push` 的 `upload-release-attachments` 阶段必失败的问题：`cnbcool/attachments` 插件按 Tag 查找 Release（日志 `目标 RELEASE / 获取 release id`），而仓库此前从未创建 Release，插件直接 404 退出，`FusionBox-*.tar.gz` 与 `SHA256SUMS` 无法成为发布附件。

@@ -1,4 +1,6 @@
-# 当前实施状态（v1.36.2）
+# 当前实施状态（v1.36.3）
+
+2026-09-20 本轮（1.36.3）只做一致性修复，不新增能力：`fusionbox help <模块>` 从「打印一句提示但忽略参数」改为真正分发到 `<模块>_help()`，与 `fusionbox <模块> help` 逐字节一致且都是只读帮助（无需 root，`panels docker help` 同）；9 个模块与 `panels docker` 的未知子命令统一报错（退出码 2）不再静默进交互菜单；`configs/config.yaml` 只保留有读取点的键，兑现 `general.color`/`system.monitor_interval`/`system.backup_dir`/`network.speedtest_server`，移除 `general.auto_update`、`proxy.*`、`web.php_version`、`docker.auto_clean`、`panels.*_port` 等装饰性键；G07 时区预设 4 → 29 城市并新增 `_system_tz_apply` 白名单校验；G18 修正文档与代码不一致。回归检查从 94 项扩到 153 项（新增帮助分发、未知子命令、配置键闭环、时区预设与版本一致性）。验证服务器（Ubuntu 24.04）另跑完整套件：bash 217 项 + Python 697 项全过、零失败，真机 CLI 验收 95 项全过。仍未变的环境限制：真实容器生命周期、真实 ACME 与多机集群无法在本环境端到端验证。
 
 2026-09-20 本轮（1.36.0）收尾 1.34.0 建议清单：把 `archive.py` 中全部用户可触达报错中文化并给出下一步（未知范围、备份重名、恢复冲突、范围缺失、快照期间变化、校验失败），顶层前缀统一为「备份操作失败:」，严格模式失败信息同步中文化；回归检查 83 → 90 项。同时完成清单第 9 项：Tag `v1.36.0` 与 `version.txt`、`src/init.sh` 三处一致，CNB `tag_push` 据此校验并产出可同步发布资产。另修正 CNB 流水线：`syntax` 阶段依赖默认镜像无 python3 必失败（改显式指定 `python:3.11` 镜像 + `PYTHONDONTWRITEBYTECODE=1`）；`tag_push` 的 `validate-version` 阶段因默认 shell 为 `sh`（dash）却使用 bash 专属语法必失败（改写为 POSIX `sh` 兼容）；`upload-release-attachments` 因附件插件按 Tag 查 Release 而仓库无 Release 报 404（改为先用 `git:release` 建 Release 再上传附件）。仍未变的环境限制：真实容器生命周期、真实 ACME 与多机集群无法在本环境端到端验证；清单第 10 项受管模板扩容仍按「少而可验证」边界，未在无真机容器环境下新增未验证模板。
 
@@ -167,7 +169,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G04 | 修改登录密码 / 一键开启 root 密码登录 | 受管范围完成 | v1.14.0 users passwd（stdin chpasswd）+ sshkey 菜单 root 密码登录开/关（PermitRootLogin yes/prohibit-password 事务化）；PAM 限策未验证 |
 | G05 | 禁用 root 登录并新建密钥用户 | 受管范围完成 | v1.14.0 system hardening 向导：建用户→公钥→sudo→登录验证门禁→收紧 root（prohibit-password/no）；验证未通过不修改策略 |
 | G06 | Swap 任意大小 + 旧 swap 清理 | 部分实现 | 自定义 Swap；未自动清理未知旧 swap |
-| G07 | 时区预设 20+ 城市 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G07 | 时区预设 20+ 城市 | 受管范围完成 | v1.36.3 预设扩到 29 个城市（亚洲/欧洲/美洲/大洋洲/非洲分区、数据表驱动）+ 自定义 IANA 时区 + NTP；`_system_tz_apply` 做标识白名单与 zoneinfo 存在性校验，拒绝路径穿越，仅在真正改动时写日志 |
 | G08 | 系统日志管理菜单（journalctl 查询/服务日志/secure 登录日志/实时跟踪/清理） | 已提供入口 | system log；未实测所有日志后端 |
 | G09 | 系统环境变量管理（查看/编辑 bashrc/profile/source 重载） | 受管范围完成 | v1.16.0 system env：允许清单内文件查看/编辑/语法检查，备份+恢复；source 重载属用户 shell 行为，只提示不代执 |
 | G10 | 网卡管理（ip link up/down、ethtool 详情） | 受管范围完成 | v1.16.0 network nic list/info/up/down；默认路由停用双确认；真机仅只读路径 |
@@ -178,7 +180,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G15 | SSH 出站连接工具（收藏与管理） | 受管范围完成 | v1.19.0 cluster sshout：0600 受管清单+严格校验+connect 直连；connect 真实目标需第二台主机，未验证 |
 | G16 | rsync 远程同步任务管理 | 受管范围完成 | v1.22.0 system rsync：任务清单+可选 cron 真机验证；远端执行依赖第二台主机未验证；密钥管理沿用 cluster 模型 |
 | G17 | 系统备份范围扩展 + 备份管理 | 部分实现 | 配置任务归属登记、完整性校验、显式保留/恢复；系统范围扩展与旧归档迁移仍后续 |
-| G18 | 内核参数优化面板（6 场景自适应 + 恢复） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G18 | 内核参数优化面板（6 场景自适应 + 恢复） | 受管范围完成 | v1.36.3 修正文档与代码不一致：`system tuning apply` 已支持 high/balanced/web/stream/game/db 六个场景 + status/restore，此前误标「后续」；未改动的运行值快照恢复由 mock 断言覆盖，未改服务器真实 sysctl |
 | G19 | 病毒扫描（ClamAV 全盘/指定目录+日志） | 受管范围完成 | v1.19.0 market clamav 扫描动作（按需安装、0600 日志、威胁 rc 传播）；真实扫描 mock 覆盖 |
 | G20 | 修复 OpenSSH 高危版本（源码编译升级） | 只读预检 | v1.33.0 `system ssh-preflight` 检查 sshd 配置/有效策略/监听/socket activation；不做源码替换或服务切换，候选升级与回滚仍后续 |
 | G21 | SSH 密钥远端导入（GitHub / URL 一键抓取） | 受管范围完成 | v1.19.0 sshkey 菜单 7：https 拉取+逐条校验确认；真机 GitHub 拉取验证，拒绝时零改动 |

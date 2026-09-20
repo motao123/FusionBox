@@ -15,7 +15,7 @@ warp_main() {
     proxy)            warp_proxy "$@" ;;
     menu|main)        warp_menu ;;
     help|h)           warp_help ;;
-    *)                warp_menu ;;
+    *)                _module_unknown_cmd "warp" "$cmd" ;;
   esac
 }
 

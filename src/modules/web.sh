@@ -33,7 +33,7 @@ web_main() {
     wp-redis)              web_wp_redis "$@" ;;
     menu|main)             web_menu ;;
     help|h)                web_help ;;
-    *)                     web_menu ;;
+    *)                     _module_unknown_cmd "web" "$cmd" ;;
   esac
 }
 

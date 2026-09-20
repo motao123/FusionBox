@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.36.2-blue)
+![version](https://img.shields.io/badge/version-1.36.3-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,15 +58,15 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.36.2）
+## 最近更新（v1.36.3）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 备份/恢复的全部用户可触达报错改为中文并给出下一步：未知范围、备份重名、恢复冲突、范围缺失、损坏校验等不再是英文技术串；顶层前缀统一为「备份操作失败:」
-- 修复 CNB `tag_push` 发布流水线：默认 Runner 的 shell 是 `sh`（dash），原先的 bash 专属语法直接报错退出；改写为 POSIX `sh` 兼容
-- 修复发布附件上传 404：附件插件按 Tag 查找 Release，而仓库此前没有 Release；改为先用 `git:release` 建 Release 再上传 `FusionBox-*.tar.gz` + `SHA256SUMS`
-- CNB CI 显式指定 `python:3.11` 镜像，`main`/PR 的 `syntax` 与 `regression-checks` 阶段真正跑通（此前因默认镜像无 python3 必失败）
-- 回归检查扩展到 94 项，新增备份中文报错、顶层前缀、CI 镜像、tag_push POSIX 兼容与 Release 先建后传覆盖
+- `fusionbox help <模块>` 真正生效：过去它只打印一句「提示」，`<模块>` 参数被完全忽略；现在打开该模块完整命令说明（9 个模块共 147 条）并附本机安装状态。`fusionbox help system` / `fusionbox system help` / `fusionbox help sys` **输出逐字节相同**，且都是只读帮助，无需 root（`panels docker help` 同样放行）
+- 模块未知子命令不再静默弹交互菜单：改为明确报错 + 指出 `help`/菜单两条出路，退出码 2。此前 `fusionbox network bogus` 会直接卡在菜单里（无 tty 时阻塞脚本与 CI）
+- `configs/config.yaml` 只保留**会被实际读取**的键：新兑现 `general.color`（关闭彩色输出）、`system.monitor_interval`、`system.backup_dir`、`network.speedtest_server`；`general.auto_update`、`proxy.*`、`web.php_version`、`docker.auto_clean`、`panels.*_port` 等写了不生效的键全部移除，并在文件末尾注明真实归属
+- G07 时区预设由 4 个城市扩到 **29 个**（亚洲/欧洲/美洲/大洋洲/非洲分区，数据表驱动）；新增 `_system_tz_apply` 做时区标识白名单与存在性校验，拒绝路径穿越式输入
+- G18 修正文档与代码不一致（`tuning apply` 早已支持 6 个场景）；回归检查从 94 项扩到 153 项，新增帮助分发、未知子命令、配置键与版本一致性覆盖
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -121,7 +121,7 @@ fusionbox proxy bbr              # 启用 BBR 加速
 - **防火墙管理**：UFW/iptables、端口开关、IP 封禁、Fail2Ban
 - **定时任务管理**：添加/删除/编辑 cron、自动备份/清理
 - **磁盘管理**：分区/格式化/挂载/扩展/大文件扫描/目录大小
-- **时区管理**：常用时区一键切换、NTP 时间同步
+- **时区管理**：29 个常用城市分区一键切换（亚洲/欧洲/美洲/大洋洲/非洲）+ 自定义 IANA 时区 + NTP 同步
 - **回收站管理**：安全删除/恢复/清空
 
 ```bash
@@ -139,7 +139,7 @@ fusionbox system fail2ban        # Fail2Ban 面板 (状态/解封/日志/参数/
 fusionbox system env             # 环境变量管理 (list/show/check/edit)
 fusionbox panels docker port-block  # 容器端口封禁 (DOCKER-USER, list/add/del)
 fusionbox panels docker uninstall   # Docker 一键卸载 (YES 门禁)
-fusionbox workspace work            # 编号工作区 (tmux work1-10, 命令注入)
+fusionbox workspace work            # 编号工作区 (tmux w1-w10, 命令注入)
 fusionbox cluster sshout            # SSH 出站收藏 (add/list/rm/connect)
 fusionbox market managed install uptime-kuma / ddns-go   # 受管模板扩容
 fusionbox web tune                      # 调优档位 (standard/high/restore)
@@ -364,6 +364,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 ## 诚实边界
 
 - 测试结论严格区分：**本地 mock / 隔离夹具 / 真机实测 / 未验证**，发布说明随版本附带精确范围
+- CI 回归检查 `bash tests/run_checks.sh` 在 CNB 与 GitHub 两条流水线都会执行；它不需要 root、Docker 或网络，因此结论可复现。测试资产经 `.gitattributes` 的 `export-ignore` 不进入发布包
 - 待真实凭据/环境才能验证：ACME 公网域名签发、Cloudflare API 联动、Telegram 送达、真实多节点集群；OCI G32 仅完成只读识别，lookbusy 负载、oci-helper（G33）和 root/IPv6（G34）仍未实现
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见下方实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
@@ -421,7 +422,7 @@ FusionBox/
 │   └── docker/
 ├── .cnb.yml                   # CNB 流水线：语法/回归检查 + Tag 发布打包
 ├── .github/workflows/         # GitHub Actions：发布与统计（install.sh 默认安装源）
-└── tests/                     # CI 回归检查 run_checks.sh（v1.34.0 起随仓库发布，覆盖首次使用体验修复）
+└── tests/                     # CI 回归检查（run_checks.sh 随仓库发布；其余测试为本地验证资产）
 ```
 
 </details>
@@ -457,11 +458,42 @@ fusionbox version     # 查看版本
 fusionbox update      # 更新 FusionBox
 fusionbox privacy status|on|off|reset-id  # 匿名统计（默认关闭）
 fusionbox uninstall   # 卸载 FusionBox 本体（不动各模块安装的服务）
-fusionbox help        # 查看帮助
 
-# 模块帮助
-fusionbox <模块> help # 查看模块详细帮助
+# 帮助（以下写法等价，都会输出该模块完整命令说明 + 本机安装状态；只读，无需 root）
+fusionbox help                  # 总帮助：9 大模块 + 全局命令
+fusionbox help system           # 系统管理模块详细帮助
+fusionbox system help           # 逐字节相同的输出
+fusionbox help sys              # 别名同样可用（p/net/w/tools/m/ws/cl ...）
+fusionbox panels docker help    # 子分发也可取帮助
 ```
+
+### 未知命令与退出码
+
+```bash
+fusionbox network bogus
+# [ERROR] 未知子命令: bogus
+# [INFO]  用法: fusionbox network help      查看该模块全部命令
+# [INFO]        fusionbox help network      查看该模块详细帮助
+# [INFO]        fusionbox network           进入交互菜单
+# 退出码 2（成功为 0，未知模块为 1）
+```
+
+设计意图：拼错命令时给出可执行的下一步，并且**不进入交互菜单**——菜单在脚本/CI 里会阻塞。
+
+### 配置文件
+
+`~/.config/fusionbox/config.yaml` 只声明**会被实际读取**的键，避免「改了开关却没生效」：
+
+| 键 | 作用 |
+|---|---|
+| `general.lang` | 输出语言 `auto` / `zh_CN` / `en` |
+| `general.stats` | 匿名统计（默认关闭，等同 `fusionbox privacy`） |
+| `general.color` | `false` 关闭全部 ANSI 颜色（适合日志重定向） |
+| `system.monitor_interval` | `fusionbox system monitor` 刷新间隔（秒） |
+| `system.backup_dir` | `fusionbox system backup\|restore` 默认目录 |
+| `network.speedtest_server` | 测速节点：`auto` 或数值节点 ID |
+
+自动更新等不在此文件的设置，请在文件末尾的说明中找到它们的真实归属。
 
 ## 文档索引
 
