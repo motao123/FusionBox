@@ -15,6 +15,12 @@ import archive
 
 
 class ArchiveScopes(unittest.TestCase):
+    # 用户可见报错的措辞已在不同分支本地化（英文原文 vs 中文 + 下一步指引）。
+    # 断言「拒绝了哪个条件」，而不是「用了哪句文案」——否则测试会随着文案本地化
+    # 变成与被测行为无关的假失败。
+    def refused(self, *wordings):
+        return self.assertRaisesRegex(ValueError, '|'.join(wordings))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -51,16 +57,16 @@ class ArchiveScopes(unittest.TestCase):
     @unittest.skipIf(os.name == 'nt', 'POSIX symlinks and FIFOs')
     def test_links_and_special_files_refused(self):
         (self.root / 'etc/ssh/link').symlink_to('/tmp')
-        with self.assertRaisesRegex(ValueError, 'symlink'):
+        with self.refused('symlink', '符号链接'):
             archive.create(self.backup, 'ssh', self.root)
         (self.root / 'etc/ssh/link').unlink()
         os.mkfifo(self.root / 'etc/ssh/pipe')
-        with self.assertRaisesRegex(ValueError, 'special'):
+        with self.refused('special', '特殊文件'):
             archive.create(self.backup, 'ssh', self.root)
 
     def test_scope_mismatch_and_tampered_hash_refused(self):
         archive.create(self.backup, 'ssh', self.root)
-        with self.assertRaisesRegex(ValueError, 'not present'):
+        with self.refused('not present', '不在该备份中'):
             archive.verify(self.backup, 'cron')
         damaged = self.root / 'damaged.tar.gz'
         with tarfile.open(self.backup, 'r:gz') as source, tarfile.open(damaged, 'w:gz') as target:
@@ -70,12 +76,12 @@ class ArchiveScopes(unittest.TestCase):
                     payload = b'bad'
                     member.size = len(payload)
                 target.addfile(member, io.BytesIO(payload) if payload is not None else None)
-        with self.assertRaisesRegex(ValueError, 'checksum'):
+        with self.refused('checksum', '校验失败'):
             archive.verify(damaged, 'ssh')
 
     def test_preview_conflict_policies_and_selective_scope(self):
         archive.create(self.backup, ['ssh', 'cron'], self.root)
-        with self.assertRaisesRegex(ValueError, 'conflicts'):
+        with self.refused('conflicts', '目标已存在'):
             archive.preview(self.backup, ['ssh', 'cron'], self.root)
         replace = archive.preview(self.backup, ['ssh', 'cron'], self.root, 'replace')
         self.assertTrue(all(item['action'] == 'replace' for item in replace))
