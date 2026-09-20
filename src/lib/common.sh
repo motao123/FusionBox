@@ -23,9 +23,9 @@ FUSION_LOG_DIR="$FUSION_CONFIG_DIR/logs"
 FUSION_I18N_DIR="$FUSION_SRC/i18n"
 FUSION_TELEMETRY_ID_FILE="$FUSION_CONFIG_DIR/telemetry-id"
 FUSION_TELEMETRY_CONSENT_FILE="$FUSION_CONFIG_DIR/telemetry-consent"
-# Production collector URL is a controlled project constant. Until deployment,
-# the empty value makes opted-in sends a silent no-op.
-readonly FUSION_TELEMETRY_ENDPOINT=""
+# Production collector URL is a controlled project constant. Sends remain disabled
+# unless the operator explicitly enables anonymous statistics.
+readonly FUSION_TELEMETRY_ENDPOINT="https://fusionbox-telemetry.gdindex-demo.workers.dev/v1/event"
 
 # State variables
 F_LANG="auto"

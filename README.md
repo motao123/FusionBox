@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.30.0-blue)
+![version](https://img.shields.io/badge/version-1.31.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -8,7 +8,7 @@
 ![GitHub Stars](https://img.shields.io/github/stars/motao123/FusionBox)
 
 > 一站式 Linux 服务器全能管理工具箱：9 大模块 + 受管应用市场，Bash 为主、受控 Python 辅助，
-> 安全事务化设计（暂存/备份/校验/回滚），全部功能经真机隔离验证。
+> 采用暂存、备份、校验和回滚；各功能的本地测试、Linux 隔离验证与外部服务验收范围分别记录。
 
 ## 两分钟上手
 
@@ -58,16 +58,16 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.30.0）
+## 最近更新（v1.31.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增 ACME `preflight/status/issue/renew` 事务闭环：严格输入、DNS报告、端口/site/certbot检查，以及 Nginx 暂存校验和失败回滚
-- 签发成功后验证 SAN、有效期和证书/私钥匹配；challenge 与 TLS 配置采用 owner marker + SHA256 漂移保护，拒绝接管外部文件
-- renew 使用 `flock`、剩余天数阈值和证书指纹比较，仅在证书变化时校验并 reload Nginx
-- 本地专项 20 项、Linux 验证服务器 32 项通过；没有可控公网域名，因此真实 ACME 签发仍标记未验证
+- 集群新增单节点 `trust/connect/node-exec/migrate-key`；默认只用密钥，密码登录必须显式选择
+- 临时密码通过私有 FIFO 传递给 OpenSSH ASKPASS，不写入普通文件、命令参数或环境变量；会话结束清理
+- 公钥迁移先校验匹配私钥，远端追加后再验证纯密钥登录；主机密钥变更一律拒绝
+- Linux 临时高端口 OpenSSH 实际验收 11/11 通过，含错误密码、禁止自动降级、CLI 参数、公钥迁移和清理；生产 SSH 未改动
 
-完整版本历史（v1.29.0 → v1.2.0，含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考
 
@@ -365,7 +365,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 - 待真实凭据/环境才能验证（代码已有、持续标注未验证）：ACME 公网域名签发、Cloudflare API 联动、Telegram 送达、真实多节点集群、OCI Oracle 项（G32-34）
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见下方实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
-- 当前统计 Worker 尚待 Cloudflare 凭据与 D1 ID 配置；上线前客户端不会发送数据，README/Pages 仅展示 GitHub 主 Release 包下载量
+- 统计 Worker 已部署并使用 Cloudflare D1 聚合；匿名统计仍默认关闭，只有用户明确同意后才发送事件，Pages 显示的是去重后的累计匿名装机数
 - 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围
 
 完整对账与待办：[docs/implementation-status.md](docs/implementation-status.md)

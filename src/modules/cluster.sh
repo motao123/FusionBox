@@ -9,6 +9,9 @@ cluster_main() {
     remove|rm)        cluster_remove "$@" ;;
     import|export)    cluster_transfer "$cmd" "$@" ;;
     archive)          cluster_archive "$@" ;;
+    trust|connect)    cluster_session "$cmd" "$@" ;;
+    node-exec)        cluster_session exec "$@" ;;
+    migrate-key)      cluster_session migrate-key "$@" ;;
     list|ls)          cluster_list "$@" ;;
     exec|run)         cluster_exec "$@" ;;
     task|tasks)       cluster_task "$@" ;;
@@ -47,6 +50,11 @@ cluster_archive() {
   python3 "$FUSION_SRC/lib/archive_transfer.py" "$@" --directory "$CLUSTER_DIR"
 }
 
+cluster_session() {
+  _require_root
+  python3 "$FUSION_SRC/lib/cluster_session.py" --directory "$CLUSTER_DIR" "$@"
+}
+
 cluster_add() {
   _require_root
   local node_name ssh_addr ssh_port
@@ -80,7 +88,7 @@ cluster_list() {
     while IFS='|' read -r name addr port; do
     [[ -n "$name" ]] || continue
       local status="${F_RED}离线${F_RESET}"
-      if ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new -p "$port" "$addr" "echo ok" &>/dev/null; then
+      if ssh -n -F /dev/null -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$CLUSTER_DIR/known_hosts" -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no -o ConnectTimeout=3 -p "$port" "$addr" "echo ok" &>/dev/null; then
         status="${F_GREEN}在线${F_RESET}"
       fi
       msg "  $i) $name ($addr:$port) - $status"
@@ -125,7 +133,7 @@ cluster_exec() {
     msg "  ${F_CYAN}[$name]${F_RESET}"
     # 先声明再赋值，避免 local 吞掉 ssh 的退出码（SC2155）
     local result
-    result=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$port" "$addr" "$cmd_to_run" 2>&1)
+    result=$(ssh -n -F /dev/null -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$CLUSTER_DIR/known_hosts" -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no -o ConnectTimeout=10 -p "$port" "$addr" "$cmd_to_run" 2>&1)
     if [[ $? -eq 0 ]]; then
       echo "$result" | while IFS= read -r line; do
         msg "    $line"
@@ -163,7 +171,7 @@ cluster_sync() {
     msg_info "正在同步到 $name..."
     local destination="$addr"
     if [[ "${addr#*@}" == *:* ]]; then destination="${addr%%@*}@[${addr#*@}]"; fi
-    scp -r -P "$port" -o ConnectTimeout=10 -- "$local_path" "$destination:$remote_path" 2>/dev/null && \
+    scp -F /dev/null -r -P "$port" -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$CLUSTER_DIR/known_hosts" -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no -o ConnectTimeout=10 -- "$local_path" "$destination:$remote_path" 2>/dev/null && \
       msg_ok "  $name: 同步成功" || \
       msg_err "  $name: 同步失败"
   done <<< "$CLUSTER_SNAPSHOT"
@@ -272,7 +280,7 @@ cluster_task() {
     for j in "${!run_cmds[@]}"; do
       msg "    ${F_BOLD}>${F_RESET} ${run_names[$j]}"
       # 先声明再赋值，避免 local 吞掉 ssh 的退出码（SC2155）
-      result=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$p" "$a" "${run_cmds[$j]}" < /dev/null 2>&1)
+      result=$(ssh -F /dev/null -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$CLUSTER_DIR/known_hosts" -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no -o ConnectTimeout=10 -p "$p" "$a" "${run_cmds[$j]}" < /dev/null 2>&1)
       rc=$?
       if [[ $rc -eq 0 ]]; then
         if [[ -n "$result" ]]; then
@@ -1053,7 +1061,11 @@ cluster_help() {
   msg "  fusionbox cluster add            添加集群节点"
   msg "  fusionbox cluster remove         删除集群节点"
   msg "  fusionbox cluster list           列出集群节点"
-  msg "  fusionbox cluster exec <cmd>     批量执行命令"
+  msg "  fusionbox cluster trust <节点>   核对指纹后固定 known_hosts"
+  msg "  fusionbox cluster connect <节点> [--password|--password-fd N]"
+  msg "  fusionbox cluster node-exec <节点> [密码选项] -- <命令> [参数...]"
+  msg "  fusionbox cluster migrate-key <节点> [密码选项] [--public-key 路径]"
+  msg "  fusionbox cluster exec <cmd>     批量执行命令（仅密钥）"
   msg "  fusionbox cluster task           预置批量任务（状态/更新/清理/BBR 等）"
   msg "  fusionbox cluster archive --help  校验归档 push/pull/status（密钥、严格 known_hosts）"
   msg "  fusionbox cluster sync           同步文件到集群"
