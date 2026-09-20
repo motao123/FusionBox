@@ -349,6 +349,20 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+section "15. CNB 流水线：镜像显式指定 + tag_push 脚本 POSIX 兼容"
+# ---------------------------------------------------------------------------
+CNB_YML="$REPO_ROOT/.cnb.yml"
+check_contains "CI 显式指定 python 镜像" "image: python:3.11" \
+  grep -F 'image: python:3.11' "$CNB_YML"
+# 默认 Runner shell 是 sh（dash）；tag_push 脚本内出现 [[ ]] 会在 dash 下报错。
+# 只审查 tag_push 段落：CI 段落通过 bash -n / bash tests 显式调用 bash，不受影响。
+if awk '/^  tag_push:/{f=1} /^main:/{f=0} f' "$CNB_YML" | grep -qF '[['; then
+  bad "tag_push 脚本不含 bashism [[ ]]"
+else
+  ok "tag_push 脚本不含 bashism [[ ]]"
+fi
+check_contains "tag_push 版本校验用 POSIX case" 'case "$CNB_BRANCH" in' \
+  grep -F 'case "$CNB_BRANCH" in' "$CNB_YML"
 printf '\n\033[1m== 结果 ==\033[0m\n'
 printf '通过 %d / 失败 %d\n' "$PASS" "$FAIL"
 if (( FAIL > 0 )); then

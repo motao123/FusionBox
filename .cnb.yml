@@ -19,16 +19,25 @@
       stages:
         - name: validate-version
           script: |
-            set -euo pipefail
+            # POSIX sh：默认 Runner shell 是 sh（dash），不要用 bash 专属语法。
+            set -eu
             tag="${CNB_BRANCH#v}"
             version="$(tr -d '[:space:]' < version.txt)"
-            [[ "$CNB_BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Tag 必须是 vX.Y.Z 形式: $CNB_BRANCH"; exit 1; }
-            [[ "$tag" == "$version" ]] || { echo "Tag ($tag) 与 version.txt ($version) 不一致"; exit 1; }
-            grep -Fqx "export FUSION_VER=\"$version\"" src/init.sh || { echo "src/init.sh 版本号与 version.txt 不一致"; exit 1; }
+            case "$CNB_BRANCH" in
+              v[0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "Tag 必须是 vX.Y.Z 形式: $CNB_BRANCH"; exit 1 ;;
+            esac
+            if [ "$tag" != "$version" ]; then
+              echo "Tag ($tag) 与 version.txt ($version) 不一致"; exit 1
+            fi
+            if ! grep -Fqx "export FUSION_VER=\"$version\"" src/init.sh; then
+              echo "src/init.sh 版本号与 version.txt 不一致"; exit 1
+            fi
             echo "版本校验通过: v$version"
         - name: package
           script: |
-            set -euo pipefail
+            # POSIX sh：同上，避免 bash 专属语法。
+            set -eu
             # 资产名与 install.sh 期望的 FusionBox-$tag.tar.gz 保持一致（tag 含 v 前缀）
             git archive --format=tar.gz --prefix=FusionBox/ -o "FusionBox-${CNB_BRANCH}.tar.gz" HEAD
             sha256sum "FusionBox-${CNB_BRANCH}.tar.gz" > SHA256SUMS

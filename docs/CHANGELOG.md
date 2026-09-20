@@ -2,6 +2,13 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.36.1 修复 tag_push 发布流水线
+
+- 修复 CNB `tag_push` 发布流水线 `validate-version` 阶段必失败的问题：默认 Runner 的 shell 是 `sh`（dash），而脚本使用了 bash 专属的 `[[ ... ]]`，实测报 `sh: 4: [[: not found` 后直接退出，导致 Tag 推送无法产出发布资产。
+- 将 `validate-version` 与 `package` 脚本改写为 POSIX `sh` 兼容（`case` 做格式校验、`[ ... ]` 做比较、`set -eu` 不依赖 `pipefail`），版本一致性校验逻辑不变。
+- `tests/run_checks.sh` 回归检查由 90 项扩展至 93 项：新增「CI 显式指定镜像」「tag_push 段落不含 bash 专属语法」「版本校验用 POSIX case」三项，防止回退。
+- 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.36.1。
+
 ## v1.36.0 备份/恢复报错中文化、建议清单收尾
 
 - 备份与恢复的全部用户可触达报错改为中文并给出下一步，不再暴露英文技术串：未知备份范围、备份文件重名、恢复冲突（abort 策略下目标已存在）、备份中不含所请求范围、备份源在快照期间变化、归档校验失败等。
