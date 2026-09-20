@@ -2,6 +2,18 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.33.0 OpenSSH 只读预检与破坏性边界
+
+- 新增 `fusionbox system ssh-preflight`：只读运行 `sshd -t/-T`，汇总有效端口、认证策略、授权密钥路径、systemd 服务/socket activation 和当前 TCP listeners；不会写配置、切换版本或 reload 服务。
+- 提供候选升级前的配置有效性与监听状态证据；测试服务器 5522 端口真实预检通过，并如实报告 `PermitRootLogin yes`、`PasswordAuthentication yes`，未修改 SSH。
+- DD 重装、OpenSSH 候选版本并行启动/切换和自动回滚仍未实现；必须先有专用机器、固定下载摘要、双重确认、救援通道和独立故障演练。
+- 预检从主入口绕过日志/统计初始化；服务状态查询失败保留 unknown，`switch_allowed` 恒为 false，不能据此批准版本切换。
+- 修复 SSH 进程组在 leader 已退出、子进程忽略 TERM 时的清理；密码 writer 非阻塞且可取消，ASKPASS 仅支持初次密码提示且原子单次消费；known_hosts 通过锁定 FD 读取、检查路径漂移和子命令错误，追加前补 LF。
+- Oracle 识别进一步收紧：普通 Oracle DMI 不证明 OCI，metadata 严格验证后仅输出证据类别，状态检查不读取未知登记内容；help/别名均使用只读入口。
+- 首页版本说明替换为“累计装机 N 次”；受限 Cloudflare Token 存 GitHub Secrets，持续部署验证公网汇总，缺少凭据时明确失败。累计量为 opt-in 安装标识去重数，详见隐私说明。
+- Linux 验证服务器完整回归：42 项基础检查 + 632 项行为测试全部通过、零跳过；另有独立高端口 sshd 11/11 验收，包含无尾换行公钥保留、重复迁移、认证失败与资源清理。ASKPASS 重复提示和孤儿进程使用真实本地子进程测试；未声称真实密码过期/PAM 改密服务器验收。
+- 修复全量回归发现的 THP 空快照恢复：原 unit 与当前文件都不存在时不调用 systemctl。本地真实 Worker/D1 写入验证重复 install/heartbeat 只增加一个安装标识；没有向线上库写入测试安装数据。
+
 ## v1.32.0 Oracle 只读识别与旧保活边界
 
 - 新增 `fusionbox cluster oracle detect|status`：本机 OCI 证据识别，可选一次有界、禁止代理和重定向的 OCI metadata 只读探测；不读取实例凭据、不输出实例标识。

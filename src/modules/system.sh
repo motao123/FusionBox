@@ -17,6 +17,7 @@ system_main() {
     users)            system_users "$@" ;;
     hardening)        system_hardening ;;
     security|sec)     system_security "$@" ;;
+    ssh-preflight)    system_ssh_preflight "$@" ;;
     sshkey|ssh)       system_sshkey "$@" ;;
     firewall|fw)      system_firewall "$@" ;;
     cron|crontab)     system_cron "$@" ;;
@@ -1397,6 +1398,13 @@ system_hardening() {
   msg ""
   msg_ok "加固流程结束。回滚方式: users del $name / users unsudo $name；root 策略可用 sshkey 菜单调整"
   _log_write "SSH 加固向导完成: $name (verified=$verified)"
+}
+
+# ---- SSH candidate preflight ----
+system_ssh_preflight() {
+  _require_root
+  [[ $# -eq 0 ]] || { msg_err "用法: fusionbox system ssh-preflight"; return 2; }
+  python3 -B "$FUSION_SRC/lib/system_safety.py" ssh-preflight
 }
 
 # ---- Security Audit ----
@@ -4368,6 +4376,7 @@ system_help() {
   msg "  fusionbox system users          用户管理 (list/add/del/sudo/unsudo/passwd)"
   msg "  fusionbox system hardening      SSH 加固：新建密钥用户并收紧 root 登录"
   msg "  fusionbox system security       安全审计与加固"
+  msg "  fusionbox system ssh-preflight  只读检查 sshd 配置/服务/监听，不切换版本"
   msg "  fusionbox system sshkey         SSH 密钥管理"
   msg "  fusionbox system firewall       防火墙管理 (UFW/iptables)"
   msg "  fusionbox system cron           定时任务管理"

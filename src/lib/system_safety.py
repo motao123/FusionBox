@@ -132,6 +132,67 @@ def no_match(path, seen=None):
                     no_match(Path(included), seen)
 
 
+def _command_output(*args):
+    try:
+        result = subprocess.run(args, check=False, text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    return result.returncode, result.stdout
+
+
+def ssh_preflight(path=Path('/etc/ssh/sshd_config')):
+    """Read-only SSH upgrade/switch preflight; never reloads or edits sshd."""
+    path = Path(path)
+    regular(path)
+    if not shutil.which('sshd'):
+        raise ValueError('sshd is required for SSH preflight')
+    config_test = _command_output('sshd', '-t', '-f', str(path))
+    if config_test[0] != 0:
+        raise ValueError('sshd configuration validation failed')
+    effective_code, effective_text = _command_output('sshd', '-T', '-f', str(path))
+    if effective_code != 0 or effective_text is None:
+        raise ValueError('Unable to read effective sshd configuration')
+    values = {}
+    for line in effective_text.splitlines():
+        words = line.split(None, 1)
+        if len(words) == 2 and words[0] in {
+                'port', 'listenaddress', 'permitrootlogin', 'passwordauthentication',
+                'kbdinteractiveauthentication', 'pubkeyauthentication', 'authorizedkeysfile'}:
+            values.setdefault(words[0], []).append(words[1])
+    units = {}
+    for unit in ('ssh.service', 'sshd.service', 'ssh.socket', 'sshd.socket'):
+        code, output = _command_output('systemctl', 'is-active', unit)
+        state = (output or '').strip()
+        units[unit] = True if code == 0 and state == 'active' else (
+            False if code in (3, 4) and state in ('inactive', 'failed', 'unknown') else None)
+    listeners = None
+    if shutil.which('ss'):
+        code, output = _command_output('ss', '-H', '-ltn')
+        if code == 0 and output is not None:
+            listeners = []
+            for line in output.splitlines():
+                words = line.split()
+                if len(words) >= 4:
+                    listeners.append(words[3])
+    result = {
+        'config': str(path),
+        'config_valid': True,
+        'effective': values,
+        'service': units,
+        'listeners': listeners,
+        'current_session': bool(os.environ.get('SSH_CONNECTION')),
+        'mutation_performed': False,
+        'switch_allowed': False,
+        'switch_blockers': ['candidate build, independent login and rollback are not verified'],
+        'socket_activation_detected': any(
+            units.get(unit) is True for unit in ('ssh.socket', 'sshd.socket')),
+        'service_state_complete': all(value is not None for value in units.values()),
+    }
+    print(json.dumps(result, sort_keys=True))
+    return result
+
+
 def ssh_change(path, directive, value):
     regular(path)
     if directive == 'Port':
@@ -533,6 +594,8 @@ def _restore_unit_state(saved, unit_file):
         return
     unit_file = Path(unit_file)
     if not saved['exists']:
+        if not unit_file.exists() and not unit_file.is_symlink():
+            return
         if shutil.which('systemctl'):
             subprocess.run(['systemctl', 'disable', '--now', 'fusionbox-thp.service'],
                            check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -929,7 +992,7 @@ def tuning(action, profile=None, etc=Path('/etc'), state_dir=Path('/var/lib/fusi
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['keys-add', 'keys-list', 'keys-check', 'keys-delete', 'ssh', 'swap', 'fail2ban',
+    parser.add_argument('action', choices=['keys-add', 'keys-list', 'keys-check', 'keys-delete', 'ssh', 'ssh-preflight', 'swap', 'fail2ban',
                                            'user-add', 'user-del', 'passwd-set', 'sudo-grant', 'sudo-revoke', 'user-key-install',
                                            'f2b-unban', 'f2b-uninstall', 'login-alert', 'tuning'])
     parser.add_argument('values', nargs='*')
@@ -940,6 +1003,10 @@ def main():
         elif args.action.startswith('keys-'):
             keys_action(Path.home() / '.ssh/authorized_keys', args.action[5:],
                         int(args.values[0]) if args.values else None)
+        elif args.action == 'ssh-preflight':
+            if args.values:
+                raise ValueError('ssh-preflight takes no arguments')
+            ssh_preflight()
         elif args.action == 'ssh':
             ssh_change(Path('/etc/ssh/sshd_config'), *args.values)
         elif args.action == 'swap':

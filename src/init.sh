@@ -1,7 +1,7 @@
 # FusionBox Initialization
 # Loaded by fusion.sh on startup
 
-export FUSION_VER="1.32.0"
+export FUSION_VER="1.33.0"
 export FUSION_CODENAME="FusionBox"
 
 # Source common library

@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.32.0-blue)
+![version](https://img.shields.io/badge/version-1.33.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -36,7 +36,7 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | 应用市场 | `fusionbox market` | 80+应用一键安装 (10个分类) |
 | WARP管理 | `fusionbox warp` | Cloudflare WARP 安装/Proxy模式/流媒体解锁 |
 | 后台工作区 | `fusionbox workspace` | Screen/Tmux 会话管理 |
-| 集群控制 | `fusionbox cluster` | 多服务器批量管理/游戏服务端/Oracle防回收/k命令 |
+| 集群控制 | `fusionbox cluster` | 多服务器批量管理/游戏服务端/OCI只读识别/k命令 |
 
 ---
 
@@ -58,14 +58,15 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.32.0）
+## 最近更新（v1.33.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增 `fusionbox cluster oracle detect|status`：OCI 本机证据与可选 metadata 只读识别，禁止代理/重定向，不读取实例凭据
-- 状态检查区分受管登记、Docker 可用性和旧 `oracle-keepalive` 残留；只读入口不创建日志、锁或统计标识
-- lookbusy 负载安装、启停和卸载在固定镜像 digest 与 Linux 隔离验收前明确拒绝，不自动接管旧 cron
-- v1.31 集群会话仍提供临时密码 FIFO、严格 known_hosts 和密钥迁移；真实多节点与 Oracle Docker 生命周期继续未验证
+- 新增 `fusionbox system ssh-preflight`：只读检查 `sshd -t/-T`、有效端口/认证策略、systemd/socket activation 和当前监听，不编辑配置、不 reload 服务
+- 预检入口跳过日志和统计，服务查询失败保留未知状态；`switch_allowed` 恒为 false，不能用配置检查代替候选版本登录与回滚验收
+- 修复集群一次性 ASKPASS、退出进程组清理、主机密钥锁内复核；Oracle 识别拒绝普通 Oracle 设备误判与畸形 metadata
+- 首页仅显示“累计装机 N 次”，连接 Cloudflare/D1 公开汇总；统计仍默认关闭，安装 ID 去重口径见隐私说明
+- DD 重装、OpenSSH 候选版本切换、Oracle lookbusy 生命周期仍未完成；现有验证服务器未执行破坏性操作
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
