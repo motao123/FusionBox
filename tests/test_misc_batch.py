@@ -64,10 +64,14 @@ workspace_work send 3 "echo hi" || exit 9
 confirm() { return 0; }
 workspace_work kill 3 || exit 9'''
         self.run_shell('workspace', body)
-        tmux = (self.root / 'tmux').read_text()
-        self.assertIn('new -s work3', tmux)
-        self.assertIn('send work3 echo hi C-m', tmux)
-        self.assertIn('kill work3', tmux)
+        lines = (self.root / 'tmux').read_text().strip().splitlines()
+        # 槽位 3 的会话名由实现决定（曾为 work3，现为 w3）。这里断言的是真正的不变量：
+        # new/send/kill 三处必须使用同一个槽位名，且名字指向槽位 3。把品牌字符串写死，
+        # 会在命名演进时变成一个与被测行为无关的假失败。
+        self.assertRegex(lines[0], r'^new -s (?:work|w)3$')
+        session = lines[0].split()[-1]
+        self.assertEqual(lines[1], 'send %s echo hi C-m' % session)
+        self.assertEqual(lines[2], 'kill %s' % session)
 
     def test_invalid_number_refused(self):
         body = self.tmux_mock() + '''workspace_work new 11 || exit 9
