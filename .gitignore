@@ -6,7 +6,11 @@
 backups/
 fusionbox_backup_*.tar.gz
 __pycache__/
-tests/
+# v1.34.0: tests/run_checks.sh ships with the repo for CI; other local test
+# artefacts stay ignored. Git cannot re-include a file whose parent dir is
+# ignored, so ignore the contents rather than the directory.
+tests/*
+!tests/run_checks.sh
 node_modules/
 telemetry-worker/node_modules/
 telemetry-worker/.wrangler/

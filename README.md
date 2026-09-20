@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.33.0-blue)
+![version](https://img.shields.io/badge/version-1.34.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -20,7 +20,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/inst
 
 ```bash
 fusionbox system tools                # 系统工具箱（SSH/防火墙/磁盘/用户管理/加固向导）
-fusionbox market managed catalog      # 受管应用市场（10 个模板，一键部署/备份/卸载）
+fusionbox market managed catalog      # 受管应用市场（模板数动态读取，一键部署/备份/卸载）
 fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路由等）
 ```
 
@@ -29,14 +29,14 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | 模块 | 命令 | 功能 |
 |------|------|------|
 | 代理管理 | `fusionbox proxy` | 多后端代理 (Xray/v2ray/233boy sing-box/Clash.Meta) |
-| 系统管理 | `fusionbox system` | BBR/基准测试/备份/SSH/防火墙/定时任务/磁盘/时区/回收站 |
+| 系统管理 | `fusionbox system` | BBR/基准测试/备份/SSH/防火墙/定时任务/磁盘/时区/回收站/救援指引 |
 | 网络工具 | `fusionbox network` | IP查询/流媒体检测/测速/DNS/路由追踪/端口检测 |
 | 网站部署 | `fusionbox web` | LNMP/SSL/17种应用部署/反向代理/L4转发/站点备份 |
 | 面板工具 | `fusionbox panels` | Docker完整管理/宝塔/Aapanel/FRP/Aria2 |
 | 应用市场 | `fusionbox market` | 80+应用一键安装 (10个分类) |
 | WARP管理 | `fusionbox warp` | Cloudflare WARP 安装/Proxy模式/流媒体解锁 |
-| 后台工作区 | `fusionbox workspace` | Screen/Tmux 会话管理 |
-| 集群控制 | `fusionbox cluster` | 多服务器批量管理/游戏服务端/OCI只读识别/k命令 |
+| 后台工作区 | `fusionbox workspace` | 编号工作区 w1-w10 (tmux/screen 自动选择) |
+| 集群控制 | `fusionbox cluster` | 多服务器批量管理/游戏服务端/OCI只读识别/k命令/中文速查表 |
 
 ---
 
@@ -58,15 +58,16 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.33.0）
+## 最近更新（v1.34.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增 `fusionbox system ssh-preflight`：只读检查 `sshd -t/-T`、有效端口/认证策略、systemd/socket activation 和当前监听，不编辑配置、不 reload 服务
-- 预检入口跳过日志和统计，服务查询失败保留未知状态；`switch_allowed` 恒为 false，不能用配置检查代替候选版本登录与回滚验收
-- 修复集群一次性 ASKPASS、退出进程组清理、主机密钥锁内复核；Oracle 识别拒绝普通 Oracle 设备误判与畸形 metadata
-- 首页仅显示“累计装机 N 次”，连接 Cloudflare/D1 公开汇总；统计仍默认关闭，安装 ID 去重口径见隐私说明
-- DD 重装、OpenSSH 候选版本切换、Oracle lookbusy 生命周期仍未完成；现有验证服务器未执行破坏性操作
+- 修复首次使用就被卡住的三个场景：缺 python3 报「不支持的应用 ID」、全新机器 `system backup` 必然失败、受管市场错误被「输出已隐藏」掩盖
+- 主菜单与 `status` 增加依赖自检（python3 / docker / docker compose v2 / curl），并说明缺失时哪些功能受影响
+- `market managed`、`panels compose-backup`、`panels docker-migration` 无参时输出中文帮助，不再出现英文 argparse 堆栈
+- 新增 `fusionbox log`、`fusionbox rescue`（只读救援指引）、`fusionbox cluster alias`（中文速查表）
+- 编号工作区固定为 `w1`-`w10`，可直接 `fusionbox ws w3` 重连，支持 tmux/screen 自动选择与回显查看
+- 受管应用数量改为从 catalog 动态读取；`status` 同时显示可用核数与宿主核数；缺 `ping` 等命令时给出安装建议
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -419,7 +420,7 @@ FusionBox/
 ├── templates/
 │   ├── nginx/
 │   └── docker/
-└── tests/                     # 行为测试（本地与验证服务器使用，不随仓库发布）
+└── tests/                     # CI 回归检查 run_checks.sh（v1.34.0 起随仓库发布，覆盖首次使用体验修复）
 ```
 
 </details>

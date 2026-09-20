@@ -1549,9 +1549,36 @@ def resume(transaction):
     return _execute_restore(path, journal)
 
 
-def main():
+HELP_TEXT = """Docker 离线迁移
+
+用法: fusionbox panels docker-migration <操作> [参数] [选项]
+
+操作:
+  export <bundle>      导出（--container 或 --compose-project 二选一）
+  verify <bundle>      校验离线包完整性
+  preflight <bundle>   只读目标兼容性与冲突预检
+  restore <bundle>     恢复（--confirm-clean-target 清空目标）
+  rollback <事务ID>    回滚
+  resume <事务ID>      续跑中断的恢复
+
+示例: fusionbox panels docker-migration preflight ./mybundle
+"""
+
+
+class _ChineseArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        print('参数有误: ' + message, file=sys.stderr)
+        print(HELP_TEXT, file=sys.stderr)
+        raise SystemExit(2)
+
+
+def main(argv=None):
     os.umask(0o077)
-    parser = argparse.ArgumentParser(description=__doc__)
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv or argv[0] in ('help', '--help', '-h'):
+        print(HELP_TEXT)
+        return
+    parser = _ChineseArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='action', required=True)
     create = sub.add_parser('export')
     create.add_argument('bundle')
@@ -1578,7 +1605,7 @@ def main():
     undo.add_argument('transaction')
     again = sub.add_parser('resume')
     again.add_argument('transaction')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.action == 'verify':
         declaration = inspect_bundle(args.bundle)
         print('Verified docker-v1 bundle:', declaration['selection']['kind'])

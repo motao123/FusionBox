@@ -20,6 +20,7 @@ cluster_main() {
     game-manage|gm)   cluster_game_manage "$@" ;;
     oracle|oc)        cluster_oracle "$@" ;;
     kcmd|k)           cluster_kcmd "$@" ;;
+    alias|cheatsheet|ref) cluster_k_alias ;;
     sshout|out)       cluster_sshout "$@" ;;
     menu|main)        cluster_menu ;;
     help|h)           cluster_help ;;
@@ -930,6 +931,49 @@ cluster_sshout() {
   esac
 }
 
+# ---- k 风格中文速查表 (A 档) ----
+# A single page that pairs each common command with a one-line human explanation,
+# so users do not have to memorise the CLI surface or read the source.
+cluster_k_alias() {
+  _require_root
+  msg_title "FusionBox 常用命令速查表"
+  msg ""
+  msg "  ${F_BOLD}一、系统${F_RESET}"
+  msg "  ${F_GREEN}fusionbox status${F_RESET}              一屏看 CPU/内存/磁盘/各模块运行状态"
+  msg "  ${F_GREEN}fusionbox system info${F_RESET}         更详细的系统信息"
+  msg "  ${F_GREEN}fusionbox system bbr${F_RESET}          开启/切换 TCP 拥塞控制算法"
+  msg "  ${F_GREEN}fusionbox system backup${F_RESET}       按范围备份（数据库需自行 dump）"
+  msg "  ${F_GREEN}fusionbox system restore${F_RESET}      从备份恢复（有预览与回滚）"
+  msg "  ${F_GREEN}fusionbox system log${F_RESET}          查看 FusionBox 运行日志"
+  msg "  ${F_GREEN}fusionbox system rescue${F_RESET}       出事了看这里：恢复命令与备份位置"
+  msg ""
+  msg "  ${F_BOLD}二、网络${F_RESET}"
+  msg "  ${F_GREEN}fusionbox network ping${F_RESET} <主机>   基础连通性测试"
+  msg "  ${F_GREEN}fusionbox network port${F_RESET} <主机> <端口>  检查端口是否可连"
+  msg "  ${F_GREEN}fusionbox network mtr${F_RESET} <主机>    路由追踪（回程分析）"
+  msg "  ${F_GREEN}fusionbox network speedtest${F_RESET}    测速"
+  msg ""
+  msg "  ${F_BOLD}三、应用与站点${F_RESET}"
+  msg "  ${F_GREEN}fusionbox market managed catalog${F_RESET}      看有哪些受管应用"
+  msg "  ${F_GREEN}fusionbox market managed install nginx${F_RESET} --confirm  装一个受管应用"
+  msg "  ${F_GREEN}fusionbox web lnmp${F_RESET}            安装 LNMP 环境"
+  msg "  ${F_GREEN}fusionbox web ssl${F_RESET}             申请/管理 SSL 证书"
+  msg "  ${F_GREEN}fusionbox panels docker${F_RESET}       Docker 管理"
+  msg ""
+  msg "  ${F_BOLD}四、后台与多机${F_RESET}"
+  msg "  ${F_GREEN}fusionbox ws w3${F_RESET}               进入 3 号后台槽位"
+  msg "  ${F_GREEN}fusionbox ws list${F_RESET}             看所有后台会话"
+  msg "  ${F_GREEN}fusionbox cluster nodes${F_RESET}       多服务器批量管理"
+  msg ""
+  msg "  ${F_BOLD}五、自维护${F_RESET}"
+  msg "  ${F_GREEN}fusionbox update${F_RESET}              更新到最新版（有校验与回滚）"
+  msg "  ${F_GREEN}fusionbox privacy${F_RESET}             匿名统计开关"
+  msg "  ${F_GREEN}fusionbox help${F_RESET}                完整帮助"
+  msg ""
+  msg_info "提示: 可用 fusionbox cluster kcmd 配置你自己的短别名"
+  msg ""
+}
+
 cluster_kcmd() {
   _require_root
   local kcmd_dir="/etc/fusionbox/kcmd"
@@ -965,11 +1009,13 @@ KEOF
 
   msg "  ${F_BOLD}已配置的快捷命令:${F_RESET}"
   msg ""
-  cat "$kcmd_file" | grep "^alias" | while IFS= read -r line; do
-    local alias_name=$(echo "$line" | sed "s/alias \([^=]*\)=.*/\1/")
-    local alias_cmd=$(echo "$line" | sed "s/alias [^=]*='\(.*\)'/\1/")
+  while IFS= read -r line; do
+    [[ "$line" == alias* ]] || continue
+    local alias_name alias_cmd
+    alias_name=$(echo "$line" | sed "s/alias \([^=]*\)=.*/\1/")
+    alias_cmd=$(echo "$line" | sed "s/alias [^=]*='\(.*\)'/\1/")
     msg "  ${F_GREEN}$alias_name${F_RESET} → $alias_cmd"
-  done
+  done < "$kcmd_file"
 
   msg ""
   msg "  1) 添加自定义快捷命令"

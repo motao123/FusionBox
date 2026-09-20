@@ -295,12 +295,10 @@ network_ping() {
   msg_title "Ping 测试"
   msg ""
 
-  if command -v ping &>/dev/null; then
+  if _require_optional_cmd ping iputils-ping "Ping 测试"; then
     ping -c 5 "$target" 2>/dev/null | while read -r line; do
       msg "  $line"
     done
-  else
-    msg_err "ping 未找到"
   fi
   pause
 }

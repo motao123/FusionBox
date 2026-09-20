@@ -2,6 +2,22 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.34.0 首次使用体验修复与依赖前置检查
+
+- 修复 `market.sh` 中 `2>/dev/null` 吞掉 python3 缺失错误导致的误导提示「不支持的受管应用 ID」；缺 python3 时现在给出中文原因与安装命令。
+- 新增全局依赖自检：主菜单与 `fusionbox status` 显示 python3 / docker / docker compose v2 / curl 状态与受影响功能；`_require_python3`、`_require_docker_compose` 等守卫覆盖备份/恢复、用户与 SSH 管理、受管市场等 50+ 调用点。
+- 修复全新机器 `system backup` 必然失败：不存在的 scope 跳过并中文提示，全部为空才失败；新增 `--require-all-scopes` 恢复严格模式。
+- 受管市场新增 Docker/Compose v2 前置检查，缺依赖时给出中文原因与安装命令，不再以「输出已隐藏」掩盖根因。
+- `market managed`、`panels compose-backup`、`panels docker-migration` 无参时输出中文帮助，不再暴露英文 argparse 堆栈。
+- 受管应用菜单文案改为从 catalog 动态读取数量，并修正为「受管应用生命周期」；README 同步。
+- `en.sh` 鸣谢串补英文翻译；`status` 与应用信息同时显示可用核数与宿主核数（容器内不再误报宿主核数）。
+- 缺 `ping` 等可选命令时给出安装建议，不再只报「未找到」。
+- 重新纳入 `tests/run_checks.sh` CI 回归检查（59 项）：覆盖依赖前置检查、空 scope 跳过、无参中文帮助、i18n 英文环境、CPU 口径、编号工作区槽位归一化与新入口；此前 v1.24.2 移出仓库的 `tests/` 仅供 CI 使用，不含本地/验证服务器专用用例。
+- 修复 `show_dependency_status` 与 `show_logs` 未走 i18n 的问题：英文环境不再输出中文依赖自检与日志标题。
+- 新增 `fusionbox log`/`system log fusionbox` 日志入口、`fusionbox rescue` 只读救援指引、`fusionbox cluster alias` 中文速查表。
+- 编号工作区升级为固定槽位 `w1`-`w10`，支持 tmux/screen 自动选择，可直接 `fusionbox ws w3` 进入、`ws w3 send/capture` 注入与查看回显。
+- `fusionbox help` 增加依赖说明；版本号同步为 1.34.0。
+
 ## v1.33.0 OpenSSH 只读预检与破坏性边界
 
 - 新增 `fusionbox system ssh-preflight`：只读运行 `sshd -t/-T`，汇总有效端口、认证策略、授权密钥路径、systemd 服务/socket activation 和当前 TCP listeners；不会写配置、切换版本或 reload 服务。

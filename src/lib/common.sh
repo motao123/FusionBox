@@ -488,6 +488,50 @@ _check_pkg() {
   fi
 }
 
+# ---- CPU accounting ----
+# `nproc --all` reports host cores, which is misleading inside containers where
+# cgroup limits apply. Report both so users can judge the machine correctly.
+_cpu_cores_available() {
+  local n
+  # cgroup v2
+  if [[ -r /sys/fs/cgroup/cpu.max ]]; then
+    read -r quota period < /sys/fs/cgroup/cpu.max 2>/dev/null || true
+    if [[ "$quota" =~ ^[0-9]+$ && "$period" =~ ^[0-9]+$ && "$period" -gt 0 ]]; then
+      n=$(( (quota + period - 1) / period ))
+      (( n > 0 )) && { printf '%s' "$n"; return; }
+    fi
+  fi
+  # cgroup v1
+  if [[ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us && -r /sys/fs/cgroup/cpu/cpu.cfs_period_us ]]; then
+    local q pr
+    q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || echo -1)
+    pr=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null || echo 0)
+    if [[ "$q" =~ ^[0-9]+$ && "$pr" =~ ^[0-9]+$ && "$q" -gt 0 && "$pr" -gt 0 ]]; then
+      n=$(( (q + pr - 1) / pr ))
+      (( n > 0 )) && { printf '%s' "$n"; return; }
+    fi
+  fi
+  # cpuset restriction
+  if [[ -r /sys/fs/cgroup/cpuset.cpus.effective ]] && [[ -s /sys/fs/cgroup/cpuset.cpus.effective ]]; then
+    n=$(nproc 2>/dev/null || echo 0)
+    (( n > 0 )) && { printf '%s' "$n"; return; }
+  fi
+  nproc 2>/dev/null || echo 0
+}
+
+_cpu_cores_host() { nproc --all 2>/dev/null || echo 0; }
+
+_cpu_cores_display() {
+  local avail host
+  avail=$(_cpu_cores_available)
+  host=$(_cpu_cores_host)
+  if [[ -n "$avail" && -n "$host" && "$avail" != "$host" ]]; then
+    printf '可用 %s 核 / 宿主 %s 核' "$avail" "$host"
+  else
+    printf '%s 核' "${avail:-$host}"
+  fi
+}
+
 # ---- File Helpers ----
 
 _download() {
@@ -510,4 +554,171 @@ _init_log() {
 
 _log_write() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$FUSION_LOG_DIR/fusionbox.log"
+}
+
+# ---- Dependency checks ----
+# Central guard for runtime dependencies. Missing python3 used to produce a
+# misleading "不支持的应用 ID" in the managed market and various English errors
+# across 50+ call sites; every python3 invocation must go through _require_python3.
+
+# Install hint for the detected package manager (never runs the install itself).
+_pkg_install_hint() {
+  local pkg="$1"
+  case "$F_PKG_MGR" in
+    apt)    printf 'apt-get update && apt-get install -y %s' "$pkg" ;;
+    yum)    printf 'yum install -y %s' "$pkg" ;;
+    apk)    printf 'apk add %s' "$pkg" ;;
+    zypper) printf 'zypper install -y %s' "$pkg" ;;
+    *)      printf '请用系统包管理器安装 %s' "$pkg" ;;
+  esac
+}
+
+# _require_cmd <command> <package> [影响说明]
+# Returns 0 when available; otherwise prints a Chinese reason + next step.
+_require_cmd() {
+  local cmd="$1" pkg="${2:-$1}" impact="${3:-}"
+  if command -v "$cmd" &>/dev/null; then
+    return 0
+  fi
+  msg_err "缺少必需命令: $cmd${impact:+（影响：$impact）}"
+  msg_info "安装方式: $(_pkg_install_hint "$pkg")"
+  return 1
+}
+
+_require_python3() {
+  _require_cmd python3 python3 "${1:-备份/恢复、系统信息、受管应用市场等}"
+}
+
+_require_docker() {
+  _require_cmd docker docker.io "Docker 管理、受管应用市场"
+}
+
+# Docker CLI present? (daemon check is separate so we can explain each case)
+_docker_cli_present() { command -v docker &>/dev/null; }
+
+# Docker Compose v2 present? Silent probe, no error output.
+_docker_compose_v2_present() {
+  command -v docker &>/dev/null || return 1
+  docker compose version &>/dev/null
+}
+
+# _require_docker_compose [影响说明]
+_require_docker_compose() {
+  local impact="${1:-受管应用市场}"
+  _require_docker || return 1
+  if _docker_compose_v2_present; then
+    return 0
+  fi
+  msg_err "缺少 Docker Compose v2（影响：$impact）"
+  msg_info "请安装 compose 插件：$(_pkg_install_hint docker-compose-plugin)"
+  msg_info "或参考: https://docs.docker.com/compose/install/linux/"
+  return 1
+}
+
+# _require_docker_daemon [影响说明] — CLI present but daemon unreachable.
+_require_docker_daemon() {
+  local impact="${1:-Docker 管理}"
+  _require_docker || return 1
+  if docker info &>/dev/null; then
+    return 0
+  fi
+  msg_err "Docker 守护进程不可用（影响：$impact）"
+  msg_info "请检查服务状态: systemctl status docker（或 service docker status）"
+  return 1
+}
+
+# Parse a comma separated scope list and keep only scopes whose sources exist.
+# Usage: _filter_existing_scopes <root> <scopes> ; writes kept scopes to stdout,
+# skipped ones are reported on stderr as "scope:path" lines.
+_scope_sources() {
+  case "$1" in
+    config)    printf 'etc/nginx etc/caddy' ;;
+    fusion)    printf 'etc/fusionbox' ;;
+    web)       printf 'var/www etc/nginx etc/caddy' ;;
+    docker)    printf 'opt/docker' ;;
+    ssh)       printf 'etc/ssh' ;;
+    cron)      printf 'etc/crontab etc/cron.d var/spool/cron' ;;
+    usr-local) printf 'usr/local' ;;
+    home)      printf 'home' ;;
+    *)         printf '' ;;
+  esac
+}
+
+_filter_existing_scopes() {
+  local root="${1:-/}" scopes="$2" scope source kept=""
+  local old_ifs="$IFS"
+  IFS=','
+  for scope in $scopes; do
+    IFS="$old_ifs"
+    scope="${scope// /}"
+    [[ -n "$scope" ]] || continue
+    local found=0
+    for source in $(_scope_sources "$scope"); do
+      if [[ -e "$root/$source" ]]; then found=1; break; fi
+    done
+    if [[ $found -eq 1 ]]; then
+      kept="${kept:+$kept,}$scope"
+    else
+      msg_warn "已跳过 scope ${scope}（$root/$(_scope_sources "$scope" | awk '{print $1}') 不存在）" >&2
+    fi
+    IFS=','
+  done
+  IFS="$old_ifs"
+  printf '%s' "$kept"
+}
+
+# ---- Dependency self-check (shown on first menu entry) ----
+# One-shot report of runtime dependencies and which modules are affected.
+show_dependency_status() {
+  local py='✗' dk='✗' dc='✗' cur='✗' line
+  command -v python3 &>/dev/null && py='✓'
+  command -v docker &>/dev/null && dk='✓'
+  _docker_compose_v2_present && dc='✓'
+  command -v curl &>/dev/null && cur='✓'
+  # i18n: keep English locale free of Chinese here too (the menu shows this line
+  # on every entry, so an untranslated literal would be very visible).
+  local line_fmt; line_fmt=$(_tr MSG_DEP_LINE "依赖自检: python3 %s | docker %s | docker compose v2 %s | curl %s")
+  # shellcheck disable=SC2059
+  msg "${F_BOLD}$(printf "$line_fmt" "$py" "$dk" "$dc" "$cur")${F_RESET}"
+  if [[ "$py" == '✗' ]]; then
+    msg "  ${F_YELLOW}$(_tr MSG_DEP_MISSING_PY "python3 缺失 → 受影响: 系统备份/恢复、用户与 SSH 管理、受管应用市场、集群")${F_RESET}"
+    msg "  $(_tr MSG_INSTALL_HINT "安装") : $(_pkg_install_hint python3)"
+  fi
+  if [[ "$dc" == '✗' ]]; then
+    msg "  ${F_YELLOW}$(_tr MSG_DEP_MISSING_COMPOSE "docker compose v2 缺失 → 受影响: 受管应用市场、Compose 备份/迁移")${F_RESET}"
+    [[ "$dk" == '✗' ]] && msg "  $(_tr MSG_INSTALL_HINT "安装") : $(_pkg_install_hint docker.io)"
+    msg "  $(_tr MSG_INSTALL_HINT "安装") compose: $(_pkg_install_hint docker-compose-plugin)"
+  fi
+  if [[ "$py" == '✓' && "$dc" == '✓' ]]; then
+    msg_ok "$(_tr MSG_DEP_OK "关键依赖齐备")"
+  fi
+}
+
+# ---- Optional command hint (ping/mtr/nmap/... are only needed by some tasks) ----
+_require_optional_cmd() {
+  local cmd="$1" pkg="${2:-$1}" feature="${3:-该功能}"
+  if command -v "$cmd" &>/dev/null; then
+    return 0
+  fi
+  msg_warn "未找到 $cmd，无法执行$feature"
+  msg_info "安装方式: $(_pkg_install_hint "$pkg")"
+  return 1
+}
+
+# ---- Log viewer ----
+show_logs() {
+  local lines="${1:-200}" log_file="$FUSION_LOG_DIR/fusionbox.log"
+  msg_title "$(_tr MSG_LOG_TITLE "FusionBox 日志")"
+  msg "  $(_tr MSG_LOG_FILE "日志文件") : $log_file"
+  msg ""
+  if [[ ! -f "$log_file" ]]; then
+    msg_warn "$(_tr MSG_LOG_EMPTY "暂无日志文件（尚未产生记录）")"
+    return 0
+  fi
+  local total; total=$(wc -l < "$log_file" 2>/dev/null || echo 0)
+  msg "  $(_tr MSG_LOG_SHOW "显示最近") $lines / $total:"
+  msg ""
+  tail -n "$lines" "$log_file"
+  msg ""
+  msg_info "$(_tr MSG_LOG_FULL "完整日志") : $log_file"
 }

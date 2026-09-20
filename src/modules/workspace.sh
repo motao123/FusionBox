@@ -158,85 +158,193 @@ workspace_tmux_menu() {
   done
 }
 
-# ---- 编号工作区 (G62)：work1-10 常驻 tmux 会话，支持命令注入与重连 ----
+# ---- 编号工作区 (G62)：w1-w10 固定槽位，支持命令注入与重连 ----
+# Slots are stable names (w1..w10) so a user reconnects with `fusionbox ws w3`
+# instead of hunting for PIDs in `screen -ls` / `tmux ls`.
+# Normalize "3" / "w3" / "work3" -> "3" (must strip "work" before the "w" prefix
+# check, otherwise "work7" would be mangled into "ork7").
+_ws_work_strip() {
+  local n="$1"
+  n="${n#work}"
+  n="${n#w}"
+  printf '%s' "$n"
+}
+
 _ws_work_check_n() {
-  [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 10 ] || {
-    msg_err "编号必须是 1-10: $1"
+  local n; n=$(_ws_work_strip "$1")
+  [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le 10 ] || {
+    msg_err "编号必须是 1-10（或 w1-w10）: $1"
     return 1
   }
 }
 
+# Normalize "3", "w3", "work3" -> "w3"
+_ws_work_name() {
+  local n; n=$(_ws_work_strip "$1")
+  _ws_work_check_n "$n" || return 1
+  printf 'w%s' "$n"
+}
+
+# tmux is preferred; screen is accepted as a fallback so the slots still work
+# on hosts where only screen is available. Prints the chosen tool.
 _ws_work_tool() {
   if command -v tmux &>/dev/null; then
     printf tmux
     return 0
   fi
-  msg_err "tmux 未安装（workspace work 需要 tmux）"
+  if command -v screen &>/dev/null; then
+    printf screen
+    return 0
+  fi
+  msg_err "编号工作区需要 tmux 或 screen，二者均未安装"
+  msg_info "安装方式: $(_pkg_install_hint tmux)  或  $(_pkg_install_hint screen)"
   return 1
+}
+
+# ---- Backend-agnostic slot operations (tmux or screen) ----
+_ws_slot_exists() {
+  local name="$1"
+  if type -t tmux &>/dev/null && command -v tmux &>/dev/null; then
+    tmux has-session -t "$name" 2>/dev/null && return 0
+  fi
+  if command -v screen &>/dev/null; then
+    screen -ls 2>/dev/null | grep -qE "[.]${name}[[:space:]]" && return 0
+  fi
+  return 1
+}
+
+_ws_slot_create() {
+  local name="$1" cmd="${2:-}"
+  if command -v tmux &>/dev/null; then
+    if [[ -n "$cmd" ]]; then
+      tmux new-session -d -s "$name" "$cmd"
+    else
+      tmux new-session -d -s "$name"
+    fi
+    return $?
+  fi
+  if [[ -n "$cmd" ]]; then
+    screen -dmS "$name" sh -c "$cmd; exec \${SHELL:-/bin/sh}"
+  else
+    screen -dmS "$name"
+  fi
+}
+
+_ws_slot_attach() {
+  local name="$1"
+  if command -v tmux &>/dev/null; then
+    tmux attach -t "$name"
+  else
+    screen -r "$name"
+  fi
+}
+
+_ws_slot_send() {
+  local name="$1" cmd="$2"
+  if command -v tmux &>/dev/null; then
+    tmux send-keys -t "$name" "$cmd" C-m
+  else
+    # screen has no non-interactive send-keys; paste via a temporary buffer file
+    screen -S "$name" -X stuff "$(printf '%s\r' "$cmd")"
+  fi
+}
+
+_ws_slot_kill() {
+  local name="$1"
+  if command -v tmux &>/dev/null && tmux has-session -t "$name" 2>/dev/null; then
+    tmux kill-session -t "$name"
+    return $?
+  fi
+  screen -S "$name" -X quit 2>/dev/null
 }
 
 workspace_work() {
   _require_root
   local action="${1:-menu}"
   local tool; tool=$(_ws_work_tool) || return 1
+  # 直接 `fusionbox ws w3`：省略动作时默认进入该槽位
+  if [[ "$action" =~ ^(w?[0-9]+)$ ]]; then
+    workspace_work attach "$action"
+    return $?
+  fi
 
   case "$action" in
     list)
-      local i state
-      msg "  ${F_BOLD}编号工作区 (tmux):${F_RESET}"
+      local i name state
+      msg "  ${F_BOLD}编号工作区 ($tool):${F_RESET}"
       for i in 1 2 3 4 5 6 7 8 9 10; do
-        if tmux has-session -t "work$i" 2>/dev/null; then
+        name="w$i"
+        if _ws_slot_exists "$name"; then
           state="${F_GREEN}运行中${F_RESET}"
         else
           state="空闲"
         fi
-        msg "    work$i: $state"
+        msg "    $name: $state"
       done
+      msg "  进入: fusionbox ws w3   （固定槽位，无需查找 PID）"
       ;;
     new)
-      local n="${2:-}" cmd="${3:-}"
-      _ws_work_check_n "$n" || return 1
-      if tmux has-session -t "work$n" 2>/dev/null; then
-        msg_err "work$n 已存在（attach 进入或 kill 后重建）"
+      local n="${2:-}" cmd="${3:-}" name
+      name=$(_ws_work_name "$n") || return 1
+      if _ws_slot_exists "$name"; then
+        msg_err "$name 已存在（attach 进入或 kill 后重建）"
         return 1
       fi
-      if [[ -n "$cmd" ]]; then
-        tmux new-session -d -s "work$n" "$cmd" && msg_ok "work$n 已创建并执行: $cmd"
+      if _ws_slot_create "$name" "$cmd"; then
+        if [[ -n "$cmd" ]]; then
+          msg_ok "$name 已创建并执行: $cmd"
+        else
+          msg_ok "$name 已创建"
+        fi
       else
-        tmux new-session -d -s "work$n" && msg_ok "work$n 已创建"
+        msg_err "$name 创建失败"
+        return 1
       fi
       ;;
     attach)
-      local n="${2:-}"
-      _ws_work_check_n "$n" || return 1
-      if ! tmux has-session -t "work$n" 2>/dev/null; then
-        msg_err "work$n 不存在（workspace work new $n 创建）"
+      local n="${2:-}" name
+      name=$(_ws_work_name "$n") || return 1
+      if ! _ws_slot_exists "$name"; then
+        msg_err "$name 不存在（workspace work new $n 创建）"
         return 1
       fi
-      tmux attach -t "work$n"
+      _ws_slot_attach "$name"
       ;;
-    send)
-      local n="${2:-}" cmd="${3:-}"
-      _ws_work_check_n "$n" || return 1
-      [[ -n "$cmd" ]] || { msg_err "用法: workspace work send <编号> <命令>"; return 2; }
-      if ! tmux has-session -t "work$n" 2>/dev/null; then
-        msg_err "work$n 不存在"
+    send|say)
+      local n="${2:-}" cmd="${3:-}" name
+      name=$(_ws_work_name "$n") || return 1
+      [[ -n "$cmd" ]] || { msg_err "用法: fusionbox ws w<编号> send <命令>"; return 2; }
+      if ! _ws_slot_exists "$name"; then
+        msg_err "$name 不存在"
         return 1
       fi
-      tmux send-keys -t "work$n" "$cmd" C-m && msg_ok "已注入 work$n: $cmd"
+      _ws_slot_send "$name" "$cmd" && msg_ok "已注入 $name: $cmd"
+      ;;
+    capture|peek|log)
+      local n="${2:-}" name
+      name=$(_ws_work_name "$n") || return 1
+      if ! _ws_slot_exists "$name"; then
+        msg_err "$name 不存在"
+        return 1
+      fi
+      if command -v tmux &>/dev/null; then
+        tmux capture-pane -p -t "$name" | tail -n 40
+      else
+        msg_warn "screen 后端无法读取回显；请直接进入: fusionbox ws $name"
+      fi
       ;;
     kill)
-      local n="${2:-}"
-      _ws_work_check_n "$n" || return 1
-      if confirm "确认终止 work$n（其中进程全部退出）？"; then
-        tmux kill-session -t "work$n" 2>/dev/null && msg_ok "work$n 已终止" || msg_err "work$n 不存在"
+      local n="${2:-}" name
+      name=$(_ws_work_name "$n") || return 1
+      if confirm "确认终止 $name（其中进程全部退出）？"; then
+        _ws_slot_kill "$name" && msg_ok "$name 已终止" || msg_err "$name 不存在"
       fi
       ;;
     menu|"")
       workspace_work_menu
       ;;
     *)
-      msg_err "未知子命令: $action（可用: list/new/attach/send/kill）"; return 2 ;;
+      msg_err "未知子命令: $action（可用: list/new/attach/send/capture/kill，或直接写 w1-w10）"; return 2 ;;
   esac
 }
 
@@ -248,18 +356,20 @@ workspace_work_menu() {
     msg ""
     workspace_work list
     msg ""
-    msg "  1) 新建编号会话 (可附带首条命令)"
-    msg "  2) 进入编号会话"
-    msg "  3) 向会话注入命令"
-    msg "  4) 终止会话"
+    msg "  1) 新建编号槽位 (可附带首条命令)"
+    msg "  2) 进入编号槽位 (也可直接 fusionbox ws w3)"
+    msg "  3) 向槽位注入命令"
+    msg "  4) 查看槽位回显 (tmux，末尾 40 行)"
+    msg "  5) 终止槽位"
     msg "  0) 返回"
     read -p "请选择: " w_choice || { msg ""; return; }
     case "$w_choice" in
       1) read -p "编号 (1-10): " w_n; read -p "首条命令（留空为空 shell）: " w_c
          if [[ -n "$w_c" ]]; then workspace_work new "$w_n" "$w_c" || true; else workspace_work new "$w_n" || true; fi ;;
       2) read -p "编号 (1-10): " w_n; workspace_work attach "$w_n" ;;
-      3) read -p "编号 (1-10): " w_n; read -p "要注入的命令: " w_c; workspace_work send "$w_n" "$w_c" ;;
-      4) read -p "编号 (1-10): " w_n; workspace_work kill "$w_n" ;;
+      3) read -p "编号 (1-10 或 w1-w10): " w_n; read -p "要注入的命令: " w_c; workspace_work send "$w_n" "$w_c" ;;
+      4) read -p "编号 (1-10 或 w1-w10): " w_n; workspace_work capture "$w_n"; pause ;;
+      5) read -p "编号 (1-10 或 w1-w10): " w_n; workspace_work kill "$w_n" ;;
       0) return ;;
       *) ;;
     esac
@@ -290,6 +400,10 @@ workspace_list() {
 workspace_help() {
   msg_title "后台工作区 帮助"
   msg ""
+  msg "  fusionbox workspace work        编号工作区 w1-w10（tmux/screen 自动选择）"
+  msg "  fusionbox ws w3                  直接进入 3 号槽位（固定槽位，不用记 PID）"
+  msg "  fusionbox ws w3 send 'make'      向 3 号槽位注入命令"
+  msg "  fusionbox ws w3 capture          查看 3 号槽位最近回显（tmux）"
   msg "  fusionbox workspace screen       Screen 会话管理"
   msg "  fusionbox workspace tmux         Tmux 会话管理"
   msg "  fusionbox workspace list         列出所有后台会话"
@@ -312,13 +426,15 @@ workspace_menu() {
     msg "  ${F_GREEN}1${F_RESET}) Screen 管理"
     msg "  ${F_GREEN}2${F_RESET}) Tmux 管理"
     msg "  ${F_GREEN}3${F_RESET}) 列出所有后台会话"
+    msg "  ${F_GREEN}4${F_RESET}) 编号工作区 w1-w10（重连用 fusionbox ws w3）"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
-    read -p "请选择 [0-3]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "请选择 [0-4]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) workspace_screen_menu ;;
       2) workspace_tmux_menu ;;
       3) workspace_list ;;
+      4) workspace_work_menu ;;
       0) break ;;
     esac
   done
