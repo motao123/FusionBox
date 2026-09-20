@@ -1,7 +1,7 @@
 # FusionBox Initialization
 # Loaded by fusion.sh on startup
 
-export FUSION_VER="1.30.0"
+export FUSION_VER="1.32.0"
 export FUSION_CODENAME="FusionBox"
 
 # Source common library
@@ -26,8 +26,10 @@ _load_config
 # Initialize language
 _init_lang
 
-# Initialize logging
-_init_log
+# Initialize logging unless this is an explicitly read-only Oracle inspection.
+if [[ "${FUSION_READONLY:-0}" != "1" ]]; then
+  _init_log
+fi
 
 # Print startup banner
 _print_banner() {

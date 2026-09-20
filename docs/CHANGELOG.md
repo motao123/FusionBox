@@ -2,6 +2,21 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.32.0 Oracle 只读识别与旧保活边界
+
+- 新增 `fusionbox cluster oracle detect|status`：本机 OCI 证据识别，可选一次有界、禁止代理和重定向的 OCI metadata 只读探测；不读取实例凭据、不输出实例标识。
+- `status` 报告受管登记、Docker 可用性和旧 `oracle-keepalive` 脚本/cron/log 残留；只读入口跳过启动日志、匿名心跳和状态目录创建。
+- lookbusy 负载安装、启停和卸载入口在固定镜像 digest、资源策略和 Linux 隔离验收完成前明确拒绝；不会自动接管或删除旧 cron/脚本。G33/G34 仍未实现。
+- 本地 Windows 只读 helper 编译与行为检查通过；无 WSL/OCI 环境，未宣称真实 Oracle 或 Docker 生命周期验证。
+
+## v1.31.0 集群临时密码会话与密钥迁移
+
+- 新增单节点 `trust/connect/node-exec/migrate-key`。默认纯密钥，密码需隐藏交互或显式 FD；批量命令不自动降级。
+- ASKPASS 通过私有目录中的 FIFO 收取密码，避免 OpenSSH 关闭继承 FD 导致认证失败；凭据不写普通文件，不进入 argv/env/日志，认证和会话结束清理通道。每次会话只允许一次 ASKPASS，强制改密挑战快速失败并清理整个 SSH 子进程组。
+- 使用独立私有 known_hosts，首次需人工核对指纹，变更拒绝；锁内追加并补齐尾换行，迁移前验证 `.pub` 和私钥匹配，远端拒绝链接文件并在追加后验证纯密钥登录。
+- Linux 临时高端口 OpenSSH 实际验收 11/11：成功与错误密码、禁止自动降级、CLI 参数、公钥迁移、密钥验证、主机密钥不符拒绝和清理。生产 5522 端口配置不变；不是多节点生产验收。
+- 使用方式与限制见 [cluster-sessions.md](cluster-sessions.md)。
+
 ## v1.30.0 ACME 预检、签发与续期事务闭环
 
 - 新增 `fusionbox web acme preflight|status|issue|renew`：严格校验域名、邮箱、规范 webroot 和续期阈值；DNS 仅报告，同时检查 80/443、高端口测试覆盖、Nginx site 冲突、Certbot 版本和 webroot 插件。

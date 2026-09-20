@@ -139,9 +139,9 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.30.0 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.32.0 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
-        <p class="sub">v1.30.0 增加 ACME 预检、签发、状态和续期事务：输入与归属严格校验，Nginx 配置先暂存测试，任意失败统一回滚；续期带锁、阈值和证书指纹比较，仅在变化时 reload。Linux 隔离测试已通过，因缺少可控公网域名，真实签发仍明确未验证。<a href="https://github.com/motao123/FusionBox/blob/main/docs/CHANGELOG.md">查看验证边界</a></p>
+        <p class="sub">v1.32.0 增加 Oracle Cloud OCI 只读识别与旧保活状态检查。metadata 探测固定地址、禁止代理与重定向；lookbusy 负载在镜像与隔离验收完成前明确拒绝。<a href="https://github.com/motao123/FusionBox/blob/main/docs/CHANGELOG.md">查看验证边界</a></p>
         <div class="hero-btns">
           <a href="https://github.com/motao123/FusionBox" class="btn btn-primary">GitHub 仓库</a>
         </div>
@@ -168,7 +168,7 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
     <div class="container">
       <div class="stats-inner">
         <div class="sc"><div class="num">9</div><div class="lbl">核心模块</div></div>
-        <div class="sc"><div class="num" id="release-downloads">—</div><div class="lbl">GitHub 主包下载</div><div class="metric-note">不是用户数</div></div>
+        <div class="sc"><div class="num"><span id="installation-count">—</span><span aria-hidden="true"> 次</span></div><div class="lbl">累计装机</div></div>
         <div class="sc"><div class="num">15</div><div class="lbl">代理协议</div></div>
         <div class="sc"><div class="num">4</div><div class="lbl">代理后端</div></div>
       </div>
@@ -277,14 +277,17 @@ function cpy(btn){
     }, 2000);
   });
 }
-fetch('generated/github-metrics.json')
-  .then(function(response){ return response.ok ? response.json() : Promise.reject(); })
-  .then(function(data){
-    if(Number.isSafeInteger(data.total_downloads) && data.total_downloads >= 0){
-      document.getElementById('release-downloads').textContent = data.total_downloads.toLocaleString('zh-CN');
-    }
-  })
-  .catch(function(){});
+var INSTALLATION_SUMMARY_URL = 'https://fusionbox-telemetry.gdindex-demo.workers.dev/v1/public/summary';
+if(INSTALLATION_SUMMARY_URL){
+  fetch(INSTALLATION_SUMMARY_URL)
+    .then(function(response){ return response.ok ? response.json() : Promise.reject(); })
+    .then(function(data){
+      if(Number.isSafeInteger(data.installations_total) && data.installations_total >= 0){
+        document.getElementById('installation-count').textContent = data.installations_total.toLocaleString('zh-CN');
+      }
+    })
+    .catch(function(){});
+}
 </script>
 </body>
 </html>
