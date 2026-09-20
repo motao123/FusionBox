@@ -42,6 +42,12 @@
             git archive --format=tar.gz --prefix=FusionBox/ -o "FusionBox-${CNB_BRANCH}.tar.gz" HEAD
             sha256sum "FusionBox-${CNB_BRANCH}.tar.gz" > SHA256SUMS
             cat SHA256SUMS
+        # 附件插件按 Tag 查找 Release，找不到就 404；必须先建 Release 再上传附件。
+        - name: create-release
+          type: git:release
+          options:
+            descriptionFromFile: docs/CHANGELOG.md
+            latest: true
         - name: upload-release-attachments
           image: cnbcool/attachments:latest
           settings:

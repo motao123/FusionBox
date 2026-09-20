@@ -363,6 +363,17 @@ else
 fi
 check_contains "tag_push 版本校验用 POSIX case" 'case "$CNB_BRANCH" in' \
   grep -F 'case "$CNB_BRANCH" in' "$CNB_YML"
+# 附件插件按 Tag 查 Release，Release 不存在会 404；必须先建 Release 再上传。
+tag_block="$(awk '/^  tag_push:/{f=1} /^main:/{f=0} f' "$CNB_YML")"
+rel_line="$(printf '%s\n' "$tag_block" | grep -n 'type: git:release' | head -1 | cut -d: -f1)"
+att_line="$(printf '%s\n' "$tag_block" | grep -n 'upload-release-attachments' | head -1 | cut -d: -f1)"
+if [ -n "$rel_line" ] && [ -n "$att_line" ] && [ "$rel_line" -lt "$att_line" ]; then
+  ok "tag_push 先建 Release 再上传附件"
+else
+  bad "tag_push 先建 Release 再上传附件 (release=$rel_line attach=$att_line)"
+fi
+
+# ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'
 printf '通过 %d / 失败 %d\n' "$PASS" "$FAIL"
 if (( FAIL > 0 )); then

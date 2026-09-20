@@ -2,6 +2,13 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.36.2 修复发布附件上传
+
+- 修复 CNB `tag_push` 的 `upload-release-attachments` 阶段必失败的问题：`cnbcool/attachments` 插件按 Tag 查找 Release（日志 `目标 RELEASE / 获取 release id`），而仓库此前从未创建 Release，插件直接 404 退出，`FusionBox-*.tar.gz` 与 `SHA256SUMS` 无法成为发布附件。
+- `tag_push` 流水线新增 `create-release` 阶段（内置任务 `git:release`，描述取自 `docs/CHANGELOG.md`，标记 `latest`），置于 `package` 之后、上传附件之前，使附件有目标 Release 可挂。
+- `tests/run_checks.sh` 回归检查由 93 项扩展至 94 项：新增「先建 Release 再上传附件」顺序断言。
+- 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.36.2。
+
 ## v1.36.1 修复 tag_push 发布流水线
 
 - 修复 CNB `tag_push` 发布流水线 `validate-version` 阶段必失败的问题：默认 Runner 的 shell 是 `sh`（dash），而脚本使用了 bash 专属的 `[[ ... ]]`，实测报 `sh: 4: [[: not found` 后直接退出，导致 Tag 推送无法产出发布资产。

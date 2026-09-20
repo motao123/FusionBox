@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.36.1-blue)
+![version](https://img.shields.io/badge/version-1.36.2-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,14 +58,15 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.36.1）
+## 最近更新（v1.36.2）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
 - 备份/恢复的全部用户可触达报错改为中文并给出下一步：未知范围、备份重名、恢复冲突、范围缺失、损坏校验等不再是英文技术串；顶层前缀统一为「备份操作失败:」
-- 修复 CNB `tag_push` 发布流水线：默认 Runner 的 shell 是 `sh`（dash），原先的 `[[ ... ]]` 直接报错退出；改写为 POSIX `sh` 兼容，Tag 推送才能正常产出发布资产
+- 修复 CNB `tag_push` 发布流水线：默认 Runner 的 shell 是 `sh`（dash），原先的 bash 专属语法直接报错退出；改写为 POSIX `sh` 兼容
+- 修复发布附件上传 404：附件插件按 Tag 查找 Release，而仓库此前没有 Release；改为先用 `git:release` 建 Release 再上传 `FusionBox-*.tar.gz` + `SHA256SUMS`
 - CNB CI 显式指定 `python:3.11` 镜像，`main`/PR 的 `syntax` 与 `regression-checks` 阶段真正跑通（此前因默认镜像无 python3 必失败）
-- 回归检查扩展到 93 项，新增备份中文报错、顶层前缀、CI 镜像与 tag_push POSIX 兼容覆盖
+- 回归检查扩展到 94 项，新增备份中文报错、顶层前缀、CI 镜像、tag_push POSIX 兼容与 Release 先建后传覆盖
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
