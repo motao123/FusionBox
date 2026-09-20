@@ -254,6 +254,46 @@ _update_validate_archive() {
   done
 }
 
+# Extract the release notes for one version from a CHANGELOG file.
+# Prints the section body (without trailing blank lines) and returns 0 when found.
+_update_changelog_section() {
+  local file="$1" version="$2"
+  [[ -f "$file" && ! -L "$file" ]] || return 1
+  local prefix="$version"
+  awk -v ver="$prefix" '
+    BEGIN { printing = 0; found = 0 }
+    /^## / {
+      title = $0
+      sub(/^##[[:space:]]+/, "", title)
+      sub(/^v/, "", title)
+      if (printing == 1) { exit }
+      if (index(title, ver) == 1) { printing = 1; found = 1; next }
+      next
+    }
+    printing == 1 { print }
+    END { if (found == 0) exit 1 }
+  ' "$file"
+}
+
+# Show what changed in this update, read from the (already verified) extracted archive.
+_update_show_notes() {
+  local root="$1" version="$2" changelog body
+  changelog="$root/docs/CHANGELOG.md"
+  body="$(_update_changelog_section "$changelog" "$version")" || {
+    msg "  $(_tr MSG_UPDATE_NOTES_UNAVAILABLE)"
+    return 0
+  }
+  [[ -n "$body" ]] || { msg "  $(_tr MSG_UPDATE_NOTES_UNAVAILABLE)"; return 0; }
+  msg ""
+  local title_fmt; title_fmt=$(_tr MSG_UPDATE_NOTES_TITLE "本次更新内容 %s")
+  # shellcheck disable=SC2059
+  msg_title "$(printf "$title_fmt" "v$version")"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && msg "  $line" || msg ""
+  done <<< "$body"
+  msg ""
+}
+
 self_update() (
   local tmpdir metadata tag asset expected actual archive_root remote_ver download_status=0
   tmpdir=$(mktemp -d) || return 1
@@ -343,6 +383,7 @@ self_update() (
   FUSION_VER="$remote_ver"
   _telemetry_event update
   msg_ok "更新完成，重新运行 fusionbox 生效"
+  _update_show_notes "$tmpdir/$archive_root" "$remote_ver"
 )
 
 # ---- 自动更新开关 (G66)：受管 cron 条目，仅调用既有带校验的 self_update ----

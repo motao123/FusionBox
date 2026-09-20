@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# FusionBox v1.34.0 regression checks.
+# FusionBox v1.35.0 regression checks.
 #
-# These checks lock in the first-run UX fixes: dependency preflight, backup
-# scope skipping, Chinese help for raw passthrough subcommands, i18n coverage,
-# CPU accounting and numbered workspace slots. They must run without root,
+# These checks lock in the shipped UX fixes: dependency preflight, backup scope
+# skipping, Chinese help for raw passthrough subcommands, i18n coverage, CPU
+# accounting, numbered workspace slots, update changelog display, long-task
+# stage progress and the SSH-resident workspace. They must run without root,
 # without Docker and without network access so CI stays deterministic.
 
 set -uo pipefail
@@ -248,6 +249,67 @@ check_contains "fusion.sh 路由 log" "show_logs" grep -F 'show_logs' "$REPO_ROO
 check_contains "system_rescue 存在" "system_rescue()" grep -F 'system_rescue()' "$SRC/modules/system.sh"
 check_contains "cluster alias 速查表入口" "cluster_k_alias()" grep -F 'cluster_k_alias()' "$SRC/modules/cluster.sh"
 check_contains "help 补充依赖说明" "依赖" grep -F '依赖:' "$REPO_ROOT/fusion.sh"
+
+# ---------------------------------------------------------------------------
+section "12. C 档: 更新后展示本次变更"
+# ---------------------------------------------------------------------------
+check_contains "fusion.sh 定义 _update_show_notes" "_update_show_notes" \
+  grep -F '_update_show_notes()' "$REPO_ROOT/fusion.sh"
+check_contains "更新成功后调用 _update_show_notes" "_update_show_notes \"\$tmpdir/\$archive_root\"" \
+  grep -F '_update_show_notes "$tmpdir/$archive_root"' "$REPO_ROOT/fusion.sh"
+
+# _update_changelog_section extracts only the requested version's body.
+mkdir -p "$WORK/notes/docs"
+{
+  printf '# 变更历史\n\n'
+  printf '## v1.99.0 目标版本\n'
+  printf -- '- 这是目标版本的条目 A\n\n'
+  printf '## v1.98.0 旧版本\n'
+  printf -- '- 这是旧版本的条目 B\n'
+} > "$WORK/notes/docs/CHANGELOG.md"
+sed -n '/^_update_changelog_section()/,/^}/p' "$REPO_ROOT/fusion.sh" > "$WORK/fn.sh"
+have_section="$(bash -c 'source "'"$WORK"'/fn.sh"; _update_changelog_section "'"$WORK"'/notes/docs/CHANGELOG.md" 1.99.0' 2>/dev/null)"
+if grep -qF '条目 A' <<<"$have_section" && ! grep -qF '条目 B' <<<"$have_section"; then
+  ok "_update_changelog_section 只取目标版本段落"
+else
+  bad "_update_changelog_section 只取目标版本段落"
+  printf '%s\n' "$have_section" | sed 's/^/       | /' | head -10
+fi
+
+# ---------------------------------------------------------------------------
+section "13. B 档: 长任务阶段进度"
+# ---------------------------------------------------------------------------
+check_contains "common.sh 提供 progress_begin" "progress_begin()" \
+  grep -F 'progress_begin()' "$SRC/lib/common.sh"
+check_contains "common.sh 提供 progress_step" "progress_step()" \
+  grep -F 'progress_step()' "$SRC/lib/common.sh"
+check_contains "LNMP 安装接入阶段计数" "progress_begin 4" \
+  grep -F 'progress_begin 4' "$SRC/modules/web.sh"
+check_contains "受管安装提示阶段流程" "MSG_MARKET_STAGES" \
+  grep -F 'MSG_MARKET_STAGES' "$SRC/modules/market.sh"
+
+step_out="$(bash -c 'source "'"$SRC"'/lib/common.sh"; progress_begin 3; progress_step "阶段甲"; progress_step "阶段乙"' 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g')"
+if grep -qF '[1/3] 阶段甲' <<<"$step_out" && grep -qF '[2/3] 阶段乙' <<<"$step_out"; then
+  ok "progress_step 输出 [n/total] 形式"
+else
+  bad "progress_step 输出 [n/total] 形式"
+  printf '%s\n' "$step_out" | sed 's/^/       | /'
+fi
+
+# ---------------------------------------------------------------------------
+section "14. A 档: 工作区 SSH 常驻"
+# ---------------------------------------------------------------------------
+check_contains "workspace.sh 提供 _ws_slot_ensure" "_ws_slot_ensure()" \
+  grep -F '_ws_slot_ensure()' "$SRC/modules/workspace.sh"
+check_contains "ws 支持 ensure 动作" "ensure|resume)" \
+  grep -F 'ensure|resume)' "$SRC/modules/workspace.sh"
+check_contains "ws 支持 ssh 动作" "ssh)" \
+  grep -F '    ssh)' "$SRC/modules/workspace.sh"
+if grep -q '不存在，正在创建' "$SRC/modules/workspace.sh"; then
+  ok "直接 ws w<n> 不存在时自动创建"
+else
+  bad "直接 ws w<n> 不存在时自动创建"
+fi
 
 # ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'

@@ -32,7 +32,7 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
-      - name: Regression checks (v1.34.0 fixes)
+      - name: Regression checks (v1.35.0 UX fixes)
         run: |
           set -e
           bash tests/run_checks.sh

@@ -43,6 +43,32 @@ msg_warn(){ msg "${F_YELLOW}[${F_BOLD}WARN${F_RESET}${F_YELLOW}]${F_RESET} $*"; 
 msg_title(){ msg "${F_BOLD}${F_CYAN}======== $* ========${F_RESET}"; }
 msg_tip() { msg "${F_GREEN}$*${F_RESET}"; }
 
+# ---- Long-running task progress (stage counter) ----
+# Stage names are intentionally coarse: we show "which step of how many"
+# instead of a fake percentage we cannot measure for package installs.
+_F_PROGRESS_TOTAL=0
+_F_PROGRESS_CURRENT=0
+
+progress_begin() {
+  _F_PROGRESS_TOTAL="${1:-0}"
+  _F_PROGRESS_CURRENT=0
+}
+
+progress_step() {
+  local label="$1"
+  _F_PROGRESS_CURRENT=$((_F_PROGRESS_CURRENT + 1))
+  if [[ "${_F_PROGRESS_TOTAL:-0}" -gt 0 ]]; then
+    msg "${F_CYAN}[${_F_PROGRESS_CURRENT}/${_F_PROGRESS_TOTAL}]${F_RESET} $label"
+  else
+    msg "${F_CYAN}[${_F_PROGRESS_CURRENT}]${F_RESET} $label"
+  fi
+}
+
+progress_end() {
+  _F_PROGRESS_TOTAL=0
+  _F_PROGRESS_CURRENT=0
+}
+
 # Load language strings
 # Usage: L <key>
 L() {

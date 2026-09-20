@@ -97,6 +97,15 @@ market_main() {
       _require_root
       [[ $# -ge 1 ]] || { market_managed_help; return 2; }
       if ! _require_python3 "受管应用市场"; then return 1; fi
+      # Stage feedback: image pull + container up + health wait are the slow
+      # parts. The Python layer keeps its stdout machine-readable, so tell the
+      # user what to expect before the (possibly long) call instead of faking
+      # per-phase timing we cannot observe from here.
+      case "${1:-}" in
+        install|reinstall)
+          msg_info "$(_tr MSG_MARKET_STAGES "过程: 校验端口 → 拉取镜像 → 创建容器 → 等待健康检查（可能较慢，请勿中断）")"
+          ;;
+      esac
       python3 "$FUSION_SRC/lib/market_apps.py" "$@"
       ;;
     clamav|scan)      market_clamav "$@" ;;
