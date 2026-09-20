@@ -2,6 +2,14 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.35.0 更新变更摘要、阶段进度与 SSH 常驻工作区
+
+- `fusionbox update` 成功更新后展示本次版本的变更摘要：从已校验的归档内 `docs/CHANGELOG.md` 精确截取目标版本段落；版本段落缺失或文件不存在时给出「未提供变更说明」提示，不静默失败。
+- 新增可复用的阶段进度反馈：`progress_begin` / `progress_step` / `progress_end`，输出 `[n/总数] 阶段名`。LNMP 安装接入 4 个阶段；受管应用安装在调用前说明「校验端口 → 拉取镜像 → 创建容器 → 等待健康检查」，如实反映慢在哪，不伪造无法观测的百分比。
+- 工作区升级为 SSH 常驻重连：`fusionbox ws w3` 在槽位不存在时自动创建并进入（断线重登永远回到同一编号）；新增 `ws w<n> ensure|resume` 显式确保存在、`ws w<n> ssh` 打印重连方法；菜单与帮助同步。
+- `tests/run_checks.sh` 回归检查由 59 项扩展至 71 项：新增更新变更摘要截取、阶段进度输出格式、工作区常驻入口与自愈创建三组覆盖。
+- 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.35.0。
+
 ## v1.34.0 首次使用体验修复与依赖前置检查
 
 - 修复 `market.sh` 中 `2>/dev/null` 吞掉 python3 缺失错误导致的误导提示「不支持的受管应用 ID」；缺 python3 时现在给出中文原因与安装命令。

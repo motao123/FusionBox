@@ -85,13 +85,15 @@ web_install_lnmp() {
     return
   fi
 
+  progress_begin 4
+
   # Check existing
   if command -v nginx &>/dev/null; then
     msg_warn "Nginx 已安装: $(nginx -v 2>&1)"
   fi
 
   # Install Nginx
-  msg_info "正在安装 Nginx..."
+  progress_step "安装 Nginx"
   case "$F_PKG_MGR" in
     apt)
       apt-get update -y
@@ -116,7 +118,7 @@ web_install_lnmp() {
   fi
 
   # Install MySQL/MariaDB
-  msg_info "正在安装 MariaDB..."
+  progress_step "安装 MariaDB"
   case "$F_PKG_MGR" in
     apt)
       _install_pkg mariadb-server mariadb-client
@@ -141,7 +143,7 @@ web_install_lnmp() {
   fi
 
   # Install PHP
-  msg_info "正在安装 PHP 8.2..."
+  progress_step "安装 PHP 8.2"
   local php_pkgs=()
   case "$F_PKG_MGR" in
     apt)
@@ -186,6 +188,7 @@ web_install_lnmp() {
   fi
 
   # Install Redis
+  progress_step "安装 Redis 缓存"
   if confirm "是否安装 Redis 缓存？"; then
     _install_pkg redis
     case "$F_PKG_MGR" in
@@ -195,6 +198,7 @@ web_install_lnmp() {
     msg_ok "Redis 安装完成"
   fi
 
+  progress_end
   msg ""
   msg_ok "LNMP 环境安装完成！"
   msg ""

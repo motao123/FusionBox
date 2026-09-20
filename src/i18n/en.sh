@@ -41,6 +41,9 @@ MSG_LOG_FILE="Log file"
 MSG_LOG_EMPTY="No log file yet (nothing recorded)"
 MSG_LOG_SHOW="Showing latest"
 MSG_LOG_FULL="Full log"
+MSG_UPDATE_NOTES_TITLE="What's new in %s"
+MSG_UPDATE_NOTES_UNAVAILABLE="(No changelog provided for this update)"
+MSG_MARKET_STAGES="Steps: check ports -> pull image -> create container -> wait for health (may be slow, do not interrupt)"
 
 # Module names
 MOD_PROXY="Proxy Management"

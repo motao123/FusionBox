@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.34.0-blue)
+![version](https://img.shields.io/badge/version-1.35.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,16 +58,14 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.34.0）
+## 最近更新（v1.35.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 修复首次使用就被卡住的三个场景：缺 python3 报「不支持的应用 ID」、全新机器 `system backup` 必然失败、受管市场错误被「输出已隐藏」掩盖
-- 主菜单与 `status` 增加依赖自检（python3 / docker / docker compose v2 / curl），并说明缺失时哪些功能受影响
-- `market managed`、`panels compose-backup`、`panels docker-migration` 无参时输出中文帮助，不再出现英文 argparse 堆栈
-- 新增 `fusionbox log`、`fusionbox rescue`（只读救援指引）、`fusionbox cluster alias`（中文速查表）
-- 编号工作区固定为 `w1`-`w10`，可直接 `fusionbox ws w3` 重连，支持 tmux/screen 自动选择与回显查看
-- 受管应用数量改为从 catalog 动态读取；`status` 同时显示可用核数与宿主核数；缺 `ping` 等命令时给出安装建议
+- `fusionbox update` 更新成功后展示本次版本的变更摘要（直接读取归档内 `docs/CHANGELOG.md`，读不到时说明而非静默）
+- 长任务增加阶段反馈：LNMP 安装按 `[1/4] 安装 Nginx`…逐阶段显示；受管应用安装前说明「校验端口 → 拉取镜像 → 创建容器 → 等待健康检查」
+- 编号工作区支持 SSH 常驻重连：`fusionbox ws w3` 在槽位不存在时自动创建，`ws w3 ensure` 显式确保存在，`ws w3 ssh` 打印重连方法
+- 回归检查扩展到 71 项，新增更新变更摘要、阶段进度、工作区常驻三类覆盖
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 

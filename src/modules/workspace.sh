@@ -239,6 +239,18 @@ _ws_slot_attach() {
   fi
 }
 
+# Attach if the slot exists, otherwise create it first. Used by the SSH-resident
+# flow: reconnecting only needs `fusionbox ws w3`, and a missing slot is rebuilt
+# instead of erroring out.
+_ws_slot_ensure() {
+  local name="$1" create="${2:-1}"
+  if _ws_slot_exists "$name"; then
+    return 0
+  fi
+  [[ "$create" == 1 ]] || return 1
+  _ws_slot_create "$name"
+}
+
 _ws_slot_send() {
   local name="$1" cmd="$2"
   if command -v tmux &>/dev/null; then
@@ -262,9 +274,15 @@ workspace_work() {
   _require_root
   local action="${1:-menu}"
   local tool; tool=$(_ws_work_tool) || return 1
-  # 直接 `fusionbox ws w3`：省略动作时默认进入该槽位
+  # 直接 `fusionbox ws w3`：省略动作时进入该槽位；不存在则自动创建，
+  # 这样断线重连时永远能回到（或重建）同一个编号工作区。
   if [[ "$action" =~ ^(w?[0-9]+)$ ]]; then
-    workspace_work attach "$action"
+    local dir_name; dir_name=$(_ws_work_name "$action") || return 1
+    if ! _ws_slot_exists "$dir_name"; then
+      msg_info "$dir_name 不存在，正在创建…"
+      _ws_slot_create "$dir_name" || { msg_err "$dir_name 创建失败"; return 1; }
+    fi
+    _ws_slot_attach "$dir_name"
     return $?
   fi
 
@@ -340,11 +358,33 @@ workspace_work() {
         _ws_slot_kill "$name" && msg_ok "$name 已终止" || msg_err "$name 不存在"
       fi
       ;;
+    ensure|resume)
+      local n="${2:-}" name
+      name=$(_ws_work_name "$n") || return 1
+      _ws_slot_ensure "$name" 1 || { msg_err "$name 创建失败"; return 1; }
+      msg_ok "$name 已就绪，进入后断线重连只需再次执行 fusionbox ws $name"
+      _ws_slot_attach "$name"
+      ;;
+    ssh)
+      local n="${2:-}" name
+      name=$(_ws_work_name "$n") || return 1
+      _ws_slot_ensure "$name" 1 || { msg_err "$name 创建失败"; return 1; }
+      msg_title "$name 常驻会话"
+      msg "  从任意 SSH 终端重连进入该槽位："
+      msg "    fusionbox ws $name"
+      msg "  或直接使用 tmux/screen 原生命令："
+      if command -v tmux &>/dev/null; then
+        msg "    tmux attach -t $name"
+      else
+        msg "    screen -r $name"
+      fi
+      msg "  会话在 SSH 断开后继续运行；重新登录后按上面命令即可回到原状态。"
+      ;;
     menu|"")
       workspace_work_menu
       ;;
     *)
-      msg_err "未知子命令: $action（可用: list/new/attach/send/capture/kill，或直接写 w1-w10）"; return 2 ;;
+      msg_err "未知子命令: $action（可用: list/new/attach/ensure/ssh/send/capture/kill，或直接写 w1-w10）"; return 2 ;;
   esac
 }
 
@@ -357,10 +397,11 @@ workspace_work_menu() {
     workspace_work list
     msg ""
     msg "  1) 新建编号槽位 (可附带首条命令)"
-    msg "  2) 进入编号槽位 (也可直接 fusionbox ws w3)"
+    msg "  2) 进入编号槽位 (也可直接 fusionbox ws w3；不存在会自动创建)"
     msg "  3) 向槽位注入命令"
     msg "  4) 查看槽位回显 (tmux，末尾 40 行)"
     msg "  5) 终止槽位"
+    msg "  6) 常驻会话/SSH 重连说明"
     msg "  0) 返回"
     read -p "请选择: " w_choice || { msg ""; return; }
     case "$w_choice" in
@@ -370,6 +411,7 @@ workspace_work_menu() {
       3) read -p "编号 (1-10 或 w1-w10): " w_n; read -p "要注入的命令: " w_c; workspace_work send "$w_n" "$w_c" ;;
       4) read -p "编号 (1-10 或 w1-w10): " w_n; workspace_work capture "$w_n"; pause ;;
       5) read -p "编号 (1-10 或 w1-w10): " w_n; workspace_work kill "$w_n" ;;
+      6) read -p "编号 (1-10 或 w1-w10): " w_n; workspace_work ssh "$w_n"; pause ;;
       0) return ;;
       *) ;;
     esac
@@ -402,6 +444,8 @@ workspace_help() {
   msg ""
   msg "  fusionbox workspace work        编号工作区 w1-w10（tmux/screen 自动选择）"
   msg "  fusionbox ws w3                  直接进入 3 号槽位（固定槽位，不用记 PID）"
+  msg "  fusionbox ws w3 ensure           确保 3 号槽位存在并进入（断线重连）"
+  msg "  fusionbox ws w3 ssh              打印 3 号槽位在 SSH 重连时的进入方法"
   msg "  fusionbox ws w3 send 'make'      向 3 号槽位注入命令"
   msg "  fusionbox ws w3 capture          查看 3 号槽位最近回显（tmux）"
   msg "  fusionbox workspace screen       Screen 会话管理"

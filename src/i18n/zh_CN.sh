@@ -41,6 +41,9 @@ MSG_LOG_FILE="日志文件"
 MSG_LOG_EMPTY="暂无日志文件（尚未产生记录）"
 MSG_LOG_SHOW="显示最近"
 MSG_LOG_FULL="完整日志"
+MSG_UPDATE_NOTES_TITLE="本次更新内容 %s"
+MSG_UPDATE_NOTES_UNAVAILABLE="（本次更新未提供变更说明）"
+MSG_MARKET_STAGES="过程: 校验端口 → 拉取镜像 → 创建容器 → 等待健康检查（可能较慢，请勿中断）"
 
 # Module names
 MOD_PROXY="代理管理"
