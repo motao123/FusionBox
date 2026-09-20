@@ -180,9 +180,9 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G29 | Docker 远程迁移（scp 到目标机） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
 | G30 | Docker 一键卸载（清容器/镜像/包/daemon.json） | 受管范围完成 | v1.17.0 uninstall：YES 门禁+可选数据保留+按包管理器 purge；真机仅门禁路径，完整流 mock |
 | G31 | Docker 全局状态总览（容器/镜像/网络/卷计数+全列） | 只读总览范围完成 | v1.12.0 summary/--all 与菜单，全状态/引擎镜像/网络/卷计数、完整列表和 Docker 磁盘口径；失败不报零，顺序查询非原子快照 |
-| G32 | Oracle 防回收（lookbusy 容器按 CPU/内存比例占用） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G33 | Oracle：R 探长开机（oci-helper） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
-| G34 | Oracle：root 密码登录切换 + IPv6 恢复 | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G32 | Oracle 防回收（lookbusy 容器按 CPU/内存比例占用） | 只读/未启用 | v1.32.0 增加 OCI 本地/受限 metadata 识别与旧/受管状态检查；固定镜像 digest、负载生命周期和隔离验收未完成，安装入口明确拒绝 |
+| G33 | Oracle：R 探长开机（oci-helper） | 后续 | 未实现；需独立设计、实现与隔离验证 |
+| G34 | Oracle：root 密码登录切换 + IPv6 恢复 | 后续 | 未实现；需独立设计、实现与隔离验证 |
 | G35 | 证书自动续期（flock + sha256 指纹 + 到期前 15 天 + webroot/standalone 回退 + cron） | 部分实现 | web ssl auto/renew；检查已有 timer/cron；真实 ACME 未验证 |
 | G36 | 证书到期状态表（全站证书 + 剩余天数） | 已提供入口 | web ssl status；实际域名证书未验证 |
 | G37 | 站点清单表（解析 server_name 生成访问地址+证书状态） | 已提供入口 | web sites；解析常规 Nginx 配置，不是完整 Nginx 语法解析器 |

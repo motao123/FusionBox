@@ -842,76 +842,45 @@ _game_uninstall() {
   return 0
 }
 
-# ---- Oracle Cloud 脚本 ----
+# ---- Oracle Cloud scripts ----
 cluster_oracle() {
+  if [[ $# -gt 0 ]]; then
+    case "${1:-}" in
+      detect|status|help)
+        python3 -B "$FUSION_SRC/lib/oracle_tools.py" "$@"
+        return $?
+        ;;
+      install|enable|disable|uninstall)
+        msg_err "受管 lookbusy 保活尚未启用：固定镜像 digest 和 Linux 隔离验收完成前拒绝创建负载"
+        return 2
+        ;;
+      *)
+        msg_err "未知 Oracle 操作: $1"
+        msg "用法: fusionbox cluster oracle detect [--metadata] | status | help"
+        return 2
+        ;;
+    esac
+  fi
+
   _require_root
-  msg_title "Oracle Cloud 防回收脚本"
+  msg_title "Oracle Cloud 只读识别与保活状态"
   msg ""
-  msg_warn "此功能仅适用于 Oracle Cloud 免费服务器"
+  msg_warn "受管 lookbusy 负载尚未启用；旧 oracle-keepalive 只报告，不自动接管或删除"
   msg ""
-  msg "  1) 安装防回收保活脚本"
-  msg "  2) 查看保活状态"
-  msg "  3) 卸载保活脚本"
-  msg "  4) 安装 OCI CLI"
+  msg "  1) 本机 OCI 证据识别"
+  msg "  2) OCI 识别（一次有界 metadata 只读探测）"
+  msg "  3) 查看受管/旧实现状态"
   msg "  0) 返回"
-  read -p "请选择: " oc_choice
-
+  read -r -p "请选择: " oc_choice || return
   case "$oc_choice" in
-    1)
-      msg_info "正在安装 Oracle Cloud 防回收脚本..."
-      # Install keep-alive script
-      cat > /usr/local/bin/oracle-keepalive << 'OKEOF'
-#!/bin/bash
-# Oracle Cloud Keep-Alive Script
-# Prevents idle instance from being reclaimed
-
-LOG="/var/log/oracle-keepalive.log"
-echo "[$(date)] Keep-alive ping" >> "$LOG"
-
-# CPU stress to prevent idle detection
-dd if=/dev/urandom bs=1M count=10 | md5sum > /dev/null 2>&1
-
-# Network activity
-curl -s https://www.oracle.com > /dev/null 2>&1
-
-echo "[$(date)] Keep-alive completed" >> "$LOG"
-OKEOF
-      chmod +x /usr/local/bin/oracle-keepalive
-
-      # Add cron job - every 10 minutes
-      (crontab -l 2>/dev/null; echo "*/10 * * * * /usr/local/bin/oracle-keepalive") | crontab -
-
-      msg_ok "防回收脚本已安装 (每 10 分钟运行)"
-      _log_write "Oracle Cloud 防回收脚本已安装"
-      ;;
-    2)
-      msg "  ${F_BOLD}保活日志:${F_RESET}"
-      tail -10 /var/log/oracle-keepalive.log 2>/dev/null || msg "  暂无日志"
-      msg ""
-      msg "  ${F_BOLD}Cron 任务:${F_RESET}"
-      crontab -l 2>/dev/null | grep "oracle-keepalive" || msg "  未配置"
-      ;;
-    3)
-      crontab -l 2>/dev/null | grep -v "oracle-keepalive" | crontab -
-      rm -f /usr/local/bin/oracle-keepalive
-      msg_ok "防回收脚本已卸载"
-      ;;
-    4)
-      msg_info "正在安装 OCI CLI..."
-      # 下载到临时文件再执行，不再 curl|bash
-      local oci_sh
-      oci_sh=$(mktemp)
-      if curl -fsSL https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o "$oci_sh" \
-         && bash "$oci_sh" --accept-all-defaults; then
-        msg_ok "OCI CLI 安装完成"
-        msg "  运行 'oci setup' 进行配置"
-      else
-        msg_err "OCI CLI 下载或安装失败"
-      fi
-      rm -f "$oci_sh"
-      ;;
+    1) python3 -B "$FUSION_SRC/lib/oracle_tools.py" detect ;;
+    2) python3 -B "$FUSION_SRC/lib/oracle_tools.py" detect --metadata ;;
+    3) python3 -B "$FUSION_SRC/lib/oracle_tools.py" status ;;
+    0) return 0 ;;
+    *) msg_err "无效选择"; return 2 ;;
   esac
   pause
+
 }
 
 # ---- k 命令快捷方式 ----# ---- SSH 出站收藏 (G15)：常用 ssh 目标保存与直连 ----
@@ -1078,7 +1047,8 @@ cluster_help() {
   msg "  fusionbox cluster game-manage    管理已部署服务端（启停/日志/备份/恢复/卸载）"
   msg ""
   msg "  ${F_BOLD}[Oracle Cloud]${F_RESET}"
-  msg "  fusionbox cluster oracle         Oracle Cloud 防回收"
+  msg "  fusionbox cluster oracle detect [--metadata]  OCI 只读识别"
+  msg "  fusionbox cluster oracle status               受管/旧保活状态"
   msg ""
   msg "  ${F_BOLD}[k 命令快捷方式]${F_RESET}"
   msg "  fusionbox cluster kcmd           配置快捷命令"
@@ -1098,7 +1068,7 @@ cluster_menu() {
     msg "  ${F_GREEN}2${F_RESET}) 批量执行命令"
     msg "  ${F_GREEN}3${F_RESET}) 同步文件到集群"
     msg "  ${F_GREEN}4${F_RESET}) 游戏服务端"
-    msg "  ${F_GREEN}5${F_RESET}) Oracle Cloud 防回收"
+    msg "  ${F_GREEN}5${F_RESET}) Oracle Cloud 只读识别/状态"
     msg "  ${F_GREEN}6${F_RESET}) k 命令快捷方式"
     msg "  ${F_GREEN}7${F_RESET}) 预置批量任务"
     msg "  ${F_GREEN}8${F_RESET}) 管理已部署游戏服务端"

@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.31.0-blue)
+![version](https://img.shields.io/badge/version-1.32.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,14 +58,14 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.31.0）
+## 最近更新（v1.32.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 集群新增单节点 `trust/connect/node-exec/migrate-key`；默认只用密钥，密码登录必须显式选择
-- 临时密码通过私有 FIFO 传递给 OpenSSH ASKPASS，不写入普通文件、命令参数或环境变量；会话结束清理
-- 公钥迁移先校验匹配私钥，远端追加后再验证纯密钥登录；主机密钥变更一律拒绝
-- Linux 临时高端口 OpenSSH 实际验收 11/11 通过，含错误密码、禁止自动降级、CLI 参数、公钥迁移和清理；生产 SSH 未改动
+- 新增 `fusionbox cluster oracle detect|status`：OCI 本机证据与可选 metadata 只读识别，禁止代理/重定向，不读取实例凭据
+- 状态检查区分受管登记、Docker 可用性和旧 `oracle-keepalive` 残留；只读入口不创建日志、锁或统计标识
+- lookbusy 负载安装、启停和卸载在固定镜像 digest 与 Linux 隔离验收前明确拒绝，不自动接管旧 cron
+- v1.31 集群会话仍提供临时密码 FIFO、严格 known_hosts 和密钥迁移；真实多节点与 Oracle Docker 生命周期继续未验证
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -338,7 +338,7 @@ fusionbox workspace list         # 列出所有后台会话
 - Minecraft Java 版 (Paper)、Minecraft Bedrock 版
 - Terraria、Palworld (幻兽帕鲁)
 
-**Oracle Cloud (`fusionbox cluster oracle`)：** 防回收保活脚本、OCI CLI 安装
+**Oracle Cloud (`fusionbox cluster oracle`)：** OCI 只读识别、受管/旧保活状态检查；lookbusy 负载安装待固定镜像与隔离验收
 
 **k 命令快捷方式 (`fusionbox cluster kcmd`)：**
 ```bash
@@ -351,7 +351,8 @@ fusionbox cluster add            # 添加集群节点
 fusionbox cluster exec <cmd>     # 批量执行命令
 fusionbox cluster sync           # 同步文件到集群
 fusionbox cluster game           # 游戏服务端部署
-fusionbox cluster oracle         # Oracle Cloud 防回收
+fusionbox cluster oracle detect  # OCI 只读识别
+fusionbox cluster oracle status  # 受管/旧保活状态
 fusionbox cluster kcmd           # 配置 k 命令快捷方式
 ```
 
@@ -362,7 +363,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 ## 诚实边界
 
 - 测试结论严格区分：**本地 mock / 隔离夹具 / 真机实测 / 未验证**，发布说明随版本附带精确范围
-- 待真实凭据/环境才能验证（代码已有、持续标注未验证）：ACME 公网域名签发、Cloudflare API 联动、Telegram 送达、真实多节点集群、OCI Oracle 项（G32-34）
+- 待真实凭据/环境才能验证：ACME 公网域名签发、Cloudflare API 联动、Telegram 送达、真实多节点集群；OCI G32 仅完成只读识别，lookbusy 负载、oci-helper（G33）和 root/IPv6（G34）仍未实现
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见下方实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
 - 统计 Worker 已部署并使用 Cloudflare D1 聚合；匿名统计仍默认关闭，只有用户明确同意后才发送事件，Pages 显示的是去重后的累计匿名装机数

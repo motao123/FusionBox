@@ -2,14 +2,22 @@
 # FusionBox - Ultimate Linux Management Script
 # Repository: https://github.com/motao123/FusionBox
 
-# Read-only commands may run without root; everything else (incl. menus) needs root
+# Read-only commands may run without root; everything else (incl. menus) needs root.
+# Oracle detect/status deliberately bypass normal startup writes so inspection stays read-only.
+FUSION_READONLY=0
+if [[ "$1" == "cluster" && "$2" == "oracle" && "${3:-}" =~ ^(detect|status|help)$ ]]; then
+  FUSION_READONLY=1
+fi
 case "$1" in
   help|h|version|v|privacy)
     [[ "$1" != "privacy" || "${2:-status}" == "status" ]] || {
-      [[ $EUID -ne 0 ]] && echo "需要 root 权限" && exit 1
+      [[ $EUID -ne 0 && $FUSION_READONLY -ne 1 ]] && echo "需要 root 权限" && exit 1
     }
     ;;
-  *) [[ $EUID -ne 0 ]] && echo "需要 root 权限" && exit 1 ;;
+  cluster)
+    [[ $EUID -ne 0 && $FUSION_READONLY -ne 1 ]] && echo "需要 root 权限" && exit 1
+    ;;
+  *) [[ $EUID -ne 0 && $FUSION_READONLY -ne 1 ]] && echo "需要 root 权限" && exit 1 ;;
 esac
 
 # Resolve script path through symlinks (install.sh links /usr/local/bin/fusionbox
@@ -495,8 +503,10 @@ privacy_menu() {
 }
 
 # ---- Entry ----
-_log_write "FusionBox v$FUSION_VER started with args: $*"
-_telemetry_event heartbeat
+if [[ "${FUSION_READONLY:-0}" != "1" ]]; then
+  _log_write "FusionBox v$FUSION_VER started with args: $*"
+  _telemetry_event heartbeat
+fi
 
 # Route the command
 route "$@"

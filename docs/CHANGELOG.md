@@ -2,6 +2,13 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.32.0 Oracle 只读识别与旧保活边界
+
+- 新增 `fusionbox cluster oracle detect|status`：本机 OCI 证据识别，可选一次有界、禁止代理和重定向的 OCI metadata 只读探测；不读取实例凭据、不输出实例标识。
+- `status` 报告受管登记、Docker 可用性和旧 `oracle-keepalive` 脚本/cron/log 残留；只读入口跳过启动日志、匿名心跳和状态目录创建。
+- lookbusy 负载安装、启停和卸载入口在固定镜像 digest、资源策略和 Linux 隔离验收完成前明确拒绝；不会自动接管或删除旧 cron/脚本。G33/G34 仍未实现。
+- 本地 Windows 只读 helper 编译与行为检查通过；无 WSL/OCI 环境，未宣称真实 Oracle 或 Docker 生命周期验证。
+
 ## v1.31.0 集群临时密码会话与密钥迁移
 
 - 新增单节点 `trust/connect/node-exec/migrate-key`。默认纯密钥，密码需隐藏交互或显式 FD；批量命令不自动降级。
