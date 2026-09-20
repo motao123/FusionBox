@@ -375,8 +375,9 @@ class Transactions(unittest.TestCase):
 
     def test_real_fail2ban_staged_configuration(self):
         binary = shutil.which('fail2ban-client')
-        if not binary:
-            self.skipTest('fail2ban-client unavailable; mocked rollback coverage remains')
+        if not binary or not os.path.isdir('/etc/fail2ban'):
+            # CI/容器里通常两者都没有；此时本测试无法验证任何东西，如实跳过。
+            self.skipTest('fail2ban-client or /etc/fail2ban unavailable; mocked rollback coverage remains')
         directory = self.root / 'real-fail2ban'
         shutil.copytree('/etc/fail2ban', directory)
         # Isolate logs/backend and enable only a file-backed sshd jail; validation only.
@@ -398,6 +399,24 @@ class Transactions(unittest.TestCase):
         key = self.root / 'host_key'
         subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key)], check=True)
         self.config.write_text(f'HostKey {key}\nPidFile {self.root}/sshd.pid\nUsePAM no\n')
+
+        # 环境自检：CI/容器里常常没有特权分离目录 /run/sshd，此时 sshd -t 对**任何**
+        # 配置都返回 255（与配置内容无关）。以 root 运行时先补齐它，让测试真正走到
+        # 校验路径；补不上就如实跳过——本测试要验证的是 FusionBox 的事务处理，
+        # 不是「这台机器装好了 sshd」，环境不具备时伪装通过才是真的有害。
+        privsep = '/run/sshd'
+        if os.geteuid() == 0 and not os.path.isdir(privsep):
+            try:
+                os.makedirs(privsep, mode=0o755, exist_ok=True)
+            except OSError:
+                pass
+        probe = subprocess.run([binary, '-t', '-f', str(self.config)],
+                               text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if probe.returncode != 0:
+            detail = (probe.stderr or probe.stdout or '').strip().splitlines()
+            self.skipTest('sshd -t cannot validate even a minimal config in this environment: '
+                          + (detail[-1] if detail else 'exit %d' % probe.returncode))
+
         actual = safety.run
         def command(*args):
             if args[0] == 'systemctl':
