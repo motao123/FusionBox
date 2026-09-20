@@ -1,46 +1,30 @@
 # FusionBox Configuration File
 # Path: ~/.config/fusionbox/config.yaml
+#
+# 原则：本文件只声明 **会被 FusionBox 实际读取** 的键。
+# 写入一个不会被读取的开关，会让用户以为“已经生效”，这是最伤信任的一类不一致；
+# 因此未实现的设置项一律不在此列出，它们的真实归属见文件末尾「不由本文件控制的设置」。
 
 # General settings
 general:
-  lang: auto                  # auto, zh_CN, en
-  auto_update: true           # Auto-check for updates
-  stats: false                # Anonymous usage statistics (opt-in)
-  color: true                 # Colored output
-
-# Proxy module
-proxy:
-  enabled: true
-  core_dir: /etc/fusionbox/proxy/bin
-  conf_dir: /etc/fusionbox/proxy/conf
-  log_dir: /var/log/fusionbox-proxy
-  auto_tls: true
-  bbr_on_proxy: true          # 代理运行时自动启用 BBR
+  lang: auto                  # 输出语言: auto / zh_CN / en（auto 跟随 $LANG）
+  stats: false                # 匿名使用统计（默认关闭，需显式 opt-in；fusionbox privacy）
+  color: true                 # 彩色输出；false 时清空全部 ANSI 颜色（适合日志重定向）
 
 # System module
 system:
-  bbr_enabled: false
-  monitor_interval: 5          # Seconds for system monitoring
-  backup_dir: /root/backups
+  monitor_interval: 5         # `fusionbox system monitor` 刷新间隔（秒，正整数）
+  backup_dir: /root/backups   # `fusionbox system backup|restore` 默认目录（命令行参数可覆盖）
 
 # Network tools
 network:
-  speedtest_server: auto
-  streaming_test: true
+  speedtest_server: auto      # 网速测试节点: auto（就近）或 speedtest 数值节点 ID
 
-# Web/LNMP
-web:
-  nginx_dir: /etc/nginx
-  web_root: /var/www
-  php_version: 8.2
-
-# Docker
-docker:
-  compose_dir: /opt/docker
-  auto_clean: false
-
-# Panel tools
-panels:
-  btmpanel_port: 8888
-  aaapanel_port: 7800
-  xui_port: 54321
+# ---------------------------------------------------------------------------
+# 不由本文件控制的设置（请勿在此写入同名键，写了也不会生效）：
+#   * 自动更新        -> fusionbox update --cron on|off|status（受管 /etc/cron.d/fusionbox-update）
+#   * 代理 bin/conf/log 目录 -> 由安装布局固定（/etc/fusionbox/proxy/...、/var/log/fusionbox-proxy），不支持重定位
+#   * 网站根目录 / PHP 版本  -> 建站、装组件时逐项选择，不设全局默认
+#   * Docker Compose 项目    -> 由 `fusionbox market managed` 注册表与项目自身管理
+#   * 宝塔 / Aapanel / X-UI 端口 -> 各上游安装器自带默认值，FusionBox 不覆盖
+# ---------------------------------------------------------------------------

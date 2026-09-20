@@ -1,0 +1,6 @@
+# 发布包（git archive / Release 资产 / GitHub 自动源码包）排除规则。
+#
+# tests/ 随仓库提供，供 CI 与本地回归使用，但**不进入发布包**：
+# Release 资产与 install.sh 部署的内容都不需要测试代码，
+# 用 export-ignore 让"不随发布"成为被 git 强制保证的事实，而不是靠约定。
+tests/ export-ignore

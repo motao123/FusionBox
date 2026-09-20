@@ -11,7 +11,7 @@ workspace_main() {
     work)            workspace_work "$@" ;;
     menu|main)       workspace_menu ;;
     help|h)          workspace_help ;;
-    *)               workspace_menu ;;
+    *)               _module_unknown_cmd "workspace" "$cmd" ;;
   esac
 }
 

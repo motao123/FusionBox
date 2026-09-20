@@ -45,7 +45,7 @@ system_main() {
     tools)            system_tools_menu ;;
     menu|main)        system_menu ;;
     help|h)           system_help ;;
-    *)                system_menu ;;
+    *)                _module_unknown_cmd "system" "$cmd" ;;
   esac
 }
 
@@ -809,7 +809,9 @@ system_monitor() {
   msg "按 Ctrl+C 退出"
   msg ""
 
-  local interval="${1:-5}"
+  local interval="${1:-${CONFIG_system_monitor_interval:-5}}"
+  # 配置值必须为正整数，否则回退默认，避免 `sleep 0` 空转或 sleep 报错刷屏
+  [[ "$interval" =~ ^[1-9][0-9]*$ ]] || interval=5
   while true; do
     clear
     msg "${F_BOLD}${F_CYAN}FusionBox 系统监控 (每 ${interval} 秒刷新)${F_RESET}"
@@ -880,7 +882,7 @@ _fb_backup_scopes() {
 
 system_backup() {
   _require_root
-  local backup_dir="${1:-/root/backups}" scopes="${2:-}"
+  local backup_dir="${1:-${CONFIG_system_backup_dir:-/root/backups}}" scopes="${2:-}"
   mkdir -p "$backup_dir" || return 1
 
   local date_str; date_str=$(date '+%Y%m%d_%H%M%S')
@@ -900,7 +902,7 @@ system_backup() {
 
 system_restore() {
   _require_root
-  local backup_dir="${1:-/root/backups}"
+  local backup_dir="${1:-${CONFIG_system_backup_dir:-/root/backups}}"
 
   msg_title "系统恢复"
   msg ""
@@ -1978,6 +1980,72 @@ system_disk() {
 }
 
 # ---- 时区管理 ----
+# G07 时区预设：按区域分组的 20+ 常用城市。
+# 格式: "区域|IANA 时区标识|城市显示名"
+# 新增城市只需在此追加一行，菜单/校验/写入逻辑无需改动（数据驱动）。
+SYSTEM_TZ_PRESETS=(
+  "亚洲|Asia/Shanghai|中国 上海"
+  "亚洲|Asia/Hong_Kong|中国 香港"
+  "亚洲|Asia/Taipei|中国 台湾"
+  "亚洲|Asia/Tokyo|日本 东京"
+  "亚洲|Asia/Seoul|韩国 首尔"
+  "亚洲|Asia/Singapore|新加坡"
+  "亚洲|Asia/Bangkok|泰国 曼谷"
+  "亚洲|Asia/Jakarta|印尼 雅加达"
+  "亚洲|Asia/Kolkata|印度 新德里"
+  "亚洲|Asia/Dubai|阿联酋 迪拜"
+  "亚洲|Asia/Riyadh|沙特 利雅得"
+  "欧洲|Europe/London|英国 伦敦"
+  "欧洲|Europe/Paris|法国 巴黎"
+  "欧洲|Europe/Berlin|德国 柏林"
+  "欧洲|Europe/Amsterdam|荷兰 阿姆斯特丹"
+  "欧洲|Europe/Madrid|西班牙 马德里"
+  "欧洲|Europe/Moscow|俄罗斯 莫斯科"
+  "欧洲|Europe/Istanbul|土耳其 伊斯坦布尔"
+  "美洲|America/New_York|美国 纽约"
+  "美洲|America/Chicago|美国 芝加哥"
+  "美洲|America/Los_Angeles|美国 洛杉矶"
+  "美洲|America/Toronto|加拿大 多伦多"
+  "美洲|America/Mexico_City|墨西哥 墨西哥城"
+  "美洲|America/Sao_Paulo|巴西 圣保罗"
+  "大洋洲|Australia/Sydney|澳大利亚 悉尼"
+  "大洋洲|Australia/Perth|澳大利亚 珀斯"
+  "大洋洲|Pacific/Auckland|新西兰 奥克兰"
+  "非洲|Africa/Cairo|埃及 开罗"
+  "非洲|Africa/Johannesburg|南非 约翰内斯堡"
+)
+
+# 应用时区：先做格式与存在性校验，再 timedatectl，失败时软链接兜底。
+# 校验的目的不是防呆，而是防路径穿越（如 `../../etc/passwd` 被写进 /etc/timezone）。
+_system_tz_apply() {
+  local tz="$1"
+  [[ -n "$tz" ]] || { msg_err "时区不能为空"; return 1; }
+  [[ "$tz" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]] || {
+    msg_err "时区格式非法: $tz（应形如 Asia/Shanghai）"; return 1; }
+  [[ -f "/usr/share/zoneinfo/$tz" ]] || {
+    msg_err "系统中不存在该时区: $tz"; return 1; }
+  if command -v timedatectl &>/dev/null && timedatectl set-timezone "$tz" 2>/dev/null; then
+    return 0
+  fi
+  ln -sf "/usr/share/zoneinfo/$tz" /etc/localtime || return 1
+  printf '%s\n' "$tz" > /etc/timezone 2>/dev/null || true
+  return 0
+}
+
+_system_tz_sync() {
+  _install_pkg ntp 2>/dev/null || _install_pkg chrony 2>/dev/null || true
+  if command -v ntpdate &>/dev/null; then
+    ntpdate pool.ntp.org 2>/dev/null && msg_ok "时间已同步"
+  elif command -v chronyc &>/dev/null; then
+    chronyc makestep 2>/dev/null && msg_ok "时间已同步"
+  elif command -v timedatectl &>/dev/null; then
+    timedatectl set-ntp true 2>/dev/null && msg_ok "NTP 已启用"
+  else
+    msg_warn "未找到可用的时间同步工具（ntpdate/chronyc/timedatectl）"
+  fi
+  msg "  当前时间: $(date '+%Y-%m-%d %H:%M:%S')"
+}
+
 system_timezone() {
   _require_root
   msg_title "时区管理"
@@ -1985,43 +2053,63 @@ system_timezone() {
 
   msg "  ${F_BOLD}当前时区:${F_RESET} $(timedatectl 2>/dev/null | grep "Time zone" | awk '{print $3, $4}' || cat /etc/timezone 2>/dev/null || date +%Z)"
   msg "  ${F_BOLD}当前时间:${F_RESET} $(date '+%Y-%m-%d %H:%M:%S %Z')"
+  msg ""
+
+  local idx=0 region="" last_region="" entry tz_id tz_label tz_choice custom_tz
+  for entry in "${SYSTEM_TZ_PRESETS[@]}"; do
+    region="${entry%%|*}"
+    if [[ "$region" != "$last_region" ]]; then
+      [[ -n "$last_region" ]] && msg ""
+      msg "  ${F_BOLD}[$region]${F_RESET}"
+      last_region="$region"
+    fi
+    idx=$((idx + 1))
+    tz_id="${entry#*|}"; tz_id="${tz_id%%|*}"
+    tz_label="${entry##*|}"
+    msg "  $(printf '%2d' "$idx")) ${tz_label}  ${F_CYAN}${tz_id}${F_RESET}"
+  done
 
   msg ""
-  msg "  1) 设置时区为 亚洲/上海"
-  msg "  2) 设置时区为 亚洲/东京"
-  msg "  3) 设置时区为 美国/纽约"
-  msg "  4) 设置时区为 欧洲/伦敦"
-  msg "  5) 自定义时区"
-  msg "  6) 同步时间（NTP）"
-  msg "  0) 返回"
-  read -p "请选择: " tz_choice
+  msg "   ${F_BOLD}c${F_RESET}) 自定义时区（IANA 标识，如 Asia/Shanghai）"
+  msg "   ${F_BOLD}n${F_RESET}) 同步时间 (NTP)"
+  msg "   ${F_BOLD}0${F_RESET}) 返回"
+  msg ""
+  read -r -p "请选择: " tz_choice || { msg ""; return 0; }
 
-  case "$tz_choice" in
-    1) timedatectl set-timezone Asia/Shanghai 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime; msg_ok "时区已设置为 Asia/Shanghai" ;;
-    2) timedatectl set-timezone Asia/Tokyo 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime; msg_ok "时区已设置为 Asia/Tokyo" ;;
-    3) timedatectl set-timezone America/New_York 2>/dev/null || ln -sf /usr/share/zoneinfo/America/New_York /etc/localtime; msg_ok "时区已设置为 America/New_York" ;;
-    4) timedatectl set-timezone Europe/London 2>/dev/null || ln -sf /usr/share/zoneinfo/Europe/London /etc/localtime; msg_ok "时区已设置为 Europe/London" ;;
-    5)
-      read -p "请输入时区（如 Asia/Shanghai）: " custom_tz
+  # 预设：纯数字且落在范围内
+  if [[ "$tz_choice" =~ ^[0-9]+$ ]] && (( tz_choice >= 1 && tz_choice <= ${#SYSTEM_TZ_PRESETS[@]} )); then
+    entry="${SYSTEM_TZ_PRESETS[$((tz_choice - 1))]}"
+    tz_id="${entry#*|}"; tz_id="${tz_id%%|*}"
+    tz_label="${entry##*|}"
+    if _system_tz_apply "$tz_id"; then
+      msg_ok "时区已设置为 $tz_label ($tz_id)"
+      _log_write "时区更改为 $tz_id"
+    fi
+    pause
+    return 0
+  fi
+
+  case "${tz_choice,,}" in
+    c|custom)
+      read -r -p "请输入时区（如 Asia/Shanghai）: " custom_tz || return 0
       if [[ -n "$custom_tz" ]]; then
-        timedatectl set-timezone "$custom_tz" 2>/dev/null || ln -sf "/usr/share/zoneinfo/$custom_tz" /etc/localtime
-        msg_ok "时区已设置为 $custom_tz"
+        if _system_tz_apply "$custom_tz"; then
+          msg_ok "时区已设置为 $custom_tz"
+          _log_write "时区更改为 $custom_tz"
+        fi
       fi
+      pause
       ;;
-    6)
-      _install_pkg ntp 2>/dev/null || _install_pkg chrony 2>/dev/null || true
-      if command -v ntpdate &>/dev/null; then
-        ntpdate pool.ntp.org 2>/dev/null && msg_ok "时间已同步"
-      elif command -v chronyc &>/dev/null; then
-        chronyc makestep 2>/dev/null && msg_ok "时间已同步"
-      elif command -v timedatectl &>/dev/null; then
-        timedatectl set-ntp true 2>/dev/null && msg_ok "NTP 已启用"
-      fi
-      msg "  当前时间: $(date '+%Y-%m-%d %H:%M:%S')"
+    n|ntp)
+      _system_tz_sync
+      pause
+      ;;
+    ""|0) return 0 ;;
+    *)
+      msg_err "无效选择: $tz_choice"
+      pause
       ;;
   esac
-  _log_write "时区设置已更改"
-  pause
 }
 
 # ---- 回收站管理 ----

@@ -125,6 +125,19 @@ read_input() {
   echo "$value"
 }
 
+# ---- Unknown subcommand guard ----
+# 模块级未知子命令的统一出口。
+# 旧行为是静默滑进交互菜单：拼错命令的用户不会收到任何提示，脚本/CI 下还会
+# 因为 read 阻塞而卡住。这里明确报错并给出可执行的下一步，返回 2（区别于成功 0）。
+_module_unknown_cmd() {
+  local module="$1" cmd="${2:-}"
+  msg_err "未知子命令: ${cmd:-<空>}"
+  msg_info "用法: fusionbox ${module} help      查看该模块全部命令"
+  msg_info "      fusionbox help ${module}      查看该模块详细帮助"
+  msg_info "      fusionbox ${module}           进入交互菜单"
+  return 2
+}
+
 # ---- Config loading ----
 
 _load_config() {
@@ -149,6 +162,17 @@ _load_config() {
   # Override with env vars
   [[ -n "${FUSION_LANG:-}" ]] && F_LANG="$FUSION_LANG"
   F_LANG="${CONFIG_general_lang:-$F_LANG}"
+
+  # general.color=false 时清空全部 ANSI 变量：颜色在 msg()/msg_*() 层统一生效，
+  # 置空即全局无色，无需改动任何调用点（i18n 文案不含内嵌转义码）。
+  case "${CONFIG_general_color:-true}" in
+    false|False|FALSE|0|no|off) F_COLOR=0 ;;
+    *)                          F_COLOR=1 ;;
+  esac
+  if [[ "${F_COLOR:-1}" -eq 0 ]]; then
+    F_RED=''; F_GREEN=''; F_YELLOW=''; F_BLUE=''; F_MAGENTA=''; F_CYAN=''
+    F_BOLD=''; F_ULINE=''; F_RESET=''
+  fi
 }
 
 _config_set_general() (

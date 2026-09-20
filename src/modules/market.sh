@@ -102,7 +102,7 @@ market_main() {
     category|cat)     market_category "$@" ;;
     menu|main)        market_menu ;;
     help|h)           market_help ;;
-    *)                market_menu ;;
+    *)                _module_unknown_cmd "market" "$cmd" ;;
   esac
 }
 
