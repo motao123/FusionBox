@@ -8,6 +8,9 @@
 - 新增可复用的阶段进度反馈：`progress_begin` / `progress_step` / `progress_end`，输出 `[n/总数] 阶段名`。LNMP 安装接入 4 个阶段；受管应用安装在调用前说明「校验端口 → 拉取镜像 → 创建容器 → 等待健康检查」，如实反映慢在哪，不伪造无法观测的百分比。
 - 工作区升级为 SSH 常驻重连：`fusionbox ws w3` 在槽位不存在时自动创建并进入（断线重登永远回到同一编号）；新增 `ws w<n> ensure|resume` 显式确保存在、`ws w<n> ssh` 打印重连方法；菜单与帮助同步。
 - `tests/run_checks.sh` 回归检查由 59 项扩展至 71 项：新增更新变更摘要截取、阶段进度输出格式、工作区常驻入口与自愈创建三组覆盖。
+- 长任务阶段反馈扩展到 Docker 安装（`[1/4] 安装 Docker 引擎`…`[4/4] 校验 docker 与 compose`）与代理核心安装（下载 → 安装 → 建服务 → 校验），此前仅 LNMP 安装有阶段计数。
+- 新增 CNB 侧流水线 `.cnb.yml`：`main` 与 PR 跑语法检查 + `tests/run_checks.sh` 回归；`tag_push` 校验 Tag 与 `version.txt`/`src/init.sh` 一致后打包 `FusionBox-vX.Y.Z.tar.gz` 与 `SHA256SUMS` 并作为 release 附件上传，使本仓库托管在 CNB 时有真实 CI 与可同步的发布产物。
+- 回归检查由 71 项扩展至 83 项：新增 Docker/代理安装阶段接入、阶段结束复位与 8 个新 i18n 键的中英同步校验。
 - 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.35.0。
 
 ## v1.34.0 首次使用体验修复与依赖前置检查

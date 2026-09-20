@@ -287,6 +287,14 @@ check_contains "LNMP 安装接入阶段计数" "progress_begin 4" \
   grep -F 'progress_begin 4' "$SRC/modules/web.sh"
 check_contains "受管安装提示阶段流程" "MSG_MARKET_STAGES" \
   grep -F 'MSG_MARKET_STAGES' "$SRC/modules/market.sh"
+check_contains "Docker 安装接入阶段计数" "MSG_DOCKER_STAGES_1" \
+  grep -F 'MSG_DOCKER_STAGES_1' "$SRC/modules/panels.sh"
+check_contains "Docker 安装阶段结束复位" "progress_end" \
+  grep -F 'progress_end' "$SRC/modules/panels.sh"
+check_contains "代理安装接入阶段计数" "MSG_PROXY_STAGES_1" \
+  grep -F 'MSG_PROXY_STAGES_1' "$SRC/modules/proxy.sh"
+check_contains "代理安装阶段结束复位" "progress_end" \
+  grep -F 'progress_end' "$SRC/modules/proxy.sh"
 
 step_out="$(bash -c 'source "'"$SRC"'/lib/common.sh"; progress_begin 3; progress_step "阶段甲"; progress_step "阶段乙"' 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g')"
 if grep -qF '[1/3] 阶段甲' <<<"$step_out" && grep -qF '[2/3] 阶段乙' <<<"$step_out"; then
@@ -295,6 +303,18 @@ else
   bad "progress_step 输出 [n/total] 形式"
   printf '%s\n' "$step_out" | sed 's/^/       | /'
 fi
+
+# 新增阶段文案中英同步
+for key in MSG_DOCKER_STAGES_1 MSG_DOCKER_STAGES_2 MSG_DOCKER_STAGES_3 MSG_DOCKER_STAGES_4 \
+           MSG_PROXY_STAGES_1 MSG_PROXY_STAGES_2 MSG_PROXY_STAGES_3 MSG_PROXY_STAGES_4; do
+  zh="$(grep -c "^$key=" "$SRC/i18n/zh_CN.sh")"
+  en="$(grep -c "^$key=" "$SRC/i18n/en.sh")"
+  if [[ "$zh" == "1" && "$en" == "1" ]]; then
+    ok "i18n 中英同步 $key"
+  else
+    bad "i18n 中英同步 $key (zh=$zh en=$en)"
+  fi
+done
 
 # ---------------------------------------------------------------------------
 section "14. A 档: 工作区 SSH 常驻"
