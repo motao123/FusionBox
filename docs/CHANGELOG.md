@@ -2,6 +2,16 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.36.0 备份/恢复报错中文化、建议清单收尾
+
+- 备份与恢复的全部用户可触达报错改为中文并给出下一步，不再暴露英文技术串：未知备份范围、备份文件重名、恢复冲突（abort 策略下目标已存在）、备份中不含所请求范围、备份源在快照期间变化、归档校验失败等。
+- 顶层报错前缀统一为「备份操作失败:」；`--require-all-scopes` 严格模式的失败信息同步中文化（此前为英文 `No backup sources for scope`）。
+- 严格模式语义不变：`--require-all-scopes` 仍对任一空范围硬失败；默认路径仍跳过空范围、仅全部为空时失败。
+- `tests/run_checks.sh` 回归检查由 83 项扩展至 90 项：新增 7 项覆盖中文报错与顶层前缀（未知范围、严格模式、重名、范围缺失、abort 冲突、无英文前缀残留）。
+- 完成 1.34.0 优先改进清单第 9 项（发布版本与 main 对齐）：`v1.36.0` Tag 与 `version.txt`、`src/init.sh` 的 `FUSION_VER` 三处一致，CNB 侧 `tag_push` 流水线据此校验并打包 `FusionBox-v1.36.0.tar.gz` + `SHA256SUMS` 作为发布附件。
+- 修复 CNB 流水线 `syntax` 阶段必失败的问题：该阶段原先依赖默认 Runner 镜像提供 `python3`，而默认镜像没有，`python3 -m py_compile` 直接返回 127，导致 main 与 PR 的 CNB CI 从未真正通过。现为 `main`/`pull_request` CI 与 `tag_push` 发布流水线显式指定 `python:3.11` 镜像，并设 `PYTHONDONTWRITEBYTECODE=1`。
+- 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.36.0。
+
 ## v1.35.0 更新变更摘要、阶段进度与 SSH 常驻工作区
 
 - `fusionbox update` 成功更新后展示本次版本的变更摘要：从已校验的归档内 `docs/CHANGELOG.md` 精确截取目标版本段落；版本段落缺失或文件不存在时给出「未提供变更说明」提示，不静默失败。

@@ -10,6 +10,8 @@
   # 仓库级事件（tag_push）只能挂在 $ 兜底分支下
   tag_push:
     - name: release-package
+      docker:
+        image: python:3.11
       lock:
         key: fusionbox-release
         wait: true
@@ -41,6 +43,10 @@
 main:
   push:
     - name: ci
+      docker:
+        image: python:3.11
+      env:
+        PYTHONDONTWRITEBYTECODE: '1'
       stages:
         - name: syntax
           script: |
@@ -58,6 +64,10 @@ main:
 
   pull_request:
     - name: ci
+      docker:
+        image: python:3.11
+      env:
+        PYTHONDONTWRITEBYTECODE: '1'
       stages:
         - name: syntax
           script: |

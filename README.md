@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.35.0-blue)
+![version](https://img.shields.io/badge/version-1.36.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,15 +58,14 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.35.0）
+## 最近更新（v1.36.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- `fusionbox update` 更新成功后展示本次版本的变更摘要（直接读取归档内 `docs/CHANGELOG.md`，读不到时说明而非静默）
-- 长任务增加阶段反馈：LNMP 安装按 `[1/4] 安装 Nginx`…逐阶段显示；受管应用安装前说明「校验端口 → 拉取镜像 → 创建容器 → 等待健康检查」
-- 编号工作区支持 SSH 常驻重连：`fusionbox ws w3` 在槽位不存在时自动创建，`ws w3 ensure` 显式确保存在，`ws w3 ssh` 打印重连方法
-- 回归检查扩展到 83 项，新增更新变更摘要、阶段进度、工作区常驻三类覆盖，并把 Docker/代理安装的长等待接入阶段反馈
-- 补齐 CNB 侧流水线 `.cnb.yml`：main/PR 跑语法与回归检查，Tag 推送时校验版本一致性并打包 `FusionBox-vX.Y.Z.tar.gz` + `SHA256SUMS` 作为发布附件
+- 备份/恢复的全部用户可触达报错改为中文并给出下一步：未知范围、备份重名、恢复冲突、范围缺失、损坏校验等不再是英文技术串
+- 顶层报错前缀统一为「备份操作失败:」；`--require-all-scopes` 严格模式失败信息同样中文化
+- 回归检查扩展到 90 项，新增 7 项中文报错与顶层前缀覆盖
+- 完成 1.34.0 建议清单第 9 项：`v1.36.0` Tag 与 `version.txt` / `src/init.sh` 一致，CNB 侧 Tag 构建产出可同步的发布资产
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 

@@ -142,6 +142,23 @@ check_exit "--require-all-scopes 保持严格失败" 1 \
   python3 "$SRC/lib/archive.py" create fusion,web,docker "$OUT/strict.tar" \
   --root "$EMPTYROOT" --require-all-scopes
 
+# 用户可触达的错误必须是中文且可执行（v1.35.1 补齐）
+check_contains "未知 scope -> 中文报错" "未知备份范围" \
+  python3 "$SRC/lib/archive.py" create bogus "$OUT/bad-scope.tar" --root "$ROOT"
+check_contains "严格模式 -> 中文报错" "没有可备份源" \
+  python3 "$SRC/lib/archive.py" create fusion,web "$OUT/strict2.tar" \
+  --root "$EMPTYROOT" --require-all-scopes
+check_exit "备份重名 -> 失败" 1 \
+  python3 "$SRC/lib/archive.py" create web "$OUT/partial.tar" --root "$ROOT"
+check_contains "备份重名 -> 中文提示" "备份文件已存在" \
+  python3 "$SRC/lib/archive.py" create web "$OUT/partial.tar" --root "$ROOT"
+check_contains "恢复缺范围 -> 中文提示" "请求的范围不在该备份中" \
+  python3 "$SRC/lib/archive.py" verify docker "$OUT/partial.tar"
+check_contains "abort 冲突 -> 中文提示" "恢复时发现目标已存在" \
+  python3 "$SRC/lib/archive.py" preview web "$OUT/partial.tar" --root "$ROOT" --conflict abort
+check_absent "顶层报错前缀为中文" "Backup operation failed" \
+  python3 "$SRC/lib/archive.py" create bogus "$OUT/bad-scope2.tar" --root "$ROOT"
+
 # ---------------------------------------------------------------------------
 section "5. 备份 -> 校验 -> 预览 -> 恢复 往返"
 # ---------------------------------------------------------------------------

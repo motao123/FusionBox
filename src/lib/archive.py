@@ -38,18 +38,18 @@ def normalize_scopes(scopes):
             continue
         for scope in ALIASES.get(name, (name,)):
             if scope not in SCOPES:
-                raise ValueError('Unknown backup scope: ' + scope)
+                raise ValueError('未知备份范围: ' + scope + '；可用范围见 fusionbox system backup --help')
             if scope not in result:
                 result.append(scope)
     if not result:
-        raise ValueError('At least one backup scope is required')
+        raise ValueError('至少需要一个备份范围；例如 fusionbox system backup /root/backups web')
     return result
 
 
 def _inside(root, relative):
     path = root / relative
     if path == root or root not in path.parents:
-        raise ValueError('Backup path escapes root: ' + relative)
+        raise ValueError('备份路径逃逸根目录（已拒绝）: ' + relative)
     return path
 
 
@@ -97,7 +97,7 @@ def audit(root, scopes, required=True):
             except FileNotFoundError:
                 continue
             if stat.S_ISLNK(info.st_mode) or not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
-                raise ValueError('Refusing link or special backup source: ' + relative)
+                raise ValueError('拒绝备份硬链接/特殊文件: ' + relative + '；请先移除该文件或改用其它范围')
             roots.append(relative)
             found.append(relative)
             seen_roots.add(relative)
@@ -113,15 +113,15 @@ def audit(root, scopes, required=True):
                         child_info = child.lstat()
                         archive_name = child.relative_to(root).as_posix()
                         if stat.S_ISLNK(child_info.st_mode):
-                            raise ValueError('Refusing symlink backup source: ' + archive_name)
+                            raise ValueError('拒绝备份符号链接: ' + archive_name + '；符号链接指向的目标不会被跟随，请改用真实文件')
                         if child_info.st_dev != device:
-                            raise ValueError('Refusing filesystem boundary: ' + archive_name)
+                            raise ValueError('拒绝跨文件系统备份: ' + archive_name + '；该路径挂载了其它文件系统，请单独备份')
                         if not (stat.S_ISDIR(child_info.st_mode) or stat.S_ISREG(child_info.st_mode)):
-                            raise ValueError('Refusing special backup source: ' + archive_name)
+                            raise ValueError('拒绝备份特殊文件: ' + archive_name + '；请移除该设备/套接字等特殊文件')
                         entries.append(_entry(child, archive_name, child_info))
         if not found:
             if required:
-                raise ValueError('No backup sources for scope: ' + scope)
+                raise ValueError('范围 ' + scope + ' 没有可备份源；去掉该范围，或确认路径存在后重试')
             # A scope whose sources do not exist on this host is skipped and
             # reported, instead of failing the whole backup on a fresh machine.
             skipped.append(scope)
@@ -196,7 +196,7 @@ def _manifest(archive, expected_scopes=None):
     if expected_scopes is not None:
         requested = normalize_scopes(expected_scopes)
         if any(scope not in scopes for scope in requested):
-            raise ValueError('Requested scope is not present in backup')
+            raise ValueError('请求的范围不在该备份中；请用 fusionbox system restore 的列表选择该备份包含的范围')
     roots = data.get('roots')
     scope_roots = data.get('scope_roots')
     entries = data.get('entries')
@@ -255,7 +255,7 @@ def create(destination, scopes, root, allow_skip=True):
     root = Path(root).absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() or destination.is_symlink():
-        raise ValueError('Backup already exists')
+        raise ValueError('备份文件已存在；换一个文件名或先删除已有文件')
     data = audit(root, scopes, required=not allow_skip)
     fd, temporary = tempfile.mkstemp(prefix='.fusionbox-archive-', dir=destination.parent)
     os.close(fd)
@@ -271,7 +271,7 @@ def create(destination, scopes, root, allow_skip=True):
                 if (current.st_uid != record['owner']['uid'] or current.st_gid != record['owner']['gid']
                         or current.st_mode & 0o7777 != record['mode']
                         or ('size' in record and current.st_size != record['size'])):
-                    raise ValueError('Backup source changed during snapshot: ' + record['path'])
+                    raise ValueError('备份期间源文件发生变化（已中止，未产出备份）: ' + record['path'] + '；请停止写入后重试')
                 info = archive.gettarinfo(str(source), record['path'])
                 if record['type'] == 'file':
                     with source.open('rb') as stream:
@@ -297,7 +297,7 @@ def inspect(source, scopes=None):
             if record['type'] == 'file':
                 with archive.extractfile(name) as stream:
                     if _digest(stream) != record['sha256']:
-                        raise ValueError('Archive member checksum mismatch: ' + name)
+                        raise ValueError('备份内容校验失败（文件可能损坏）: ' + name + '；请重新创建备份')
     return data
 
 
@@ -307,7 +307,7 @@ def verify(source, scopes=None):
 
 def preview(source, scopes, root, conflict='abort'):
     if conflict not in ('abort', 'replace', 'skip'):
-        raise ValueError('Conflict policy must be abort, replace or skip')
+        raise ValueError('冲突策略必须是 abort、replace 或 skip 之一')
     root = Path(root).absolute()
     data = inspect(source, scopes)
     selected = normalize_scopes(scopes)
@@ -321,7 +321,7 @@ def preview(source, scopes, root, conflict='abort'):
         target = _inside(root, name)
         for parent in (target, *target.parents):
             if parent.is_symlink():
-                raise ValueError('Refusing symlink destination: ' + str(target))
+                raise ValueError('拒绝写入符号链接目标（已中止）: ' + str(target) + '；请先移除该符号链接')
             if parent == root:
                 break
         exists = target.exists()
@@ -329,7 +329,7 @@ def preview(source, scopes, root, conflict='abort'):
         result.append({'root': name, 'scope': [s for s in selected if name in data['scope_roots'][s]],
                        'state': 'present' if exists else 'absent', 'action': action})
     if conflict == 'abort' and any(item['state'] == 'present' for item in result):
-        raise ValueError('Restore conflicts found; choose replace or skip after preview')
+        raise ValueError('恢复时发现目标已存在；请先执行 preview 查看，再选择 replace 或 skip')
     return result
 
 
@@ -445,5 +445,5 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as error:
-        print('Backup operation failed:', error, file=sys.stderr)
+        print('备份操作失败:', error, file=sys.stderr)
         sys.exit(1)
