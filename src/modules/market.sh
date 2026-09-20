@@ -93,7 +93,12 @@ market_main() {
   local cmd="${1:-menu}"; shift || true
 
   case "$cmd" in
-    managed)          _require_root; python3 "$FUSION_SRC/lib/market_apps.py" "$@" ;;
+    managed)
+      _require_root
+      [[ $# -ge 1 ]] || { market_managed_help; return 2; }
+      if ! _require_python3 "受管应用市场"; then return 1; fi
+      python3 "$FUSION_SRC/lib/market_apps.py" "$@"
+      ;;
     clamav|scan)      market_clamav "$@" ;;
     list|l)           market_list "$@" ;;
     search|s)         market_search "$@" ;;
@@ -545,6 +550,41 @@ market_help() {
   msg ""
 }
 
+# Count of managed catalog entries, read live so the menu never goes stale.
+_market_managed_count() {
+  command -v python3 &>/dev/null || { printf '?'; return; }
+  python3 "$FUSION_SRC/lib/market_apps.py" catalog 2>/dev/null | grep -c '^[a-z0-9][a-z0-9_-]*:' || printf '?'
+}
+
+# ---- Managed subcommand help (never let argparse leak English usage) ----
+market_managed_help() {
+  _require_root
+  msg_title "受管应用生命周期 帮助"
+  msg ""
+  msg "  用法: fusionbox market managed <操作> [应用] [选项]"
+  msg ""
+  msg "  操作:"
+  msg "  ${F_GREEN}catalog${F_RESET}                      查看受管目录（应用 ID、端口、资源限制）"
+  msg "  ${F_GREEN}status${F_RESET} <应用>               查看本地证书校验与入口状态"
+  msg "  ${F_GREEN}install${F_RESET} <应用> --confirm    安装（默认 localhost，端口可 --port/--auto-port）"
+  msg "  ${F_GREEN}reinstall${F_RESET} <应用> --confirm --reuse-data  复用保留数据重装"
+  msg "  ${F_GREEN}update${F_RESET} <应用> --confirm     更新（镜像版本升级默认拒绝）"
+  msg "  ${F_GREEN}uninstall${F_RESET} <应用> --confirm  卸载（保留具名卷数据）"
+  msg "  ${F_GREEN}domain${F_RESET} <应用> --domain <域名> --confirm    绑定自有域名（HTTP）"
+  msg "  ${F_GREEN}tls${F_RESET} <应用> --cert <证书> --key <私钥> --confirm  使用已有 PEM"
+  msg "  ${F_GREEN}tls-refresh${F_RESET} <应用> --confirm 校验并重载已更新的 PEM"
+  msg ""
+  msg "  常用选项:"
+  msg "  --port <端口>       首选 localhost 端口（留空用默认/保留值）"
+  msg "  --auto-port         占用时最多探测后续 20 个端口（不保证预留）"
+  msg "  --nas-path <路径>   目录模板所需的宿主 NAS 根路径"
+  msg "  --risk-ack <文本>   高权限应用要求的完整确认文本"
+  msg ""
+  msg "  示例: fusionbox market managed install nginx --confirm"
+  msg "        fusionbox market managed catalog"
+  msg ""
+}
+
 # ---- Interactive Menu ----
 market_managed_menu() {
   _require_root
@@ -552,8 +592,20 @@ market_managed_menu() {
   local -a args=()
   read -r -p "受管应用 ID（默认 nginx；可用 catalog 查看）: " app || return 1
   app="${app:-nginx}"
-  if ! python3 "$FUSION_SRC/lib/market_apps.py" catalog 2>/dev/null | grep -q "^${app}:"; then
-    msg_err "不支持的受管应用 ID"
+  # python3 is a hard dependency here: without it the catalog probe would fail
+  # silently and the user would be told "不支持的受管应用 ID", which is wrong.
+  if ! _require_python3 "受管应用市场"; then
+    return 1
+  fi
+  local catalog_out
+  if ! catalog_out=$(python3 "$FUSION_SRC/lib/market_apps.py" catalog 2>&1); then
+    msg_err "无法读取受管应用目录"
+    msg "$catalog_out"
+    return 1
+  fi
+  if ! grep -q "^${app}:" <<< "$catalog_out"; then
+    msg_err "不支持的受管应用 ID: $app"
+    msg_info "可用 ID 列表见: fusionbox market managed catalog"
     return 1
   fi
   read -r -p "操作 catalog/status/install/reinstall/update/uninstall/domain/tls/tls-refresh: " action || return 1
@@ -614,7 +666,7 @@ market_menu() {
     msg "  ${F_GREEN}3${F_RESET}) 搜索"
     msg "  ${F_GREEN}4${F_RESET}) 安装应用"
     msg "  ${F_GREEN}5${F_RESET}) 移除应用"
-    msg "  ${F_GREEN}6${F_RESET}) 受管 Nginx / ntfy 生命周期（localhost/保留数据）"
+    msg "  ${F_GREEN}6${F_RESET}) 受管应用生命周期（catalog 查看全部 $(_market_managed_count) 个；localhost/保留数据）"
     msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
     msg ""
     read -p "请选择 [0-6]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环

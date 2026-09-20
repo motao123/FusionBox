@@ -71,14 +71,20 @@ def _entry(path, name, info):
     return record
 
 
-def audit(root, scopes):
-    """Return regular files/directories without following links or crossing devices."""
+def audit(root, scopes, required=True):
+    """Return regular files/directories without following links or crossing devices.
+
+    ``required=False`` allows scopes whose sources are absent to be skipped (and
+    reported) instead of aborting the whole backup, which is what a fresh host
+    needs for the default scope set.
+    """
     root = Path(root).absolute()
     selected = normalize_scopes(scopes)
     entries = []
     roots = []
     seen_roots = set()
     scope_roots = {}
+    skipped = []
     for scope in selected:
         found = []
         for relative in SCOPES[scope]:
@@ -114,9 +120,21 @@ def audit(root, scopes):
                             raise ValueError('Refusing special backup source: ' + archive_name)
                         entries.append(_entry(child, archive_name, child_info))
         if not found:
-            raise ValueError('No backup sources for scope: ' + scope)
+            if required:
+                raise ValueError('No backup sources for scope: ' + scope)
+            # A scope whose sources do not exist on this host is skipped and
+            # reported, instead of failing the whole backup on a fresh machine.
+            skipped.append(scope)
+            print('已跳过 scope ' + scope + '（' + ', '.join(
+                str(Path('/') / relative) for relative in SCOPES[scope]) + ' 均不存在）',
+                file=sys.stderr)
+            continue
         scope_roots[scope] = found
-    return {'format': FORMAT, 'owner': OWNER, 'scopes': selected, 'scope_roots': scope_roots,
+    if not scope_roots:
+        raise ValueError('没有任何可备份范围（已跳过: ' + ','.join(skipped) + '）；'
+                         '请先安装 FusionBox 部署，或用 --scope 显式指定存在的范围')
+    return {'format': FORMAT, 'owner': OWNER, 'scopes': [s for s in selected if s in scope_roots],
+            'scope_roots': scope_roots, 'skipped_scopes': skipped,
             'roots': roots, 'entries': entries,
             'database_consistency': 'excluded; use application-native database dumps separately'}
 
@@ -232,13 +250,13 @@ def validate(archive, scopes=None):
     return data['roots']
 
 
-def create(destination, scopes, root):
+def create(destination, scopes, root, allow_skip=True):
     destination = Path(destination)
     root = Path(root).absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() or destination.is_symlink():
         raise ValueError('Backup already exists')
-    data = audit(root, scopes)
+    data = audit(root, scopes, required=not allow_skip)
     fd, temporary = tempfile.mkstemp(prefix='.fusionbox-archive-', dir=destination.parent)
     os.close(fd)
     try:
@@ -400,14 +418,18 @@ def main():
     parser.add_argument('legacy_root', nargs='?', help=argparse.SUPPRESS)
     parser.add_argument('--root', default=None)
     parser.add_argument('--conflict', choices=('abort', 'replace', 'skip'), default='abort')
+    parser.add_argument('--require-all-scopes', action='store_true',
+                        help='Fail when a scope has no sources instead of skipping it')
     args = parser.parse_args()
     if args.root is not None and args.legacy_root is not None:
         parser.error('choose either legacy positional root or --root')
     root = Path(args.root or args.legacy_root or '/')
     scopes = normalize_scopes(args.scopes)
     if args.action == 'create':
-        data = create(args.filename, scopes, root)
+        data = create(args.filename, scopes, root, allow_skip=not args.require_all_scopes)
         print('Created scopes:', ', '.join(data['scopes']))
+        for scope in data.get('skipped_scopes', []):
+            print('Skipped scope (no sources):', scope)
     elif args.action == 'verify':
         data = inspect(args.filename, scopes)
         print('Verified scopes:', ', '.join(data['scopes']))

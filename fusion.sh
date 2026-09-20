@@ -117,6 +117,15 @@ route() {
     privacy)
       privacy_command "$@"
       ;;
+    # FusionBox 自身日志（主菜单/帮助里也可发现）
+    log|logs)
+      show_logs "${1:-200}"
+      ;;
+    # 救援指引：出事了该敲什么
+    rescue)
+      _load_module "system"
+      system_rescue "$@"
+      ;;
     # k command shortcut - pass to system
     k)
       _load_module "cluster"
@@ -142,10 +151,12 @@ show_status() {
   _print_banner
   msg_title "系统状态概览"
   msg ""
-  msg "  ${F_BOLD}CPU:${F_RESET} $(nproc --all) cores | $(free -h | awk '/Mem/{print $2}') RAM"
+  msg "  ${F_BOLD}CPU:${F_RESET} $(_cpu_cores_display) | $(free -h | awk '/Mem/{print $2}') RAM"
   msg "  ${F_BOLD}Disk:${F_RESET} $(df -h / | awk 'NR==2{print $3 "/" $2 " (" $5 ")"}')"
   msg "  ${F_BOLD}Kernel:${F_RESET} $F_KERNEL"
   msg "  ${F_BOLD}OS:${F_RESET} $F_OS_NAME $F_OS_VER"
+  msg ""
+  show_dependency_status
   msg ""
 
   # Check proxy status
@@ -414,6 +425,8 @@ show_help() {
   msg "  ${F_GREEN}status${F_RESET}            系统状态概览"
   msg "  ${F_GREEN}update${F_RESET}            更新 FusionBox"
   msg "  ${F_GREEN}uninstall${F_RESET}         卸载 FusionBox 本体"
+  msg "  ${F_GREEN}log${F_RESET}               查看 FusionBox 运行日志"
+  msg "  ${F_GREEN}rescue${F_RESET}            救援指引（恢复命令、备份位置、回滚步骤）"
   msg "  ${F_GREEN}privacy${F_RESET}           隐私与匿名统计设置"
   msg "  ${F_GREEN}version${F_RESET}           显示版本"
   msg "  ${F_GREEN}help${F_RESET}              显示帮助"
@@ -429,6 +442,12 @@ show_help() {
   msg "  fusionbox panels docker          # Docker 管理"
   msg "  fusionbox warp install           # 安装 WARP"
   msg "  fusionbox cluster game           # 游戏服务端"
+  msg "  fusionbox cluster alias          # 常用命令中文速查表"
+  msg "  fusionbox ws w3                  # 进入 3 号后台槽位"
+  msg ""
+  msg "  ${F_BOLD}依赖:${F_RESET} python3 为必需（备份/用户/SSH/受管市场）；"
+  msg "        docker compose v2 为受管市场与 Compose 备份所需；curl 用于下载。"
+  msg "        运行 fusionbox status 可查看依赖自检。"
   msg ""
 
   # Quick reference per module
@@ -446,6 +465,10 @@ main_menu() {
     _print_banner
 
     msg_title "主菜单"
+    msg ""
+    # Dependency self-check first: users must know what is missing before they
+    # hit a failure, and before the acknowledgement banner.
+    show_dependency_status
     msg ""
     msg "  ${F_GREEN} 1${F_RESET}) 代理管理"
     msg "  ${F_GREEN} 2${F_RESET}) 系统管理"

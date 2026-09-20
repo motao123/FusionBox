@@ -32,6 +32,13 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
+      - name: Regression checks (v1.34.0 fixes)
+        run: |
+          set -e
+          bash tests/run_checks.sh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
     needs: syntax

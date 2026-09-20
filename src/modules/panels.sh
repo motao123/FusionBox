@@ -1,12 +1,60 @@
 # FusionBox Panels & Docker Management Module
 # Docker, server panels, and utility tools
 
+# ---- Chinese help for raw Python passthrough subcommands ----
+# Without these, running the subcommand with no arguments exposed an English
+# argparse usage dump. Mirrors the existing ssh-candidate behaviour.
+
+panels_compose_backup_help() {
+  msg_title "受管 Compose 备份 帮助"
+  msg ""
+  msg "  用法: fusionbox panels compose-backup <操作> <项目名> <路径> [选项]"
+  msg ""
+  msg "  操作:"
+  msg "  ${F_GREEN}register${F_RESET} <项目名> <compose 文件>   注册受管项目（需 --confirm-owned-import）"
+  msg "  ${F_GREEN}backup${F_RESET}   <项目名> <归档路径>        备份（需 --confirm-stop-writers）"
+  msg "  ${F_GREEN}restore${F_RESET}  <项目名> <归档路径>        恢复（需 --confirm-stop-writers）"
+  msg ""
+  msg "  说明: 私有元数据可能包含密钥，错误输出不会打印 Docker 原始内容。"
+  msg "  示例: fusionbox panels compose-backup register myapp /opt/myapp/compose.yml --confirm-owned-import"
+  msg ""
+}
+
+panels_docker_migration_help() {
+  msg_title "Docker 离线迁移 帮助"
+  msg ""
+  msg "  用法: fusionbox panels docker-migration <操作> [参数] [选项]"
+  msg ""
+  msg "  操作:"
+  msg "  ${F_GREEN}export${F_RESET} <bundle>       导出（-容器/--compose-project 二选一）"
+  msg "  ${F_GREEN}verify${F_RESET} <bundle>       校验离线包完整性"
+  msg "  ${F_GREEN}preflight${F_RESET} <bundle>    只读目标兼容性与冲突预检"
+  msg "  ${F_GREEN}restore${F_RESET} <bundle>      恢复（--confirm-clean-target 清空目标）"
+  msg "  ${F_GREEN}rollback${F_RESET} <事务ID>     回滚"
+  msg "  ${F_GREEN}resume${F_RESET} <事务ID>       续跑中断的恢复"
+  msg ""
+  msg "  示例: fusionbox panels docker-migration preflight ./mybundle"
+  msg ""
+}
+
 panels_main() {
   local cmd="${1:-menu}"; shift || true
 
   case "$cmd" in
-    compose-backup)       _require_root; python3 "$FUSION_SRC/lib/compose_backup.py" "$@" ;;
-    docker-migration)     _require_root; python3 "$FUSION_SRC/lib/docker_migration.py" "$@" ;;
+    compose-backup)
+      _require_root
+      [[ $# -ge 1 ]] || { panels_compose_backup_help; return 2; }
+      _require_docker_compose "Compose 备份/恢复" || return 1
+      _require_python3 "Compose 备份/恢复" || return 1
+      python3 "$FUSION_SRC/lib/compose_backup.py" "$@"
+      ;;
+    docker-migration)
+      _require_root
+      [[ $# -ge 1 ]] || { panels_docker_migration_help; return 2; }
+      _require_docker "Docker 离线迁移" || return 1
+      _require_python3 "Docker 离线迁移" || return 1
+      python3 "$FUSION_SRC/lib/docker_migration.py" "$@"
+      ;;
     docker|dk)            panels_docker "$@" ;;
     mirror|mirrors)       panels_docker_mirror "${1:-}" ;;
     bt|baota)             panels_bt ;;
@@ -34,7 +82,14 @@ panels_docker() {
     images)       panels_docker_images ;;
     prune)        panels_docker_prune ;;
     compose|up)   panels_docker_compose "$@" ;;
-    migrate|migration) shift; _require_root; python3 "$FUSION_SRC/lib/docker_migration.py" "$@" ;;
+    migrate|migration)
+      shift
+      _require_root
+      [[ $# -ge 1 ]] || { panels_docker_migration_help; return 2; }
+      _require_docker "Docker 离线迁移" || return 1
+      _require_python3 "Docker 离线迁移" || return 1
+      python3 "$FUSION_SRC/lib/docker_migration.py" "$@"
+      ;;
     mirror|mirrors) panels_docker_mirror "${2:-}" ;;
     port-block|pb)  shift; panels_docker_port_block "$@" ;;
     uninstall)      panels_docker_uninstall ;;

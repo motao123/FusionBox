@@ -30,6 +30,13 @@ MSG_PRIVACY_ID_RESET="匿名标识已重置"
 MSG_PRIVACY_RESET_DISABLED="请先开启匿名统计"
 MSG_PRIVACY_USAGE="用法: fusionbox privacy status|on|off|reset-id"
 
+# Dependency / diagnostics
+MSG_DEP_LINE="依赖自检: python3 %s | docker %s | docker compose v2 %s | curl %s"
+MSG_DEP_MISSING_PY="python3 缺失 → 受影响: 系统备份/恢复、用户与 SSH 管理、受管应用市场、集群"
+MSG_DEP_MISSING_COMPOSE="docker compose v2 缺失 → 受影响: 受管应用市场、Compose 备份/迁移"
+MSG_DEP_OK="关键依赖齐备"
+MSG_LOG_TITLE="FusionBox 日志"
+
 # Module names
 MOD_PROXY="代理管理"
 MOD_SYSTEM="系统管理"

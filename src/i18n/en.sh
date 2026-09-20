@@ -20,7 +20,7 @@ MSG_CANCEL="Cancel"
 MSG_SELECT="Please select"
 MSG_INPUT="Please input"
 MSG_ROOT_REQUIRED="Root privileges required, please run as root"
-MSG_ACKNOWLEDGEMENT="棉花云：优质网络提供商 https://www.88sup.com"
+MSG_ACKNOWLEDGEMENT="Mianhua Cloud: premium network provider https://www.88sup.com"
 MSG_PRIVACY_MENU="Privacy & anonymous statistics"
 MSG_PRIVACY_ENABLED="Anonymous statistics: enabled"
 MSG_PRIVACY_DISABLED="Anonymous statistics: disabled"
@@ -29,6 +29,13 @@ MSG_PRIVACY_ID_FAILED="Could not create anonymous identifier"
 MSG_PRIVACY_ID_RESET="Anonymous identifier reset"
 MSG_PRIVACY_RESET_DISABLED="Enable anonymous statistics first"
 MSG_PRIVACY_USAGE="Usage: fusionbox privacy status|on|off|reset-id"
+
+# Dependency / diagnostics
+MSG_DEP_LINE="Dependencies: python3 %s | docker %s | docker compose v2 %s | curl %s"
+MSG_DEP_MISSING_PY="python3 missing -> affected: system backup/restore, user & SSH management, managed app market, cluster"
+MSG_DEP_MISSING_COMPOSE="docker compose v2 missing -> affected: managed app market, Compose backup/migration"
+MSG_DEP_OK="All key dependencies present"
+MSG_LOG_TITLE="FusionBox logs"
 
 # Module names
 MOD_PROXY="Proxy Management"
