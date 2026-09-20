@@ -1,4 +1,10 @@
-# v1.24.0 受管市场大扩容：五款新模板
+# 当前实施状态（v1.33.0）
+
+2026-09-20 本批验证：Linux 42 基础 + 632 行为测试通过、零跳过；独立 sshd 11/11 实际验收，生产 5522 配置未切换。新增只读 SSH 预检、保守 OCI 识别及状态查询，修复集群 ASKPASS/进程组/主机密钥追加问题。Cloudflare Worker/D1 在线，GitHub Secrets 与真实自动部署已验证；首页累计装机采用 opt-in 安装标识去重，不计下载量。
+
+尚未完成：OpenSSH 源码候选升级/回连/切换/回滚，DD 重装，Oracle lookbusy 安装与生命周期、oci-helper、root/IPv6 专项，真实两主机迁移、真实 ACME 和 Telegram 凭据验收，以及计划中的应用/AI Agent 扩容。只读预检和“拒绝执行”的入口不算这些能力完成。后文版本记录与旧统计属于历史范围，以逐项状态及本段为当前边界。
+
+## v1.24.0 受管市场大扩容：五款新模板（历史）
 
 G51/G53/G54 扩容：受管目录新增 lobe-chat（G51）、open-webui（G51）、n8n（G51）、openlist（G53）、navidrome（G54）。框架扩展：`mounts` 多具名卷列表、`environment` 映射、每应用 `health_retries` 并使 `compose up --wait-timeout` 随之缩放（修复 45 秒硬编码导致慢启动应用必然失败）、document() 的 command 变为可选（root+全 cap 丢弃运行 openlist）。真机验证 27/27：五款应用完整生命周期（安装/健康/HTTP 服务实测/守卫/卸载清理），测试产物已清理。真实部署驱动修复：lobe-chat 512M OOM 调至 1.5G、openlist 新卷权限改 root 运行、openlist/open-webui 慢启动健康窗口。最终 Linux 验证目标：42 基础 + 584 行为。剩余：G51/G53-55 其余应用按需扩容、G32-34（OCI 环境）、G52 socket 依赖面板、G13 shutdown（不可真机验证）。
 

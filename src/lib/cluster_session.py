@@ -1,6 +1,7 @@
 """Strict, ephemeral SSH sessions for one cluster node."""
 import argparse
 import errno
+import fcntl
 import getpass
 import os
 from pathlib import Path
@@ -13,11 +14,8 @@ import subprocess
 import sys
 import tempfile
 import threading
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows does not provide POSIX flock
-    fcntl = None
+import time
+from contextlib import contextmanager
 
 import cluster_nodes
 
@@ -78,12 +76,42 @@ def read_password(fd):
     return value
 
 
+def terminate_process_group(process, grace=1):
+    """Bounded cleanup of a session we created, including children of a dead leader."""
+    if process is None:
+        return
+    # poll()/wait() only describe the leader. Always signal the owned PGID,
+    # and test the group itself throughout the TERM grace period.
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    else:
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            process.poll()  # reap the leader if possible, without ending group cleanup
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(min(0.02, max(0, deadline - time.monotonic())))
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    # Even an uninterruptible child must not make local cleanup wait forever.
+    try:
+        process.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('SSH process did not exit after group cleanup') from None
+
+
 def password_run(argv, password, **kwargs):
     payload = password.encode('utf-8')
     if not payload or len(payload) > 4096 or any(value in payload for value in (b'\n', b'\r', b'\x00')):
         raise ValueError('Password must be one nonempty line of at most 4096 bytes')
     directory = tempfile.mkdtemp(prefix='fusionbox-askpass-')
-    os.chmod(directory, 0o700)
     script = Path(directory) / 'askpass'
     fifo = Path(directory) / 'password.pipe'
     marker = Path(directory) / 'password.used'
@@ -92,6 +120,9 @@ def password_run(argv, password, **kwargs):
     writer = None
     process = None
     old_handlers = {}
+    starting = False
+    interrupt_requested = False
+    cleaning = False
 
     def provide_password():
         fd = None
@@ -105,9 +136,15 @@ def password_run(argv, password, **kwargs):
                         raise
                     cancel.wait(0.02)
             if fd is not None:
-                os.set_blocking(fd, True)
-                if os.write(fd, payload + b'\n') != len(payload) + 1:
-                    raise OSError('Incomplete password handoff')
+                remaining = memoryview(payload + b'\n')
+                while remaining and not cancel.is_set():
+                    try:
+                        written = os.write(fd, remaining)
+                        if not written:
+                            raise OSError('Incomplete password handoff')
+                        remaining = remaining[written:]
+                    except BlockingIOError:
+                        cancel.wait(0.02)
         except OSError:
             if not cancel.is_set():
                 errors.append('Password handoff failed')
@@ -115,34 +152,32 @@ def password_run(argv, password, **kwargs):
             if fd is not None:
                 os.close(fd)
 
-    def terminate_process_group():
-        if process is None or process.poll() is not None:
+    signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+    def ignore_signals():
+        for signum in old_handlers:
+            signal.signal(signum, signal.SIG_IGN)
+
+    def interrupted(signum, frame):
+        nonlocal interrupt_requested
+        # Repeats cannot interrupt handler installation or cleanup. Defer the
+        # first exception during Popen until its owned PGID has been recorded.
+        if cleaning or interrupt_requested:
             return
-        if os.name == 'posix':
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                return
-        else:
-            process.terminate()
-        try:
-            process.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            if os.name == 'posix':
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            else:
-                process.kill()
-            process.wait()
+        interrupt_requested = True
+        if not starting:
+            raise KeyboardInterrupt
 
     try:
+        os.chmod(directory, 0o700)
         os.mkfifo(fifo, 0o600)
         script.write_text(
             '#!/bin/sh\n'
             'set -eu\n'
             'umask 077\n'
+            # Only OpenSSH's initial password prompt is supported. Never send
+            # the credential to a password-change/confirmation/unknown prompt.
+            "case \"${1-}\" in *\"'s password: \") ;; *) exit 1 ;; esac\n"
             '(set -C; : > "$FUSION_PASSWORD_MARKER") 2>/dev/null || exit 1\n'
             'IFS= read -r answer < "$FUSION_PASSWORD_FIFO" || exit 1\n'
             'printf "%s\\n" "$answer"\n',
@@ -152,34 +187,43 @@ def password_run(argv, password, **kwargs):
         env = os.environ.copy()
         env.pop('FUSION_PASSWORD_FD', None)
         env.update(SSH_ASKPASS=str(script), SSH_ASKPASS_REQUIRE='force', DISPLAY='fusionbox:0',
-                   FUSION_PASSWORD_FIFO=str(fifo), FUSION_PASSWORD_MARKER=str(marker))
-        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+                   LC_ALL='C', FUSION_PASSWORD_FIFO=str(fifo), FUSION_PASSWORD_MARKER=str(marker))
+        for signum in signals:
             old_handlers[signum] = signal.getsignal(signum)
-            signal.signal(signum, lambda sig, frame: (_ for _ in ()).throw(KeyboardInterrupt()))
-        writer = threading.Thread(target=provide_password, daemon=True)
+            signal.signal(signum, interrupted)
+        writer = threading.Thread(target=provide_password, name='fusionbox-password-writer', daemon=True)
         writer.start()
         options = ['-o', 'BatchMode=no', '-o', 'PubkeyAuthentication=no', '-o', 'PreferredAuthentications=password',
                    '-o', 'KbdInteractiveAuthentication=no', '-o', 'NumberOfPasswordPrompts=1']
-        process = subprocess.Popen(argv[:1] + options + argv[1:], env=env, start_new_session=True, **kwargs)
+        starting = True
         try:
-            returncode = process.wait()
-        except BaseException:
-            terminate_process_group()
-            raise
-        if returncode == 0 and errors:
-            raise RuntimeError(errors[0])
-        return returncode
+            process = subprocess.Popen(argv[:1] + options + argv[1:], env=env, start_new_session=True, **kwargs)
+        finally:
+            starting = False
+        if interrupt_requested:
+            raise KeyboardInterrupt
+        returncode = process.wait()
     finally:
-        for signum in old_handlers:
-            signal.signal(signum, signal.SIG_IGN)
-        terminate_process_group()
+        cleaning = True
+        ignore_signals()
         cancel.set()
-        if writer is not None:
-            writer.join(timeout=2)
-        password = None
-        for signum, handler in old_handlers.items():
-            signal.signal(signum, handler)
-        shutil.rmtree(directory)
+        try:
+            try:
+                terminate_process_group(process)
+            finally:
+                if writer is not None:
+                    writer.join(timeout=2)
+                password = None
+                payload = b''
+                shutil.rmtree(directory)
+        finally:
+            for signum, handler in old_handlers.items():
+                signal.signal(signum, handler)
+    if writer.is_alive():
+        raise RuntimeError('Password writer did not stop')
+    if returncode == 0 and errors:
+        raise RuntimeError(errors[0])
+    return returncode
 
 
 def run_ssh(node, known_hosts, command, password=None, stdin=None, tty=False, identity=None):
@@ -192,34 +236,70 @@ def run_ssh(node, known_hosts, command, password=None, stdin=None, tty=False, id
     return subprocess.run(argv, stdin=stdin).returncode
 
 
+def _check_host_path(known_hosts, fd):
+    cluster_nodes.safe(known_hosts)
+    current = os.stat(known_hosts, follow_symlinks=False)
+    locked = os.fstat(fd)
+    if (current.st_dev, current.st_ino) != (locked.st_dev, locked.st_ino):
+        raise RuntimeError('Host key file path changed while locked')
+
+
+@contextmanager
+def _locked_host_file(known_hosts, write=False):
+    known_hosts = cluster_nodes.safe(known_hosts)
+    fd = os.open(known_hosts, (os.O_RDWR | os.O_APPEND if write else os.O_RDONLY) | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX if write else fcntl.LOCK_SH)
+        _check_host_path(known_hosts, fd)
+        yield fd
+        _check_host_path(known_hosts, fd)
+    finally:
+        os.close(fd)  # also releases flock on every error path
+
+
+def _host_entries_fd(known_hosts, token, fd):
+    _check_host_path(known_hosts, fd)
+    # The child reads the locked inode, not a path which could have been
+    # replaced while waiting for flock. /dev/fd is provided on our POSIX hosts.
+    os.lseek(fd, 0, os.SEEK_SET)
+    result = subprocess.run(['ssh-keygen', '-F', token, '-f', f'/dev/fd/{fd}'],
+                            pass_fds=(fd,), capture_output=True, text=True)
+    _check_host_path(known_hosts, fd)
+    # OpenSSH uses 1 with empty output for "not found", also 1 for some I/O
+    # errors (with stderr). Anything ambiguous fails closed.
+    if result.returncode == 1 and not result.stdout and not result.stderr:
+        return []
+    if result.returncode != 0 or result.stderr:
+        raise RuntimeError('Unable to check pinned host keys')
+    entries = [line for line in result.stdout.splitlines() if line and not line.startswith('#')]
+    if not entries:
+        raise RuntimeError('Unable to check pinned host keys')
+    return entries
+
+
 def _host_entries(known_hosts, token):
-    current = subprocess.run(['ssh-keygen', '-F', token, '-f', str(known_hosts)], capture_output=True,
-                             text=True).stdout
-    return [line for line in current.splitlines() if line and not line.startswith('#')]
+    with _locked_host_file(known_hosts) as fd:
+        return _host_entries_fd(known_hosts, token, fd)
 
 
 def _append_host_keys(known_hosts, token, lines):
-    if fcntl is None:
-        raise RuntimeError('Host key pinning requires POSIX file locking')
-    fd = os.open(known_hosts, os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        current_lines = _host_entries(known_hosts, token)
+    with _locked_host_file(known_hosts, write=True) as fd:
+        current_lines = _host_entries_fd(known_hosts, token, fd)
         if current_lines:
             if set(current_lines) != set(lines):
                 raise RuntimeError('Host key changed; refusing replacement')
             print('Host key is already pinned and unchanged')
             return
+        _check_host_path(known_hosts, fd)
         size = os.fstat(fd).st_size
-        if size:
-            last = os.pread(fd, 1, size - 1)
-            if last != b'\n':
-                os.write(fd, b'\n')
-        os.write(fd, ('\n'.join(lines) + '\n').encode())
+        prefix = b'\n' if size and os.pread(fd, 1, size - 1) != b'\n' else b''
+        remaining = memoryview(prefix + ('\n'.join(lines) + '\n').encode())
+        while remaining:
+            written = os.write(fd, remaining)
+            if not written:
+                raise OSError('Incomplete host key append')
+            remaining = remaining[written:]
         os.fsync(fd)
-    finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
 
 
 def trust(node, known_hosts):

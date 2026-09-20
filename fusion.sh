@@ -3,21 +3,19 @@
 # Repository: https://github.com/motao123/FusionBox
 
 # Read-only commands may run without root; everything else (incl. menus) needs root.
-# Oracle detect/status deliberately bypass normal startup writes so inspection stays read-only.
 FUSION_READONLY=0
-if [[ "$1" == "cluster" && "$2" == "oracle" && "${3:-}" =~ ^(detect|status|help)$ ]]; then
-  FUSION_READONLY=1
-fi
-case "$1" in
-  help|h|version|v|privacy)
-    [[ "$1" != "privacy" || "${2:-status}" == "status" ]] || {
-      [[ $EUID -ne 0 && $FUSION_READONLY -ne 1 ]] && echo "需要 root 权限" && exit 1
-    }
-    ;;
-  cluster)
-    [[ $EUID -ne 0 && $FUSION_READONLY -ne 1 ]] && echo "需要 root 权限" && exit 1
-    ;;
-  *) [[ $EUID -ne 0 && $FUSION_READONLY -ne 1 ]] && echo "需要 root 权限" && exit 1 ;;
+case "${1:-}:${2:-}:${3:-}" in
+  cluster:oracle:detect|cluster:oracle:status|cluster:oracle:help|cluster:oracle:--help|\
+  cluster:oc:detect|cluster:oc:status|cluster:oc:help|cluster:oc:--help|\
+  cl:oracle:detect|cl:oracle:status|cl:oracle:help|cl:oracle:--help|\
+  cl:oc:detect|cl:oc:status|cl:oc:help|cl:oc:--help)
+    FUSION_READONLY=1 ;;
+esac
+case "${1:-}" in
+  help|h|version|v) ;;
+  privacy)
+    [[ "${2:-status}" == status || $EUID -eq 0 ]] || { echo "需要 root 权限"; exit 1; } ;;
+  *) [[ $EUID -eq 0 || $FUSION_READONLY -eq 1 ]] || { echo "需要 root 权限"; exit 1; } ;;
 esac
 
 # Resolve script path through symlinks (install.sh links /usr/local/bin/fusionbox
@@ -30,6 +28,15 @@ while [[ -L "$_source_path" ]]; do
 done
 export FUSION_BASE="$(cd "$(dirname "$_source_path")" && pwd)"
 export FUSION_SRC="$FUSION_BASE/src"
+
+# Inspection exits before normal startup loads configuration, logging or telemetry.
+if [[ $FUSION_READONLY -eq 1 ]]; then
+  exec python3 -B "$FUSION_SRC/lib/oracle_tools.py" "${@:3}"
+fi
+case "${1:-}:${2:-}" in
+  system:ssh-preflight|sys:ssh-preflight|s:ssh-preflight)
+    exec python3 -B "$FUSION_SRC/lib/system_safety.py" ssh-preflight "${@:3}" ;;
+esac
 
 . "$FUSION_SRC/init.sh"
 

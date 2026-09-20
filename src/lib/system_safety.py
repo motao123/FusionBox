@@ -162,8 +162,10 @@ def ssh_preflight(path=Path('/etc/ssh/sshd_config')):
             values.setdefault(words[0], []).append(words[1])
     units = {}
     for unit in ('ssh.service', 'sshd.service', 'ssh.socket', 'sshd.socket'):
-        code, _ = _command_output('systemctl', 'is-active', '--quiet', unit)
-        units[unit] = code == 0 if code is not None else None
+        code, output = _command_output('systemctl', 'is-active', unit)
+        state = (output or '').strip()
+        units[unit] = True if code == 0 and state == 'active' else (
+            False if code in (3, 4) and state in ('inactive', 'failed', 'unknown') else None)
     listeners = None
     if shutil.which('ss'):
         code, output = _command_output('ss', '-H', '-ltn')
@@ -181,8 +183,11 @@ def ssh_preflight(path=Path('/etc/ssh/sshd_config')):
         'listeners': listeners,
         'current_session': bool(os.environ.get('SSH_CONNECTION')),
         'mutation_performed': False,
-        'switch_allowed': bool(values.get('port')) and not any(
+        'switch_allowed': False,
+        'switch_blockers': ['candidate build, independent login and rollback are not verified'],
+        'socket_activation_detected': any(
             units.get(unit) is True for unit in ('ssh.socket', 'sshd.socket')),
+        'service_state_complete': all(value is not None for value in units.values()),
     }
     print(json.dumps(result, sort_keys=True))
     return result
@@ -589,6 +594,8 @@ def _restore_unit_state(saved, unit_file):
         return
     unit_file = Path(unit_file)
     if not saved['exists']:
+        if not unit_file.exists() and not unit_file.is_symlink():
+            return
         if shutil.which('systemctl'):
             subprocess.run(['systemctl', 'disable', '--now', 'fusionbox-thp.service'],
                            check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

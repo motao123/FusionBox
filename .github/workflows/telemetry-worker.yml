@@ -33,7 +33,7 @@ jobs:
       - run: npm run typecheck
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
     defaults:
@@ -72,6 +72,15 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Skip deployment until Cloudflare and D1 are configured
+      - name: Require production deployment configuration
         if: steps.config.outputs.ready != 'true'
-        run: echo "Cloudflare credentials or D1 database ID are not configured; deployment skipped."
+        run: |
+          echo "::error::Cloudflare credentials or D1 database ID are not configured."
+          exit 1
+      - name: Verify public summary
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          curl --fail --silent --show-error --retry 3 --max-time 15 \
+            https://fusionbox-telemetry.gdindex-demo.workers.dev/v1/public/summary \
+            -o /tmp/fusionbox-summary.json
+          node -e 'const fs=require("fs");const d=JSON.parse(fs.readFileSync("/tmp/fusionbox-summary.json","utf8"));if(!Number.isSafeInteger(d.installations_total)||d.installations_total<0)process.exit(1);console.log("Public installation summary verified")'
