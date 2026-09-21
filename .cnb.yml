@@ -1,0 +1,99 @@
+# CNB 流水线：语法/回归检查 + 打 Tag 时打包发布
+#
+# 与 .github/workflows/release.yml 保持等价的检查口径，使本仓库托管在 CNB 时
+# 也能获得真实的 CI 与发布产物（GitHub 侧仅作为 install.sh 的默认安装源）。
+#
+# 说明：install.sh 与 README 的安装命令指向 GitHub 仓库；CNB 侧的 Tag 构建
+# 会生成同样的 FusionBox-vX.Y.Z.tar.gz 与 SHA256SUMS，便于人工同步发布资产。
+
+"$":
+  # 仓库级事件（tag_push）只能挂在 $ 兜底分支下
+  tag_push:
+    - name: release-package
+      docker:
+        image: python:3.11
+      lock:
+        key: fusionbox-release
+        wait: true
+        cancel-in-wait: true
+      stages:
+        - name: validate-version
+          script: |
+            # POSIX sh：默认 Runner shell 是 sh（dash），不要用 bash 专属语法。
+            set -eu
+            tag="${CNB_BRANCH#v}"
+            version="$(tr -d '[:space:]' < version.txt)"
+            case "$CNB_BRANCH" in
+              v[0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "Tag 必须是 vX.Y.Z 形式: $CNB_BRANCH"; exit 1 ;;
+            esac
+            if [ "$tag" != "$version" ]; then
+              echo "Tag ($tag) 与 version.txt ($version) 不一致"; exit 1
+            fi
+            if ! grep -Fqx "export FUSION_VER=\"$version\"" src/init.sh; then
+              echo "src/init.sh 版本号与 version.txt 不一致"; exit 1
+            fi
+            echo "版本校验通过: v$version"
+        - name: package
+          script: |
+            # POSIX sh：同上，避免 bash 专属语法。
+            set -eu
+            # 资产名与 install.sh 期望的 FusionBox-$tag.tar.gz 保持一致（tag 含 v 前缀）
+            git archive --format=tar.gz --prefix=FusionBox/ -o "FusionBox-${CNB_BRANCH}.tar.gz" HEAD
+            sha256sum "FusionBox-${CNB_BRANCH}.tar.gz" > SHA256SUMS
+            cat SHA256SUMS
+        # 附件插件按 Tag 查找 Release，找不到就 404；必须先建 Release 再上传附件。
+        - name: create-release
+          type: git:release
+          options:
+            descriptionFromFile: docs/CHANGELOG.md
+            latest: true
+        - name: upload-release-attachments
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - "FusionBox-*.tar.gz"
+              - "SHA256SUMS"
+
+main:
+  push:
+    - name: ci
+      docker:
+        image: python:3.11
+      env:
+        PYTHONDONTWRITEBYTECODE: '1'
+      stages:
+        - name: syntax
+          script: |
+            set -e
+            for f in fusion.sh install.sh src/init.sh src/lib/common.sh src/lib/deploy.sh src/modules/*.sh src/i18n/*.sh; do
+              bash -n "$f"
+            done
+            python3 -m py_compile src/lib/*.py scripts/*.py
+            python3 src/lib/market_apps.py catalog >/dev/null
+            echo "All shipped code checks passed"
+        - name: regression-checks
+          script: |
+            set -e
+            bash tests/run_checks.sh
+
+  pull_request:
+    - name: ci
+      docker:
+        image: python:3.11
+      env:
+        PYTHONDONTWRITEBYTECODE: '1'
+      stages:
+        - name: syntax
+          script: |
+            set -e
+            for f in fusion.sh install.sh src/init.sh src/lib/common.sh src/lib/deploy.sh src/modules/*.sh src/i18n/*.sh; do
+              bash -n "$f"
+            done
+            python3 -m py_compile src/lib/*.py scripts/*.py
+            python3 src/lib/market_apps.py catalog >/dev/null
+            echo "All shipped code checks passed"
+        - name: regression-checks
+          script: |
+            set -e
+            bash tests/run_checks.sh

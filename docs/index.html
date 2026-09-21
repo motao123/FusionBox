@@ -139,7 +139,7 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div class="hero-tag">v1.34.0 &middot; Bash + Python 3</div>
+        <div class="hero-tag">v1.36.4 &middot; Bash + Python 3</div>
         <h1>Linux 服务器全能管理<em>工具箱</em></h1>
         <p class="sub" aria-live="polite">累计装机 <span id="installation-count">—</span> 次</p>
         <div class="hero-btns">
@@ -157,11 +157,6 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
               <span class="prompt">$</span>
               <code>bash &lt;(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)</code>
               <button class="cp" onclick="cpy(this)">复制</button>
-            </div>
-            <div class="copy-row" style="margin-top:10px">
-              <span class="prompt">$</span>
-              <code>fusionbox help system</code>
-              <button class="cp" onclick="cpyHelp(this)">复制</button>
             </div>
           </div>
         </div>
@@ -275,8 +270,8 @@ a{color:var(--accent)}a:hover{color:var(--accent2)}
 </footer>
 
 <script>
-function copyText(btn, text){
-  navigator.clipboard.writeText(text).then(function(){
+function cpy(btn){
+  navigator.clipboard.writeText("bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)").then(function(){
     btn.textContent = '已复制';
     btn.classList.add('copied');
     setTimeout(function(){
@@ -284,12 +279,6 @@ function copyText(btn, text){
       btn.classList.remove('copied');
     }, 2000);
   });
-}
-function cpy(btn){
-  copyText(btn, "bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)");
-}
-function cpyHelp(btn){
-  copyText(btn, "fusionbox help system");
 }
 var INSTALLATION_SUMMARY_URL = 'https://fusionbox-telemetry.gdindex-demo.workers.dev/v1/public/summary';
 if(INSTALLATION_SUMMARY_URL){

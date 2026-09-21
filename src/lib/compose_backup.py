@@ -19,6 +19,24 @@ BASE = Path('/var/lib/fusionbox/compose-projects')
 OWNER = 'fusionbox-compose-v1'
 
 
+def docker_preflight():
+    """Chinese explanation for missing Docker/Compose, before any docker call.
+
+    Must precede the secret-withholding wrapper: at this point no docker output
+    exists yet, so naming the missing dependency cannot leak anything.
+    """
+    if shutil.which('docker') is None:
+        raise ValueError('需要 Docker：未检测到 docker 命令。安装: curl -fsSL https://get.docker.com | sh')
+    probe = subprocess.run(['docker', '--host', 'unix:///var/run/docker.sock', 'info'],
+                           capture_output=True)
+    if probe.returncode:
+        raise ValueError('Docker 守护进程不可用。请检查: systemctl status docker')
+    probe = subprocess.run(['docker', '--host', 'unix:///var/run/docker.sock', 'compose', 'version'],
+                           capture_output=True)
+    if probe.returncode:
+        raise ValueError('需要 Docker Compose v2。安装: apt-get install -y docker-compose-plugin')
+
+
 def docker(*args):
     # Never accept an environment-selected remote daemon or alternate socket.
     if os.environ.get('DOCKER_HOST') or os.environ.get('DOCKER_CONTEXT'):
@@ -316,15 +334,41 @@ def operate(project, action, filename, accepted):
         print(action.capitalize() + ' completed; original running state restored')
 
 
-def main():
+HELP_TEXT = """受管 Compose 备份 / 恢复
+
+用法: fusionbox panels compose-backup <操作> <项目名> <路径> [选项]
+
+操作:
+  register <项目名> <compose 文件>   注册受管项目（需 --confirm-owned-import）
+  backup   <项目名> <归档路径>        备份（需 --confirm-stop-writers）
+  restore  <项目名> <归档路径>        恢复（需 --confirm-stop-writers）
+
+说明: 私有元数据可能包含密钥，错误输出不会打印 Docker 原始内容。
+示例: fusionbox panels compose-backup register myapp /opt/myapp/compose.yml --confirm-owned-import
+"""
+
+
+class _ChineseArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        print('参数有误: ' + message, file=sys.stderr)
+        print(HELP_TEXT, file=sys.stderr)
+        raise SystemExit(2)
+
+
+def main(argv=None):
     os.umask(0o077)
-    parser = argparse.ArgumentParser(description=__doc__)
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv or argv[0] in ('help', '--help', '-h'):
+        print(HELP_TEXT)
+        return
+    parser = _ChineseArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('register', 'backup', 'restore'))
     parser.add_argument('project')
     parser.add_argument('path', help='Compose file for register; archive path otherwise')
     parser.add_argument('--confirm-owned-import', action='store_true')
     parser.add_argument('--confirm-stop-writers', action='store_true')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    docker_preflight()
     if args.action == 'register':
         register(args.project, args.path, args.confirm_owned_import)
     else:

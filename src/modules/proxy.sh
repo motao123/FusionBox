@@ -201,8 +201,9 @@ proxy_install() {
   local arch="amd64"
   [[ "$F_ARCH" == "arm64" ]] && arch="arm64"
 
-  # 下载安装
-  msg_info "正在下载 $be_label..."
+  # 下载安装（长等待，给出阶段反馈）
+  progress_begin 4
+  progress_step "$(_tr MSG_PROXY_STAGES_1)"
   local tmpdir=$(mktemp -d)
 
   case "$be_name" in
@@ -215,9 +216,11 @@ proxy_install() {
   if [[ ! -f "$tmpdir/$be_name" ]]; then
     msg_err "下载失败，请检查网络连接"
     rm -rf "$tmpdir"
+    progress_end
     return 1
   fi
 
+  progress_step "$(_tr MSG_PROXY_STAGES_2)"
   cp "$tmpdir/$be_name" "$P_BIN_DIR/$be_name"
   chmod +x "$P_BIN_DIR/$be_name"
   ln -sf "$P_BIN_DIR/$be_name" "/usr/local/bin/$be_name" 2>/dev/null
@@ -227,9 +230,12 @@ proxy_install() {
   echo "$be_name" > "$P_BASE_DIR/current_backend"
 
   # 安装 systemd 服务
+  progress_step "$(_tr MSG_PROXY_STAGES_3)"
   _proxy_install_service "$be_name"
 
+  progress_step "$(_tr MSG_PROXY_STAGES_4)"
   local ver=$($P_BIN_DIR/$be_name version 2>/dev/null | head -1)
+  progress_end
   msg_ok "$be_label 安装成功: $ver"
   _log_write "代理核心安装: $be_label $ver"
   pause

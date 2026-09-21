@@ -2,20 +2,83 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
-## v1.34.0 帮助分发、未知子命令与配置诚实性
+## v1.36.4 结束双发布线（仓库统一）
+
+本批不新增功能能力，只解决一个结构性债务：**两个仓库、两条版本线、同一功能两套实现**。
+
+- 背景：GitHub 与 CNB 在 v1.33.0（`28fe054`）之后各自演进。GitHub 线到 1.34.0（一致性修复），CNB 线到 1.36.2（OpenSSH 候选生命周期、i18n 首启体验、备份报错中文化、CNB 流水线等 11 个提交）。两条线**版本号互相冲突且指向不同内容**：`v1.34.0` 在 GitHub 上是帮助/配置一致性修复，在本仓库上却是首启体验修复。结果就是同一处逻辑被改两遍、同一批测试资产存在两个版本、发布说明无法对齐。
+- 处理方式：以真实 merge 合并两条历史（无 force push、无提交丢失），两个仓库现在指向**同一个提交、同一个版本号 `v1.36.4`**，后续只维护一条线。
+- 版本号对照（历史事实，不改写）：GitHub 的 `v1.34.0` 标签对应的一致性修复，其内容已并入本文件下文的 `v1.36.3` 段落；本仓库的 `v1.34.0` 是首启体验修复，两者不是同一件事。`v1.33.0` 及更早为两条线共有。
+- 测试策略统一：`tests/` 全部随仓库发布并接入 CI（此前本仓库只跟踪 `tests/run_checks.sh`），发布包仍经 `.gitattributes` 的 `export-ignore` 不含测试。CNB 独有的 `.cnb.yml`、`src/lib/openssh_candidate.py`、`tests/run_checks.sh` 保留。
+- CI 统一为三层：`syntax`（全部 shell/测试脚本语法、Python 产物、市场目录、下载量脚本、**`run_checks.sh` 快速闸门**、五处版本一致性）→ `tests`（`comprehensive_test.sh` 完整套件，root 下运行）→ `release`（仅打标签时，`needs: [syntax, tests]`）。CNB 侧 `.cnb.yml` 继续执行同一份 `run_checks.sh`，两个平台的闸门口径一致。
+- 验证（Linux 验证服务器 Ubuntu 24.04）：`bash tests/run_checks.sh` **153/153**，且在 **root 与非 root 下都通过**（不依赖 root/Docker/网络）；完整套件 **bash 217 项 + Python 697 项全部通过、零失败**；真机 CLI 验收通过（三种等价帮助写法逐字节一致、13 组别名、未知模块 `rc=1`、未知子命令 `rc=2` 且不渲染菜单、29 城市时区设置后原时区已恢复、`color=false` 关闭全部 ANSI）。
+- 未变：受环境限制仍未验证的项（真实容器生命周期、真实 ACME 签发、两主机集群、TG/CF 真实凭据）与明确不做的四项（KPanel、广告联盟、一键 DD、受管模板追数量）保持原状。
+
+## v1.36.3 帮助分发、未知子命令与配置诚实性
 
 本批不新增功能能力，只处理「文档/提示承诺了、代码没兑现」的一致性问题——边界内的不一致最伤信任。
 
-- `fusionbox help <模块>` 从空头支票变成真实分发：`show_help` 过去打印「提示: fusionbox help <模块>」却完全忽略该参数，用户被自己的提示误导一次。现在 `_help_module_spec` 把别名映射到模块文件与 `<模块>_help()`，覆盖 9 个模块与全部别名（`p/sys/s/net/w/tools/m/ws/cl` 等），退出码为 0（成功）/1（未知模块）/2（模块加载失败）。`fusionbox help <模块>` 与 `fusionbox <模块> help` 在 `route()` 层归一化到同一条路径，**输出逐字节相同**；两者都是纯只读帮助，因此 `FUSION_HELPONLY` 让它们无需 root（`panels docker help` 同样放行），而真实操作仍被 root 门禁拦住。模块帮助后追加**本机安装状态**（只读、3 秒超时探测），补齐 `status` 有依赖自检而 `help` 没有的短板。
-- 9 个模块（含 `panels docker` 子分发）的未知子命令不再静默滑进交互菜单：统一走 `_module_unknown_cmd`，明确报错并给出 `help` / 菜单两条出路，退出码 2。此前 `fusionbox network bogus` 会直接渲染菜单并等输入，无 tty 时 `read` 报错后仍继续，脚本/CI 场景直接卡死。
-- `configs/config.yaml` 重写为「只声明真实会被读取的键」：移除 `general.auto_update`、`proxy.*`、`web.php_version`、`docker.auto_clean`、`panels.*_port`、`network.streaming_test` 等全部无读取点的键，并在文件末尾列出它们的真实归属（自动更新走 `update --cron`，代理路径由安装布局固定，等等）。同时新兑现四个键：`general.color`（false 清空全部 ANSI 变量，i18n 文案不含内嵌转义码，因此关色完整）、`system.monitor_interval`（正整校验 + 非法回退）、`system.backup_dir`（backup/restore 默认目录）、`network.speedtest_server`（`auto` 或数值 ID，非法值告警回退而非静默忽略）。
+- `fusionbox help <模块>` 从空头支票变成真实分发：`show_help` 过去打印「提示: fusionbox help <模块>」却完全忽略该参数，用户被自己的提示误导一次。现在 `_help_module_spec` 把别名映射到模块文件与 `<模块>_help()`，覆盖 9 个模块与全部别名（`p/sys/s/net/w/tools/m/ws/cl` 等），退出码为 0（成功）/1（未知模块）/2（模块加载失败）。
+- `fusionbox help <模块>` 与 `fusionbox <模块> help` 在 `route()` 层归一化到同一条路径，**输出逐字节相同**；两者都是纯只读帮助，因此 `FUSION_HELPONLY` 让它们无需 root（`panels docker help` 同样放行），真实操作仍被 root 门禁拦住。模块帮助后追加**本机安装状态**（只读、3 秒超时探测，避免 `docker info` 在守护进程未运行时卡住），补齐 `status` 有依赖自检而 `help` 没有的短板。
+- 9 个模块（含 `panels docker` 子分发）的未知子命令不再静默滑进交互菜单：统一走 `_module_unknown_cmd`，明确报错并给出 `help` / 菜单两条出路，退出码 2。此前 `fusionbox network bogus` 会直接渲染菜单并等输入，无 tty 时 `read` 报错后仍继续，脚本与 CI 场景直接卡死。
+- `configs/config.yaml` 重写为「只声明真实会被读取的键」：移除 `general.auto_update`、`proxy.*`、`web.php_version`、`docker.auto_clean`、`panels.*_port`、`network.streaming_test` 等全部无读取点的键，并在文件末尾列出它们的真实归属（自动更新走 `update --cron`，代理路径由安装布局固定）。同时新兑现四个键：`general.color`（false 清空全部 ANSI 变量；i18n 文案不含内嵌转义码，因此关色完整）、`system.monitor_interval`（正整校验 + 非法回退）、`system.backup_dir`（backup/restore 默认目录）、`network.speedtest_server`（`auto` 或数值 ID，非法值告警回退而非静默忽略）。
 - G07 时区预设从硬编码 4 个城市扩到 **29 个**，按亚洲/欧洲/美洲/大洋洲/非洲分区展示，改为数据表驱动（`SYSTEM_TZ_PRESETS`，新增城市只需追加一行）；新增 `_system_tz_apply` 做 IANA 标识白名单校验与 zoneinfo 存在性检查，拒绝路径穿越式输入（如 `../../etc/passwd`），`timedatectl` 失败回退软链接 + 写 `/etc/timezone`。仅在真正改动时写日志（旧实现取消也记「已更改」）。
 - G18 修正文档与代码不一致：`implementation-status.md` 标记为「后续」，而 `system tuning apply` 早已支持 `high/balanced/web/stream/game/db` 六个场景，本批改为如实标注。
-- 回归套件从「本地口径」变为「仓库 + CI 口径」：`tests/` 此前被 `.gitignore` 排除，导致 README 与 CI 都无从验证——`test_basic.sh` 里写着「Runs in CI so unauthorized project references can never ship again」，实际根本进不了 CI。本批把 `tests/` 纳入版本控制（新增 `.gitattributes`，`tests/ export-ignore`，因此**发布包仍不含测试**，"不随发布"由 git 强制保证而非靠约定），并补齐被静默漏跑的 5 个 Python 测试（`test_acme_transaction` / `test_archive_scopes` / `test_docker_migration_restore` / `test_market_catalog` / `test_release_downloads`）与 1 个 bash 测试（`test_privacy_telemetry.sh`）。`comprehensive_test.sh` 重写为显式清单 + 「未登记测试文件」自检，新增测试若忘记登记会直接失败。顺带修掉 `test_acme_transaction.py` 文档字符串「intentionally ignored by git」与实际状态不符的陈述。
-- 新增两个测试：`tests/test_help_dispatch.sh`（帮助分发端到端 / 未知子命令 / 配置生效，145 项）与 `tests/test_config_keys.py`（把「配置里的每个键都必须有读取点」固化为断言，新增装饰性键时直接失败）。
-- CI 增加完整回归 job（`sudo` 下运行，与 root-only 的生产运行时一致），并把 `release` job 改为 `needs: [syntax, tests]`——打标签发版必须等回归通过；`syntax` job 增加全部 shell/测试脚本语法检查与**版本一致性检查**（`version.txt` / `init.sh` / README 徽章 / Pages 首页）。
-- 验证：Linux 验证服务器（Ubuntu 24.04）完整回归通过——bash 217 项（42 基础 + 145 帮助/配置 + 30 隐私统计）与 Python 697 项（31 个测试模块）全部 OK、零失败；另有真机 CLI 验收 95 项全过（三种等价帮助写法逐字节一致、10 组别名、未知模块退出码 1、未知子命令退出码 2 且不进菜单、帮助探测 0 秒返回、29 城市时区菜单设置与非法值拒绝后原时区已恢复、`color=false` 关闭全部 ANSI）。
+- `tests/run_checks.sh` 回归检查由 94 项扩到 153 项，新增第 16 节：帮助分发（9 模块 + 13 组别名 + 两种写法逐字节一致 + 条目数不少于 100）、未知子命令（rc=2 且不渲染菜单、help 参数不被误伤）、配置键闭环（每个键都有读取点、声明了不受控设置、不再含装饰性的 `auto_update`）、`general.color=false` 清空 ANSI、时区预设数量与校验函数、发布版本号在五处一致。全部在非 root / 无 Docker / 无网络下可跑。
+- CI 增加发布版本一致性检查步骤（`version.txt` / `src/init.sh` / README / Pages / 实施状态）；GitHub 侧另有完整套件 job（bash 217 项 + Python 697 项），而本仓库按既有约定只随仓库发布 `tests/run_checks.sh`。
+- 验证：Linux 验证服务器（Ubuntu 24.04）完整回归通过——bash 217 项（42 基础 + 145 帮助/配置 + 30 隐私统计）与 Python 697 项（31 个测试模块）全部 OK、零失败；另有真机 CLI 验收 95 项全过（三种等价帮助写法逐字节一致、13 组别名、未知模块 rc=1、未知子命令 rc=2 且不进菜单、`help panels` 0 秒返回、29 城市时区菜单设置与非法值拒绝后原时区已恢复、`color=false` 关闭全部 ANSI）。
 - 未变：受环境限制仍未验证的项（真实容器生命周期、真实 ACME 签发、两主机集群、TG/CF 真实凭据）与明确不做的四项（KPanel、广告联盟、一键 DD、受管模板追数量）保持原状，本批不声称任何新增的外部集成完成度。
+
+## v1.36.2 修复发布附件上传
+
+- 修复 CNB `tag_push` 的 `upload-release-attachments` 阶段必失败的问题：`cnbcool/attachments` 插件按 Tag 查找 Release（日志 `目标 RELEASE / 获取 release id`），而仓库此前从未创建 Release，插件直接 404 退出，`FusionBox-*.tar.gz` 与 `SHA256SUMS` 无法成为发布附件。
+- `tag_push` 流水线新增 `create-release` 阶段（内置任务 `git:release`，描述取自 `docs/CHANGELOG.md`，标记 `latest`），置于 `package` 之后、上传附件之前，使附件有目标 Release 可挂。
+- `tests/run_checks.sh` 回归检查由 93 项扩展至 94 项：新增「先建 Release 再上传附件」顺序断言。
+- 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.36.2。
+
+## v1.36.1 修复 tag_push 发布流水线
+
+- 修复 CNB `tag_push` 发布流水线 `validate-version` 阶段必失败的问题：默认 Runner 的 shell 是 `sh`（dash），而脚本使用了 bash 专属的 `[[ ... ]]`，实测报 `sh: 4: [[: not found` 后直接退出，导致 Tag 推送无法产出发布资产。
+- 将 `validate-version` 与 `package` 脚本改写为 POSIX `sh` 兼容（`case` 做格式校验、`[ ... ]` 做比较、`set -eu` 不依赖 `pipefail`），版本一致性校验逻辑不变。
+- `tests/run_checks.sh` 回归检查由 90 项扩展至 93 项：新增「CI 显式指定镜像」「tag_push 段落不含 bash 专属语法」「版本校验用 POSIX case」三项，防止回退。
+- 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.36.1。
+
+## v1.36.0 备份/恢复报错中文化、建议清单收尾
+
+- 备份与恢复的全部用户可触达报错改为中文并给出下一步，不再暴露英文技术串：未知备份范围、备份文件重名、恢复冲突（abort 策略下目标已存在）、备份中不含所请求范围、备份源在快照期间变化、归档校验失败等。
+- 顶层报错前缀统一为「备份操作失败:」；`--require-all-scopes` 严格模式的失败信息同步中文化（此前为英文 `No backup sources for scope`）。
+- 严格模式语义不变：`--require-all-scopes` 仍对任一空范围硬失败；默认路径仍跳过空范围、仅全部为空时失败。
+- `tests/run_checks.sh` 回归检查由 83 项扩展至 90 项：新增 7 项覆盖中文报错与顶层前缀（未知范围、严格模式、重名、范围缺失、abort 冲突、无英文前缀残留）。
+- 完成 1.34.0 优先改进清单第 9 项（发布版本与 main 对齐）：`v1.36.0` Tag 与 `version.txt`、`src/init.sh` 的 `FUSION_VER` 三处一致，CNB 侧 `tag_push` 流水线据此校验并打包 `FusionBox-v1.36.0.tar.gz` + `SHA256SUMS` 作为发布附件。
+- 修复 CNB 流水线 `syntax` 阶段必失败的问题：该阶段原先依赖默认 Runner 镜像提供 `python3`，而默认镜像没有，`python3 -m py_compile` 直接返回 127，导致 main 与 PR 的 CNB CI 从未真正通过。现为 `main`/`pull_request` CI 与 `tag_push` 发布流水线显式指定 `python:3.11` 镜像，并设 `PYTHONDONTWRITEBYTECODE=1`。
+- 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.36.0。
+
+## v1.35.0 更新变更摘要、阶段进度与 SSH 常驻工作区
+
+- `fusionbox update` 成功更新后展示本次版本的变更摘要：从已校验的归档内 `docs/CHANGELOG.md` 精确截取目标版本段落；版本段落缺失或文件不存在时给出「未提供变更说明」提示，不静默失败。
+- 新增可复用的阶段进度反馈：`progress_begin` / `progress_step` / `progress_end`，输出 `[n/总数] 阶段名`。LNMP 安装接入 4 个阶段；受管应用安装在调用前说明「校验端口 → 拉取镜像 → 创建容器 → 等待健康检查」，如实反映慢在哪，不伪造无法观测的百分比。
+- 工作区升级为 SSH 常驻重连：`fusionbox ws w3` 在槽位不存在时自动创建并进入（断线重登永远回到同一编号）；新增 `ws w<n> ensure|resume` 显式确保存在、`ws w<n> ssh` 打印重连方法；菜单与帮助同步。
+- `tests/run_checks.sh` 回归检查由 59 项扩展至 71 项：新增更新变更摘要截取、阶段进度输出格式、工作区常驻入口与自愈创建三组覆盖。
+- 长任务阶段反馈扩展到 Docker 安装（`[1/4] 安装 Docker 引擎`…`[4/4] 校验 docker 与 compose`）与代理核心安装（下载 → 安装 → 建服务 → 校验），此前仅 LNMP 安装有阶段计数。
+- 新增 CNB 侧流水线 `.cnb.yml`：`main` 与 PR 跑语法检查 + `tests/run_checks.sh` 回归；`tag_push` 校验 Tag 与 `version.txt`/`src/init.sh` 一致后打包 `FusionBox-vX.Y.Z.tar.gz` 与 `SHA256SUMS` 并作为 release 附件上传，使本仓库托管在 CNB 时有真实 CI 与可同步的发布产物。
+- 回归检查由 71 项扩展至 83 项：新增 Docker/代理安装阶段接入、阶段结束复位与 8 个新 i18n 键的中英同步校验。
+- 版本号、README、`docs/implementation-status.md`、`docs/index.html` 同步到 1.35.0。
+
+## v1.34.0 首次使用体验修复与依赖前置检查
+
+- 修复 `market.sh` 中 `2>/dev/null` 吞掉 python3 缺失错误导致的误导提示「不支持的受管应用 ID」；缺 python3 时现在给出中文原因与安装命令。
+- 新增全局依赖自检：主菜单与 `fusionbox status` 显示 python3 / docker / docker compose v2 / curl 状态与受影响功能；`_require_python3`、`_require_docker_compose` 等守卫覆盖备份/恢复、用户与 SSH 管理、受管市场等 50+ 调用点。
+- 修复全新机器 `system backup` 必然失败：不存在的 scope 跳过并中文提示，全部为空才失败；新增 `--require-all-scopes` 恢复严格模式。
+- 受管市场新增 Docker/Compose v2 前置检查，缺依赖时给出中文原因与安装命令，不再以「输出已隐藏」掩盖根因。
+- `market managed`、`panels compose-backup`、`panels docker-migration` 无参时输出中文帮助，不再暴露英文 argparse 堆栈。
+- 受管应用菜单文案改为从 catalog 动态读取数量，并修正为「受管应用生命周期」；README 同步。
+- `en.sh` 鸣谢串补英文翻译；`status` 与应用信息同时显示可用核数与宿主核数（容器内不再误报宿主核数）。
+- 缺 `ping` 等可选命令时给出安装建议，不再只报「未找到」。
+- 重新纳入 `tests/run_checks.sh` CI 回归检查（59 项）：覆盖依赖前置检查、空 scope 跳过、无参中文帮助、i18n 英文环境、CPU 口径、编号工作区槽位归一化与新入口；此前 v1.24.2 移出仓库的 `tests/` 仅供 CI 使用，不含本地/验证服务器专用用例。
+- 修复 `show_dependency_status` 与 `show_logs` 未走 i18n 的问题：英文环境不再输出中文依赖自检与日志标题。
+- 新增 `fusionbox log`/`system log fusionbox` 日志入口、`fusionbox rescue` 只读救援指引、`fusionbox cluster alias` 中文速查表。
+- 编号工作区升级为固定槽位 `w1`-`w10`，支持 tmux/screen 自动选择，可直接 `fusionbox ws w3` 进入、`ws w3 send/capture` 注入与查看回显。
+- `fusionbox help` 增加依赖说明；版本号同步为 1.34.0。
 
 ## v1.33.0 OpenSSH 只读预检与破坏性边界
 
