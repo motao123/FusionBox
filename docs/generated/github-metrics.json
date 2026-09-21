@@ -116,9 +116,54 @@
       "tag_name": "v1.29.0"
     },
     {
-      "download_count": 1,
+      "download_count": 2,
       "name": "FusionBox-v1.30.0.tar.gz",
       "tag_name": "v1.30.0"
+    },
+    {
+      "download_count": 3,
+      "name": "FusionBox-v1.33.0.tar.gz",
+      "tag_name": "v1.33.0"
+    },
+    {
+      "download_count": 0,
+      "name": "FusionBox-v1.34.0.tar.gz",
+      "tag_name": "v1.34.0"
+    },
+    {
+      "download_count": 2,
+      "name": "FusionBox-v1.36.4.tar.gz",
+      "tag_name": "v1.36.4"
+    },
+    {
+      "download_count": 0,
+      "name": "FusionBox-v1.36.5.tar.gz",
+      "tag_name": "v1.36.5"
+    },
+    {
+      "download_count": 0,
+      "name": "FusionBox-v1.36.6.tar.gz",
+      "tag_name": "v1.36.6"
+    },
+    {
+      "download_count": 0,
+      "name": "FusionBox-v1.37.0.tar.gz",
+      "tag_name": "v1.37.0"
+    },
+    {
+      "download_count": 1,
+      "name": "FusionBox-v1.37.1.tar.gz",
+      "tag_name": "v1.37.1"
+    },
+    {
+      "download_count": 0,
+      "name": "FusionBox-v1.38.0.tar.gz",
+      "tag_name": "v1.38.0"
+    },
+    {
+      "download_count": 0,
+      "name": "FusionBox-v1.39.0.tar.gz",
+      "tag_name": "v1.39.0"
     },
     {
       "download_count": 1,
@@ -182,5 +227,5 @@
     }
   ],
   "repository": "motao123/FusionBox",
-  "total_downloads": 35
+  "total_downloads": 42
 }
