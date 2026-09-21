@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.40.0-blue)
+![version](https://img.shields.io/badge/version-1.41.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -59,19 +59,15 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 | umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（懒依赖 db 健康后才启动；复用数据重装、按服务换镜像） |
 
-## 最近更新（v1.40.0）
+## 最近更新（v1.41.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **roadmap 批次 4 完成**（P3，按判定收尾）：
-- **A6 首批扩容**：`vocechat` 入内置目录（digest 固定、单容器、256m 内存上限），真机验收 `market_app_expansion.sh` 全过（安装 → HTTP → 卸载保留卷 → reuse-data 重装）；**实测边界**：Webtop（linuxserver s6）在 `cap_drop ALL` 下无法运行，如实记为与受管加固模型不兼容
-- **A7 设计稿**：[docs/harness-design.md](docs/harness-design.md)——容器化、凭据文件化（0600 卷内 + stdin 输入）、L1–L4 分层验收；真实对话（L3）需模型 API 凭据，未就位前只允许实现到 L2 并如实标注
-- **B5 真机执行**：`netopt_sysctl.sh` 真实改值 + 快照恢复（11 个 sysctl 键逐键与基线比对，零漂移）——G18/G67 的「真实改参数」缺口就此收口
-- **A3/A5 判定收口**：一键 DD 维持「明确拒绝 + 带外恢复」设计；Oracle 三件套在无真实 OCI 实例前只做「拒绝的姿势」——均为设计决策而非欠账
+- **B4 收口（Cloudflare 半边）**：最小权限 API Token 真实凭据验证完成——`fusionbox-cf-guard` 负载自适应开盾真机 8/8（security_level 真实切到 under_attack + 负载回落恢复基线 + 幂等），`fusionbox-cf-ban` 封禁/解封/幂等真机全过；新增真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，任何退出路径恢复 security_level 基线并清理测试规则）
+- **实测修复**：CF API 会返回 pretty JSON（`"success": true` 冒号带空格），cf-ban/cf-guard 的紧凑格式断言全部改为空白容忍——静态测试抓不到、真机首跑即现形
+- **新功能**：Cloudflare 联动配置支持直接粘贴 Global API Key——自动列出账户 Zone、现场铸造仅限所选 Zone 的最小权限 Token（Zone Settings + Firewall Services，14 天有效期），Global Key 本身绝不落盘；真实 Key 端到端验证通过（铸造 → verify active → 读取 security_level）
+- **TG 半边维持**：`system notify` 真实发送验证仍需 bot token，凭据缺失时显式拒绝的姿势保持不变
 
-完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
-完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
-完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考

@@ -86,6 +86,67 @@ _fb_telegram_send 123:dummy 123 message''', expected)
         self.run_shell('web', '_web_guard_cf_adaptive <<< 2')
         self.assertTrue((self.root / ('var/lib/fusionbox/cf-guard.' + 'a' * 32 + '.state.original')).exists())
 
+    def _deploy_cf_ban(self):
+        conf = self.root / 'etc/fusionbox/cloudflare.conf'
+        conf.write_text('CF_API_TOKEN=dummy_token\nCF_ZONE_ID=' + 'a' * 32 + '\n')
+        self.run_shell('web', '_web_guard_cf_config <<< 2')
+        self.assertTrue((self.root / 'usr/local/bin/fusionbox-cf-ban').exists())
+        return self.posix + '/usr/local/bin/fusionbox-cf-ban'
+
+    def test_cf_ban_json_format_tolerant(self):
+        """真机回归（v1.41.0）：CF API 返回 pretty JSON（冒号带空格）时 cf-ban 不得误判。"""
+        ban = self._deploy_cf_ban()
+        rid = '0123456789abcdef0123456789abcdef'
+        pretty_ok = '{\n  "result": {"id": "' + rid + '"},\n  "success": true\n}'
+        pretty_no = '{\n  "success": false,\n  "errors": [{"code": 10009}]\n}'
+        pretty_rule = ('{\n  "result": [\n    {\n      "id": "' + rid + '",\n      "mode": "block"\n    }\n  ],\n  "success": true\n}')
+        compact_rule = '{"success":true,"result":[{"id":"' + rid + '","mode":"block"}]}'
+        flag = self.root / 'post-called'
+        def run(get, post, delete, args, expected, post_expected):
+            body = ('curl() { case "$*" in\n'
+                    '  *" -X GET "*) printf \'%s\' \'' + get + '\';;\n'
+                    '  *" -X POST "*) touch "$T/post-called"; printf \'%s\' \'' + post + '\';;\n'
+                    '  *" -X DELETE "*) printf \'%s\' \'' + delete + '\';;\n'
+                    '  *) return 9;;\nesac; }\n'
+                    'source "' + ban + '" ' + args)
+            if flag.exists():
+                flag.unlink()
+            self.run_shell('web', body, expected)
+            self.assertEqual(flag.exists(), post_expected, args + '/' + str(expected))
+        run('{"result": [], "success": true}', pretty_ok, '', 'ban 1.2.3.4', 0, True)
+        run('{"result": [], "success": true}', pretty_no, '', 'ban 1.2.3.4', 1, True)
+        run(pretty_rule, pretty_ok, '', 'ban 1.2.3.4', 0, False)      # 幂等：已有规则不再 POST
+        run(pretty_rule, pretty_ok, pretty_ok, 'unban 1.2.3.4', 0, False)
+        run('{"result": [], "success": true}', pretty_ok, '', 'unban 1.2.3.4', 0, False)
+        run(compact_rule, pretty_ok, '', 'ban 1.2.3.4', 0, False)     # 紧凑格式兼容（旧行为）
+        run('not-json', pretty_ok, '', 'ban 1.2.3.4', 0, True)        # GET 失败视为无规则，照常尝试 POST
+
+    def test_cf_global_key_mints_scoped_token(self):
+        """Global API Key 不能直接当 Bearer 用：菜单应现场铸造仅限所选 Zone 的最小权限 Token。"""
+        fake_key = 'a' * 37
+        zone_id = 'b' * 32
+        zones_json = '{"success": true, "result": [{"id": "' + zone_id + '", "name": "example.test", "status": "active"}]}'
+        mint_json = '{"success": true, "result": {"value": "minted-token-value"}}'
+        mint_fail = '{"success": false, "errors": [{"code": 9109}]}' 
+        def run(mint, expected):
+            body = ('read_input() { local v; read -r v; printf \'%s\' "$v"; }\n'
+                    'curl() { case "$*" in\n'
+                    '  *"/zones?"*) printf \'%s\' \'' + zones_json + '\';;\n'
+                    '  *"/user/tokens"*) printf \'%s\' \'' + mint + '\';;\n'
+                    '  *) return 9;;\nesac; }\n'
+                    '_web_guard_cf_config <<\'FBEOF\'\n'
+                    '1\n' + fake_key + '\nuser@example.test\n1\n\nFBEOF')
+            self.run_shell('web', body, expected)
+        conf = self.root / 'etc/fusionbox/cloudflare.conf'
+        run(mint_json, 0)
+        text = conf.read_text()
+        self.assertIn('CF_API_TOKEN=minted-token-value', text)
+        self.assertIn('CF_ZONE_ID=' + zone_id, text)
+        self.assertIn('LOAD_THRESHOLD=5.0', text)
+        conf.unlink()
+        run(mint_fail, 1)  # 铸造失败必须显式报错，不能把 Global Key 写进配置
+        self.assertFalse(conf.exists())
+
 
 if __name__ == '__main__':
     names = [n for n in Notifications.__dict__ if n.startswith('test_')]

@@ -2399,7 +2399,7 @@ web_cache() {
       zid=$(grep -E '^CF_ZONE_ID=' "$cf_conf" | tail -1 | cut -d= -f2-)
       resp=$(curl -s --max-time 15 -X POST "https://api.cloudflare.com/client/v4/zones/$zid/purge_cache" \
         -H "Authorization: Bearer $token" -H "Content-Type: application/json" --data '{"purge_everything":true}' 2>/dev/null)
-      [[ "$resp" == *'"success":true'* ]] && msg_ok "CF 缓存已清理" || msg_warn "CF 缓存清理失败（凭据/网络/权限），本地缓存已清理"
+      [[ "$resp" =~ \"success\"[[:space:]]*:[[:space:]]*true ]] && msg_ok "CF 缓存已清理" || msg_warn "CF 缓存清理失败（凭据/网络/权限），本地缓存已清理"
     fi
   else
     msg_info "未配置 Cloudflare 凭据，跳过 CF 端缓存清理"
@@ -3394,18 +3394,89 @@ _web_guard_cf_config() {
 
   case "$cf_choice" in
     1)
-      msg_info "Token 需要 Zone → Firewall/Rules 编辑权限；Zone ID 在 CF 控制台域名概览页获取"
+      msg_info "推荐最小权限 API Token（Zone Settings Edit + Firewall Services Edit）；也可直接粘贴 Global API Key，由脚本自动铸造仅限目标 Zone 的 Token"
       local token zone threshold
-      token=$(read_input "请输入 Cloudflare API Token")
+      token=$(read_input "请输入 Cloudflare API Token（或 Global API Key）")
       [[ -z "$token" ]] && { msg_warn "未输入 Token，已取消"; return; }
+
+      # Global API Key（37 位十六进制）不能用作 Bearer Token：现场铸造最小权限 Token
+      if [[ "$token" =~ ^[a-f0-9]{37}$ ]]; then
+        if ! confirm "检测到 Global API Key。是否自动铸造仅限单个 Zone 的最小权限 API Token（推荐，14 天有效期）？"; then
+          msg_warn "已取消。Global API Key 无法直接用作 Bearer Token，请到 CF 控制台创建 API Token 后重试"
+          return
+        fi
+        local cf_email
+        cf_email=$(read_input "请输入 Cloudflare 账户邮箱")
+        if ! [[ "$cf_email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
+          msg_err "邮箱格式不合法"
+          return 1
+        fi
+        local gk_cfg gk_resp
+        gk_cfg=$(mktemp) || return 1
+        chmod 600 "$gk_cfg"
+        printf 'header = "X-Auth-Email: %s"\nheader = "X-Auth-Key: %s"\nheader = "Content-Type: application/json"\n' "$cf_email" "$token" > "$gk_cfg"
+        gk_resp=$(curl -fsS --max-time 25 "https://api.cloudflare.com/client/v4/zones?per_page=50" -K "$gk_cfg" 2>/dev/null)
+        if [[ -z "$gk_resp" ]] || ! echo "$gk_resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("success")' 2>/dev/null; then
+          rm -f "$gk_cfg"
+          msg_err "Global API Key 验证失败（检查邮箱与 Key，或网络）"
+          return 1
+        fi
+        msg "    账户下的 Zone:"
+        local zl
+        zl=$(echo "$gk_resp" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for i, z in enumerate(d.get('result') or [], 1):
+    print('%d|%s|%s|%s' % (i, z['id'], z['name'], z['status']))")
+        rm -f "$gk_cfg"
+        if [[ -z "$zl" ]]; then
+          msg_err "账户下没有可用 Zone"
+          return 1
+        fi
+        local zline
+        while IFS= read -r zline; do
+          msg "      ${zline%%|*}) ${zline#*|}"
+        done <<< "$zl"
+        local zpick
+        zpick=$(read_input "请选择用于铸造 Token 的 Zone 序号")
+        local zsel
+        zsel=$(echo "$zl" | awk -F'|' -v p="$zpick" '$1 == p {print $2 "|" $3}')
+        if [[ -z "$zsel" ]]; then
+          msg_err "无效的序号: $zpick"
+          return 1
+        fi
+        zone="${zsel%%|*}"
+        local zname="${zsel##*|}"
+        # 权限组 ID 是 Cloudflare 全局常量：Zone Read / Zone Settings Read+Write / Firewall Services Write
+        local expires
+        expires=$(date -u -d '+14 days' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
+        local mint_cfg mint_payload mint_resp
+        mint_cfg=$(mktemp) || return 1
+        chmod 600 "$mint_cfg"
+        printf 'header = "X-Auth-Email: %s"\nheader = "X-Auth-Key: %s"\nheader = "Content-Type: application/json"\n' "$cf_email" "$token" > "$mint_cfg"
+        mint_payload=$(printf '{"name":"fusionbox-managed (%s)","policies":[{"effect":"allow","resources":{"com.cloudflare.api.account.zone.%s":"*"},"permission_groups":[{"id":"c8fed203ed3043cba015a93ad1616f1f"},{"id":"517b21aee92c4d89936c976ba6e4be55"},{"id":"3030687196b94b638145a3953da2b699"},{"id":"43137f8d07884d3198dc0ee77ca6e79b"}]}]%s}' "$zname" "$zone" "${expires:+,\"expires_on\":\"$expires\"}")
+        mint_resp=$(curl -fsS --max-time 25 -X POST "https://api.cloudflare.com/client/v4/user/tokens" -K "$mint_cfg" --data "$mint_payload" 2>/dev/null)
+        rm -f "$mint_cfg"
+        local minted
+        minted=$(printf '%s' "$mint_resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("success"); print(d["result"]["value"])' 2>/dev/null)
+        if [[ -z "$minted" ]]; then
+          msg_err "Token 铸造失败（检查 Global API Key 是否有效），可改用手工创建的 API Token 重试"
+          return 1
+        fi
+        msg_ok "已铸造最小权限 Token（仅限 $zname，请到 CF 控制台核对）"
+        token=$minted
+      fi
+
       if ! [[ "$token" =~ ^[A-Za-z0-9_-]{10,}$ ]]; then
         msg_err "Token 格式不合法（仅允许字母数字、下划线、连字符）"
         return 1
       fi
-      zone=$(read_input "请输入 Zone ID (32 位十六进制)")
-      if ! [[ "$zone" =~ ^[a-fA-F0-9]{32}$ ]]; then
-        msg_err "Zone ID 格式不合法，应为 32 位十六进制"
-        return 1
+      if [[ -z "$zone" ]]; then
+        zone=$(read_input "请输入 Zone ID (32 位十六进制)")
+        if ! [[ "$zone" =~ ^[a-fA-F0-9]{32}$ ]]; then
+          msg_err "Zone ID 格式不合法，应为 32 位十六进制"
+          return 1
+        fi
       fi
       threshold=$(read_input "负载自适应阈值 LOAD_THRESHOLD" "5.0")
       threshold=${threshold:-5.0}
@@ -3484,8 +3555,9 @@ cf() {
 }
 
 find_rule_id() {
+  # 兼容紧凑与 pretty 两种 JSON 输出（冒号后可能带空格）
   cf GET "/zones/$CF_ZONE_ID/firewall/access_rules/rules?mode=block&configuration%5Bvalue%5D=$1&per_page=10" \
-    | grep -o '"id":"[a-f0-9]\{32\}"' | head -1 | cut -d'"' -f4
+    | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([a-f0-9]\{32\}\)".*/\1/p' | head -1
 }
 
 case "$action" in
@@ -3499,7 +3571,7 @@ case "$action" in
     printf '{"mode":"block","configuration":{"target":"ip","value":"%s"},"notes":"FusionBox auto ban"}' "$ip" > "$payload"
     resp=$(cf POST "/zones/$CF_ZONE_ID/firewall/access_rules/rules" "$payload")
     rm -f "$payload"
-    if echo "$resp" | grep -q '"success":true'; then
+    if echo "$resp" | grep -Eq '"success"[[:space:]]*:[[:space:]]*true'; then
       echo "已封禁: $ip"
     else
       echo "封禁失败: $ip (请检查 Token 权限)"
@@ -3513,7 +3585,7 @@ case "$action" in
       exit 0
     fi
     resp=$(cf DELETE "/zones/$CF_ZONE_ID/firewall/access_rules/rules/$rid")
-    if echo "$resp" | grep -q '"success":true'; then
+    if echo "$resp" | grep -Eq '"success"[[:space:]]*:[[:space:]]*true'; then
       echo "已解封: $ip"
     else
       echo "解封失败: $ip"
