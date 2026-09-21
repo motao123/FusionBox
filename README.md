@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.39.0-blue)
+![version](https://img.shields.io/badge/version-1.40.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -59,16 +59,17 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 | umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（懒依赖 db 健康后才启动；复用数据重装、按服务换镜像） |
 
-## 最近更新（v1.39.0）
+## 最近更新（v1.40.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **roadmap 批次 3 完成：ACME 两条真机验证路线**，G35/G36/G59 从「部分实现」推进到「真机验证」
-- `web ssl issue/renew` 新增 `--server` 覆盖（`WEB_ACME_SERVER`）：指向 Pebble 或 Let's Encrypt staging 等非生产 ACME 目录；自定义 `WEB_ACME_LE_DIR` 时 certbot 的 config/work/logs 目录整体切换，**绝不污染生产 /etc/letsencrypt**
-- **路线 A（协议级）`tests/acceptance/acme_pebble.sh` 24/24**：本地 Pebble 容器（`PEBBLE_VA_ALWAYS_VALID=1`，challenge 判定交给 staging 路线覆盖）→ 真实 certbot 签发 Pebble 证书 → SAN/私钥/nginx 装配 → **真实续期（指纹变化）** → 不可达目录 URL 时签发失败且 challenge 配置回滚
-- **路线 B（真实 CA）`tests/acceptance/acme_staging.sh` 16/16**：`<公网IP>.sslip.io` + Let's Encrypt staging——**真实 DNS、真实 HTTP-01 传输、真实 CA 签发**，staging 中间证书 + 受管 TLS 启用；DNS 无法解析的域失败回滚
-- 设计取舍如实记录：保留 TLD（`.invalid` 等）守卫保护生产签发路径，显式 `--server` 覆盖时才放行；生产默认行为零变化
+- **roadmap 批次 4 完成**（P3，按判定收尾）：
+- **A6 首批扩容**：`vocechat` 入内置目录（digest 固定、单容器、256m 内存上限），真机验收 `market_app_expansion.sh` 全过（安装 → HTTP → 卸载保留卷 → reuse-data 重装）；**实测边界**：Webtop（linuxserver s6）在 `cap_drop ALL` 下无法运行，如实记为与受管加固模型不兼容
+- **A7 设计稿**：[docs/harness-design.md](docs/harness-design.md)——容器化、凭据文件化（0600 卷内 + stdin 输入）、L1–L4 分层验收；真实对话（L3）需模型 API 凭据，未就位前只允许实现到 L2 并如实标注
+- **B5 真机执行**：`netopt_sysctl.sh` 真实改值 + 快照恢复（11 个 sysctl 键逐键与基线比对，零漂移）——G18/G67 的「真实改参数」缺口就此收口
+- **A3/A5 判定收口**：一键 DD 维持「明确拒绝 + 带外恢复」设计；Oracle 三件套在无真实 OCI 实例前只做「拒绝的姿势」——均为设计决策而非欠账
 
+完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)

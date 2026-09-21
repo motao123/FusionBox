@@ -664,6 +664,23 @@ for script in acme_pebble.sh acme_staging.sh; do
   fi
 done
 
+section "20. 应用扩容与设计文档（v1.40.0）"
+# ---------------------------------------------------------------------------
+check_contains "内置目录含 vocechat 条目（digest 固定）" \
+  'privoce/vocechat-server@sha256:' cat "$SRC/lib/market-catalog.v1.json"
+
+check_contains "harness 管理器设计稿存在" \
+  '分层验收' cat "$REPO_ROOT/docs/harness-design.md"
+
+if [[ -f "$REPO_ROOT/tests/acceptance/market_app_expansion.sh" ]] \
+   && bash -n "$REPO_ROOT/tests/acceptance/market_app_expansion.sh" 2>/dev/null \
+   && [[ -f "$REPO_ROOT/tests/acceptance/netopt_sysctl.sh" ]] \
+   && bash -n "$REPO_ROOT/tests/acceptance/netopt_sysctl.sh" 2>/dev/null; then
+  ok "真机验收资产（app 扩容 + netopt）存在且语法正确"
+else
+  bad "真机验收资产（app 扩容 + netopt）存在且语法正确"
+fi
+
 # ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'
 printf '通过 %d / 失败 %d\n' "$PASS" "$FAIL"

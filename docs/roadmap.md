@@ -177,7 +177,9 @@
 
 ---
 
-### A6 协作 / 远程安全类应用 — G55
+### A6 协作 / 远程安全类应用 — G55 · **第一/二档首批已落地（v1.40.0）**
+
+> **状态（2026-09-21，v1.40.0）**：`vocechat` 已入内置目录（digest 固定、单容器、真机验收 `market_app_expansion.sh`）。**实测边界**：Webtop（linuxserver s6 系列）在 `cap_drop ALL` 下无法运行（s6 需要 setuid/setgid），与受管加固模型冲突，如实记为不兼容；WireGuard 需 NET_ADMIN（high_privilege 路径）、雷池为多容器——两者均可行但未实施；2FAuth/Nexterm 的官方镜像源未能拉取，待确认上游镜像地址后按同一验收口径补入。
 
 十个应用：RustDesk、WireGuard、Webtop、Nexterm、JumpServer、雷池、ONLYOFFICE、RocketChat、VoceChat、2FAuth。
 
@@ -193,7 +195,9 @@
 
 ---
 
-### A7 hermes / deepseek harness 管理器 — G69
+### A7 hermes / deepseek harness 管理器 — G69 · **设计稿已出（v1.40.0）**
+
+> 设计文档：[docs/harness-design.md](harness-design.md)。实现前契约基线：容器化、凭据文件化（0600 卷内 + stdin 输入）、L1–L4 分层验收、L3（真实对话）需真实模型 API 凭据。凭据就位前只允许实现到 L2 并如实标注。
 
 **现状**：无实现，且**没有设计文档**。
 

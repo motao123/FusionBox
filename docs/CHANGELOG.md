@@ -2,6 +2,23 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.40.0 应用扩容、harness 设计与真实参数收尾（roadmap 批次 4）
+
+- A6 首批扩容：`vocechat` 入内置目录（digest 固定、单容器 256m、具名卷 data、
+  自检端点健康检查），真机验收 `tests/acceptance/market_app_expansion.sh`
+  （安装 → HTTP 200 → 卸载保留卷 → reuse-data 重装 → 数据与 HTTP 复核）
+- 实测边界（如实记录）：Webtop（linuxserver s6 系列）在 `cap_drop ALL` 下无法
+  运行（s6 需要 setuid/setgid），与受管加固模型不兼容；WireGuard 需 NET_ADMIN
+  （high_privilege 路径）与雷池（多容器）可行未实施；2FAuth/Nexterm 上游镜像
+  源未确认
+- A7 设计稿：docs/harness-design.md——容器化、凭据文件化（0600 卷内 + stdin
+  输入）、备份默认排除凭据卷、L1–L4 分层验收（L3 真实对话需模型 API 凭据）
+- B5 收口：`tests/acceptance/netopt_sysctl.sh`——`system netopt` 真实改值
+  （somaxconn 等运行值实测变化）+ 首次应用前快照逐键一致 + 恢复后 11 键与
+  基线零漂移；G18/G67 的「真实改参数」缺口就此收口
+- A3/A5 判定收口：一键 DD 维持「明确拒绝 + 带外恢复」（roadmap A3 判定）；
+  Oracle 三件套在真实 OCI 实例就位前只做「拒绝的姿势」——均为设计决策
+
 ## v1.39.0 ACME 两条真机验证路线（Pebble + Let's Encrypt staging）
 
 roadmap 批次 3（P2）：G35/G36/G59 从「部分实现」推进到「真机验证」。

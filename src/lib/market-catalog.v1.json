@@ -16,10 +16,30 @@
         {
           "id": "app",
           "image": "binwiederhier/ntfy:v2.28.0@sha256:6ef4b819f722fccdc036af611c4774cfdc2de821ab74fdd48bbf4c9d6f8973da",
-          "command": ["serve", "--listen-http", ":8080", "--cache-file", "/tmp/ntfy-cache.db", "--cache-duration", "24h"],
+          "command": [
+            "serve",
+            "--listen-http",
+            ":8080",
+            "--cache-file",
+            "/tmp/ntfy-cache.db",
+            "--cache-duration",
+            "24h"
+          ],
           "user": "65534:65534",
-          "ports": [{"published": 8091, "target": 8080, "protocol": "tcp"}],
-          "volumes": [{"name": "data", "target": "/tmp", "read_only": false}],
+          "ports": [
+            {
+              "published": 8091,
+              "target": 8080,
+              "protocol": "tcp"
+            }
+          ],
+          "volumes": [
+            {
+              "name": "data",
+              "target": "/tmp",
+              "read_only": false
+            }
+          ],
           "binds": [],
           "devices": [],
           "network_mode": "bridge",
@@ -27,7 +47,10 @@
           "memory": "128m",
           "cpus": "0.50",
           "pids_limit": 64,
-          "health": ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/v1/health | grep -q '\"healthy\":true'"],
+          "health": [
+            "CMD-SHELL",
+            "wget -q -O - http://127.0.0.1:8080/v1/health | grep -q '\"healthy\":true'"
+          ],
           "health_retries": 30
         }
       ]
@@ -46,7 +69,13 @@
         {
           "id": "app",
           "image": "jeessy/ddns-go:latest@sha256:0336e6eddcb4052e978c90f0aa530f77205b1dd08fe28057869dbc77a60c5671",
-          "ports": [{"published": 8092, "target": 9876, "protocol": "tcp"}],
+          "ports": [
+            {
+              "published": 8092,
+              "target": 9876,
+              "protocol": "tcp"
+            }
+          ],
           "volumes": [],
           "binds": [],
           "devices": [],
@@ -55,7 +84,10 @@
           "memory": "64m",
           "cpus": "0.50",
           "pids_limit": 64,
-          "health": ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9876/ || exit 1"],
+          "health": [
+            "CMD-SHELL",
+            "wget -q -O /dev/null http://127.0.0.1:9876/ || exit 1"
+          ],
           "health_retries": 10
         }
       ]
@@ -73,10 +105,20 @@
         {
           "id": "db",
           "image": "postgres@sha256:a46e076249ce434e41203b8c1dadfaa025b9726331d72390df038385d6dc29cd",
-          "environment": {"POSTGRES_USER": "umami", "POSTGRES_PASSWORD": "umami", "POSTGRES_DB": "umami"},
+          "environment": {
+            "POSTGRES_USER": "umami",
+            "POSTGRES_PASSWORD": "umami",
+            "POSTGRES_DB": "umami"
+          },
           "user": "70:70",
           "ports": [],
-          "volumes": [{"name": "data", "target": "/var/lib/postgresql/data", "read_only": false}],
+          "volumes": [
+            {
+              "name": "data",
+              "target": "/var/lib/postgresql/data",
+              "read_only": false
+            }
+          ],
           "binds": [],
           "devices": [],
           "network_mode": "bridge",
@@ -85,19 +127,30 @@
           "cpus": "0.50",
           "pids_limit": 128,
           "shm_size": "64m",
-          "health": ["CMD-SHELL", "pg_isready -U umami -d umami"],
+          "health": [
+            "CMD-SHELL",
+            "pg_isready -U umami -d umami"
+          ],
           "health_retries": 30
         },
         {
           "id": "app",
           "image": "ghcr.io/umami-software/umami@sha256:4fd4bbf741a10c1109eb8387a8aa90f9a40d673972dc268ebd97e41e5b045c0c",
-          "depends_on": ["db"],
+          "depends_on": [
+            "db"
+          ],
           "environment": {
             "DATABASE_TYPE": "postgresql",
             "DATABASE_URL": "postgresql://umami:umami@db:5432/umami",
             "APP_SECRET": "fusionbox-local-default-change-me"
           },
-          "ports": [{"published": 8090, "target": 3000, "protocol": "tcp"}],
+          "ports": [
+            {
+              "published": 8090,
+              "target": 3000,
+              "protocol": "tcp"
+            }
+          ],
           "volumes": [],
           "binds": [],
           "devices": [],
@@ -106,8 +159,53 @@
           "memory": "1024m",
           "cpus": "0.50",
           "pids_limit": 256,
-          "health": ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/heartbeat || exit 1"],
+          "health": [
+            "CMD-SHELL",
+            "wget -q -O /dev/null http://127.0.0.1:3000/api/heartbeat || exit 1"
+          ],
           "health_retries": 90
+        }
+      ]
+    },
+    {
+      "id": "vocechat",
+      "name": "VoceChat 私有聊天",
+      "description": "自托管即时聊天，单容器轻量（~100MB）；数据写入具名卷 data；仅 localhost（3009→容器 3000），无域名/TLS；首次启动会联网更新 Web 资源；升级用 --service-image 按服务换镜像",
+      "revoked": false,
+      "high_privilege": false,
+      "domain": false,
+      "bytes": 536870912,
+      "nas_path": false,
+      "services": [
+        {
+          "id": "app",
+          "image": "privoce/vocechat-server@sha256:bb324e9ce9ba5e53d863e381d7c272688a377aff39e7063438ab7fe5df7b29c5",
+          "ports": [
+            {
+              "published": 3009,
+              "target": 3000,
+              "protocol": "tcp"
+            }
+          ],
+          "volumes": [
+            {
+              "name": "data",
+              "target": "/home/vocechat-server/data",
+              "read_only": false
+            }
+          ],
+          "binds": [],
+          "devices": [],
+          "network_mode": "bridge",
+          "docker_socket": false,
+          "memory": "256m",
+          "cpus": "0.50",
+          "pids_limit": 128,
+          "health": [
+            "CMD-SHELL",
+            "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"
+          ],
+          "health_retries": 20
         }
       ]
     }
