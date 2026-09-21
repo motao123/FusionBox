@@ -494,8 +494,10 @@ _help_module_spec() {
   esac
 }
 
-# 帮助里的本机探测必须有界：`docker info` 等在守护进程未运行时会阻塞十几秒，
+# 帮助里的本机探测必须有界：`docker version` 等在守护进程未运行时可能长时间阻塞，
 # 帮助不应该因此卡住，因此统一加 3 秒超时（无 timeout 命令时退化为直接执行）。
+# 注意：探测结果本身是「调用瞬间的宿主机状态」，两次调用之间可以合法地不同，
+# 因此任何「两种写法输出一致」的断言都必须先归一化这一行（见 tests/）。
 _help_probe() {
   if command -v timeout &>/dev/null; then
     timeout 3 "$@" 2>/dev/null
@@ -536,8 +538,11 @@ _help_module_state() {
       ;;
     panels)
       if command -v docker &>/dev/null; then
-        local dver; dver="$(_help_probe docker info --format '{{.ServerVersion}}')"
-        msg_ok "Docker ${dver:-已安装，守护进程未运行}"
+        # `docker version` 比 `docker info` 轻得多（不枚举容器/镜像），在有界探测下
+        # 更不容易因超时出现「同一台机器两次结果不同」。超时只说明守护进程没在
+        # 时限内回话，不等于没装，因此文案不替它下结论。
+        local dver; dver="$(_help_probe docker version --format '{{.Server.Version}}')"
+        msg_ok "Docker ${dver:-已安装（守护进程未响应）}"
       else
         msg_warn "未安装 Docker"
       fi

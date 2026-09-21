@@ -1,6 +1,6 @@
 # 未完成项与可执行方案
 
-> 基线：`3ac2ada` / v1.36.4（2026-09-21）。来源：`docs/implementation-status.md` 逐项状态 + 对本仓库代码的复核。
+> 基线：`3ac2ada` / v1.36.4（2026-09-21 编写，随 v1.36.5 首次交付、v1.36.6 继续维护）。来源：`docs/implementation-status.md` 逐项状态 + 对本仓库代码的复核。
 > 复核范围：`src/lib/*`、`src/modules/*`、`fusion.sh`、`tests/*`。凡「已实现/未实现」的判断都附了代码位置；凡复核后发现文档与代码不符的，单列在第 7 节。
 
 本文回答两个问题：**还差什么**，以及**每一项具体怎么做完、怎么算做完**。区分「没写代码」和「写了但无法证明」——这两类的处理成本差一个数量级。
@@ -358,6 +358,6 @@ A6 第一、二档应用（单容器）→ 再 A6 第三档 → A5（需 OCI 实
 |---|---|---|
 | 真机验收脚本 | `tests/acceptance/`（批次 2 建立） | 需要 Docker/网络/root 的流程，不进 CI |
 | CI 快闸门 | `tests/run_checks.sh` | 153 项，**不依赖 root/Docker/网络**（CNB CI 契约） |
-| 完整回归 | `tests/comprehensive_test.sh` | bash 217 + Python 697 |
+| 完整回归 | `tests/comprehensive_test.sh` | bash 229 + Python 697 |
 | 验证服务器 | 156.239.52.100:5522（root） | 本文件所有真机方案的目标 |
 | 双远端发版流程 | 技能 `fusionbox-dual-remote-release` | 一批做完后同步 GitHub + CNB |

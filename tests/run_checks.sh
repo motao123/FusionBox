@@ -383,17 +383,26 @@ MODULES="proxy system network web panels market warp workspace cluster"
 # 16.1 help <模块> 必须真的分发：输出该模块命令清单 + 本机安装状态
 for m in $MODULES; do
   out="$("${FUSION_CLI[@]}" help "$m" < /dev/null 2>&1)"
-  if grep -qF -- "fusionbox $m" <<<"$out" && grep -qF "本机状态" <<<"$out"; then
+  state="$(awk '/本机状态/ { getline; print; exit }' <<<"$out")"
+  if grep -qF -- "fusionbox $m" <<<"$out" && grep -qF "本机状态" <<<"$out" \
+     && [[ -n "${state//[[:space:]]/}" ]]; then
     ok "fusionbox help $m 输出模块命令清单 + 本机状态"
   else
     bad "fusionbox help $m 输出模块命令清单 + 本机状态"
   fi
 done
 
-# 16.2 help <模块> 与 <模块> help 必须逐字节一致（route 层归一化）
+# 16.2 help <模块> 与 <模块> help 必须一致（route 层归一化）
+#
+# 「本机状态」那一行是实时探测（docker 守护进程响应快慢、nginx/php 是否存在），
+# 两次调用之间可以合法地不同，因此先把这一行归一化再比对；状态行本身已在 16.1
+# 断言非空。曾因直接比对原始输出在 CI 上出现过 flake（同一提交一次通过一次失败）。
+help_normalized() {
+  awk '/本机状态/ { print; getline; print "    <本机状态>"; next } { print }'
+}
 for m in proxy system network web panels market warp workspace cluster; do
-  a="$("${FUSION_CLI[@]}" help "$m" < /dev/null 2>&1)"
-  b="$("${FUSION_CLI[@]}" "$m" help < /dev/null 2>&1)"
+  a="$("${FUSION_CLI[@]}" help "$m" < /dev/null 2>&1 | help_normalized)"
+  b="$("${FUSION_CLI[@]}" "$m" help < /dev/null 2>&1 | help_normalized)"
   if [[ "$a" == "$b" ]]; then
     ok "help $m 与 $m help 输出一致"
   else

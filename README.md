@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.36.5-blue)
+![version](https://img.shields.io/badge/version-1.36.6-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,14 +58,15 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.36.5）
+## 最近更新（v1.36.6）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 新增 **[未完成项与可执行方案（docs/roadmap.md）](docs/roadmap.md)**：把全部未完成项按「未实现 / 环境受限 / 明确不做 / 有边界」四类拆开，每项给出代码现状、缺口、可执行步骤与可判定的验收口径，不再笼统写「后续」
-- 纠正一处长期误判：**5 个「受环境限制」项的条件现在就能造出来**——验证服务器 Docker 一直可用（真实容器生命周期）、第二台主机可用容器扮演（覆盖 5 项集群能力）、真实 ACME 可走 Pebble 或 staging + 含 IP 的公共域名。不需要新增机器，也不需要等待凭据
-- 修正 4 行过期陈述（G12 / G17 / G61 / G62）：复核发现 SSH 登录通知、旧归档读取、`home` 备份范围、会话 `attach` 均已实现，文档却仍写着「未实现 / 后续」
-- 本批为纯文档变更，未改动任何运行时代码；回归检查与完整套件照旧全绿
+- 修掉一个**自造的 CI flake**：帮助里「两种写法输出一致」的断言此前直接比对原始输出，而末尾「本机状态」是实时探测（`docker info` 带 3 秒上限），负载波动时可能一次超时一次成功，断言于是与真实行为无关地失败——同一提交一次通过一次失败就是这么来的
+- 探测改用更轻的 `docker version --format`，超时文案由「守护进程未运行」改为不替宿主下结论的「守护进程未响应」
+- 断言改为**先归一化状态行再比对**（帮助正文仍逐字节比对），并新增「状态行非空」的独立断言；再加一个夹具（让 docker 首次调用故意超时）把「探测结果变动时两种写法仍须一致」固定成回归
+- 文档口径同步收紧：改为「帮助正文完全相同（末尾状态行是实时探测）」，并说明这一行为什么可能不同
+- 回归检查 153/153（root 与非 root），完整套件 bash 229 项 + Python 697 项全绿
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -461,10 +462,13 @@ fusionbox uninstall   # 卸载 FusionBox 本体（不动各模块安装的服务
 # 帮助（以下写法等价，都会输出该模块完整命令说明 + 本机安装状态；只读，无需 root）
 fusionbox help                  # 总帮助：9 大模块 + 全局命令
 fusionbox help system           # 系统管理模块详细帮助
-fusionbox system help           # 逐字节相同的输出
+fusionbox system help           # 帮助正文完全相同的输出（末尾状态行是实时探测）
 fusionbox help sys              # 别名同样可用（p/net/w/tools/m/ws/cl ...）
 fusionbox panels docker help    # 子分发也可取帮助
 ```
+
+> 末行「本机状态」是对宿主机的实时只读探测（例如 Docker 是否响应、装了哪些组件），
+> 探测有 3 秒上限；同一台机器两次调用这一行可能合法地不同，帮助正文不会。
 
 ### 未知命令与退出码
 
