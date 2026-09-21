@@ -2,6 +2,24 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.36.5 未完成项清单与过期陈述修正
+
+本批只动文档，不改任何运行时代码。目的是把「还差什么」从一句「后续」变成可执行、可验收的清单。
+
+- 新增 [roadmap.md](roadmap.md)：全部未完成项按四类拆分——**未实现（7 组）/ 环境受限（6 项）/ 明确不做（5 项）/ 有边界（22 项）**。每项给出代码现状（附文件与函数位置）、精确缺口、可执行步骤、可判定的验收口径、依赖与风险；并给出按「一批做完即可独立发布」划分的四个批次。
+- 纠正一处长期误判：过去把「真实容器生命周期 / 真实 ACME / 两主机集群」笼统记为受环境限制，复核后确认**其中 5 项的条件现在就能造出来**，不需要新增机器或凭据。
+  - 验证服务器 Docker 一直可用（29.8.1 active、13 个镜像、23 GB 空闲），真实容器生命周期可以直接跑；
+  - 两主机场景可用容器扮演第二台主机——`cluster_session.run_ssh()` 只用标准 `ssh`、严格 `known_hosts`，远端只要求 bash/python3，**没有对「远端必须是物理机」的依赖**，一个跑 openssh-server 的容器就是合格目标，一次夹具可覆盖 G15/G16/G29/G61/G63 五项；
+  - 真实 ACME 有两条路线：本地 Pebble（协议级、无外部依赖）与 Let's Encrypt staging + 含 IP 的公共域名（如 `sslip.io` 形式，真实 CA 与真实 HTTP-01）。
+- 澄清一处与文档描述不同的技术现状：多容器应用**不缺框架**——`market_catalog.parse()` 的声明式目录与 `market_apps.manifest_document()` 已能生成并校验多服务 Compose；真正缺的是内置目录 10 个应用全部为单服务形态、以及服务字段白名单缺 `depends_on` / `shm_size` / `sysctls` / `tmpfs` / `read_only` / `entrypoint`、多服务不支持 per-image 覆写。这把该方向的成本从「造框架」改写为「放宽白名单并补校验」。
+- 修正 4 行过期陈述（复核时发现文档低估了自身能力，与高估同样有害）：
+  - **G12**「SSH 登录通知未实现」→ 实际已实现：`system login-alert install|status|test|uninstall`（PAM `open_session` 钩子 + TG 发送 + 受管状态校验），未验证的只是真实凭据；
+  - **G17**「旧归档迁移仍后续」→ 旧归档读取已实现（`archive.py` 的 `legacy_map`），scope 已含 8 项；
+  - **G61**「全量 /home 仍后续」→ `home` 早已是可选敏感 scope（逐项确认），剩余的是应用重建与两主机灾备；
+  - **G62**「SSH 常驻 attach 模式后续」→ `screen`/`tmux`/`work` 均已有 `attach`，改为待明确语义后收敛为可判定陈述。
+- 建议的下一步（见 roadmap 第 6 节）：批次 1 = 多容器应用框架 + OpenSSH `switch`/`rollback`（两者都不依赖真实 OCI、真实 ACME 或第二台机器）；批次 2 = Docker 真机与两主机夹具；批次 3 = ACME 两路；批次 4 = Oracle 三件套与 harness 管理器（需真实环境或先出设计）。
+- 版本号五处一致更新为 1.36.5；`tests/run_checks.sh` 与完整回归套件在验证服务器上照旧全绿。
+
 ## v1.36.4 结束双发布线（仓库统一）
 
 本批不新增功能能力，只解决一个结构性债务：**两个仓库、两条版本线、同一功能两套实现**。

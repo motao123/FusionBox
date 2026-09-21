@@ -1,4 +1,6 @@
-# 当前实施状态（v1.36.4）
+# 当前实施状态（v1.36.5）
+
+2026-09-21 本轮（1.36.5）只做文档工作，不新增能力：新增 [docs/roadmap.md](roadmap.md)——把全部未完成项按「未实现 / 环境受限 / 明确不做 / 有边界」四类拆开，每项给出代码现状、缺口、可执行步骤与可判定的验收口径，并纠正一处长期误判：**5 个「受环境限制」项的条件其实现在就能造出来**（验证服务器 Docker 一直可用、两主机可用容器扮演、真实 ACME 可走 Pebble 或 staging + 含 IP 的公共域名），不需要新增机器或凭据。同时修正下表 4 行的过期陈述（G12/G17/G61/G62）：复核发现 `system login-alert` 的 SSH 登录通知早已实现、旧归档读取早已实现、`home` 早已是可选 scope、`attach` 早已支持，而文档仍写着「未实现/后续」。这类文档低估自身能力与高估同样有害，一并按代码事实改写。
 
 2026-09-20 本轮（1.36.4）只做发布线统一，不新增能力：GitHub 与 CNB 两个仓库在 v1.33.0（`28fe054`）之后各自演进、版本号互相冲突（GitHub 到 1.34.0、CNB 到 1.36.2），同一功能存在两套实现与两套验证资产。现在两个仓库指向**同一个提交、同一个版本号 `v1.36.4`**。配套变更：测试策略统一为 `tests/` 全部随仓库发布并接入 CI（发布包仍经 `export-ignore` 不含测试）；GitHub 侧 CI 统一为 `syntax`（语法/产物/版本一致性 + `run_checks.sh` 快速闸门）→ `tests`（完整套件，root 下运行）→ `release`（仅打标签且需前两层通过），CNB 侧 `.cnb.yml` 继续执行同一份 `run_checks.sh`。本轮同时把 1.36.3 的一致性修复带入两个仓库。验证服务器（Ubuntu 24.04）：`run_checks.sh` 153/153（root 与非 root 均通过）、完整套件 bash 217 项 + Python 697 项全过、真机 CLI 验收通过。仍未变的环境限制：真实容器生命周期、真实 ACME 与多机集群无法在本环境端到端验证。
 
@@ -176,12 +178,12 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G09 | 系统环境变量管理（查看/编辑 bashrc/profile/source 重载） | 受管范围完成 | v1.16.0 system env：允许清单内文件查看/编辑/语法检查，备份+恢复；source 重载属用户 shell 行为，只提示不代执 |
 | G10 | 网卡管理（ip link up/down、ethtool 详情） | 受管范围完成 | v1.16.0 network nic list/info/up/down；默认路由停用双确认；真机仅只读路径 |
 | G11 | fail2ban 完整面板（拦截记录/实时日志/参数配置/卸载） | 面板范围完成 | v1.15.0 status/banned/unban/log/params/uninstall；真实 fail2ban 上验证状态/解封/日志；卸载仅 mock（不停用生产防护） |
-| G12 | TG Bot 监控预警（CPU/内存/磁盘/流量阈值 + 登录通知） | 凭据依赖 | system notify；资源阈值与冷却，TG 仅 mock，SSH 登录通知未实现 |
+| G12 | TG Bot 监控预警（CPU/内存/磁盘/流量阈值 + 登录通知） | 凭据依赖 | system notify 资源阈值与冷却；**SSH 登录通知已实现**（`system login-alert install/status/test/uninstall`，PAM `open_session` 钩子 + TG 发送 + 受管状态校验，未实测真实凭据）；TG 发送仅 mock |
 | G13 | 流量阈值自动关机（/proc/net/dev 统计超限关机） | 部分实现 | traffic-guard；默认 warn；shutdown 分支未执行，月统计从安装基线开始 |
 | G14 | 文件管理器 | 受管范围完成 | v1.22.0 system file：全操作真机验证；del 进回收站；跨机 send 走 scp（真实远端未验证） |
 | G15 | SSH 出站连接工具（收藏与管理） | 受管范围完成 | v1.19.0 cluster sshout：0600 受管清单+严格校验+connect 直连；connect 真实目标需第二台主机，未验证 |
 | G16 | rsync 远程同步任务管理 | 受管范围完成 | v1.22.0 system rsync：任务清单+可选 cron 真机验证；远端执行依赖第二台主机未验证；密钥管理沿用 cluster 模型 |
-| G17 | 系统备份范围扩展 + 备份管理 | 部分实现 | 配置任务归属登记、完整性校验、显式保留/恢复；系统范围扩展与旧归档迁移仍后续 |
+| G17 | 系统备份范围扩展 + 备份管理 | 部分实现 | 配置任务归属登记、完整性校验、显式保留/恢复；scope 已含 config/fusion/web/docker/ssh/cron/usr-local/home，**旧归档读取已实现**（`archive.py` `legacy_map`）；剩余边界见 [roadmap.md](roadmap.md) D 类 |
 | G18 | 内核参数优化面板（6 场景自适应 + 恢复） | 受管范围完成 | v1.36.3 修正文档与代码不一致：`system tuning apply` 已支持 high/balanced/web/stream/game/db 六个场景 + status/restore，此前误标「后续」；未改动的运行值快照恢复由 mock 断言覆盖，未改服务器真实 sysctl |
 | G19 | 病毒扫描（ClamAV 全盘/指定目录+日志） | 受管范围完成 | v1.19.0 market clamav 扫描动作（按需安装、0600 日志、威胁 rc 传播）；真实扫描 mock 覆盖 |
 | G20 | 修复 OpenSSH 高危版本（源码编译升级） | 只读预检 | v1.33.0 `system ssh-preflight` 检查 sshd 配置/有效策略/监听/socket activation；不做源码替换或服务切换，候选升级与回滚仍后续 |
@@ -225,8 +227,8 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G58 | 应用访问模式持久化（direct/domain_only 记录并在更新后恢复） | 部分实现 | v1.7.0 localhost-direct / HTTP 映射登记与更新/重装持久化；无 domain_only 防火墙隔离 |
 | G59 | 一键域名访问（应用=反代+证书一条龙） | 部分实现 | v1.8.1 自有宿主 HTTP/自备 PEM HTTPS、SAN/有效期/密钥校验与重载回滚；真实 ACME 后续 |
 | G60 | 磁盘空间预检（按应用体积校验 + NAS 路径软链） | 部分实现 | v1.13.0 每应用数据驱动最低预检：Nginx 256 MiB、ntfy 512 MiB，注册表/Docker 数据盘均检查；非配额，NAS/任意应用体积估算后续 |
-| G61 | 全量备份/还原（/home 打包 + 可 scp 异地） | 部分实现 | v1.11.1 完成现有 config/system/web 安全归档 SSH push/pull/status；单服务器隔离 SSH 验证；全量 /home、应用重建与两主机灾备仍后续 |
-| G62 | 后台工作区增强（编号会话、注入命令、SSH 常驻） | 受管范围完成 | v1.19.0 workspace work：tmux 编号会话+注入真机验证；SSH 常驻 attach 模式后续 |
+| G61 | 全量备份/还原（/home 打包 + 可 scp 异地） | 部分实现 | v1.11.1 完成现有 config/system/web 安全归档 SSH push/pull/status；单服务器隔离 SSH 验证；**`home` 已是可选敏感 scope（逐项确认）**；剩余：应用重建与两主机灾备（见 [roadmap.md](roadmap.md) B3） |
+| G62 | 后台工作区增强（编号会话、注入命令、SSH 常驻） | 受管范围完成 | v1.19.0 workspace work：tmux 编号会话+注入真机验证；`screen`/`tmux`/`work` 均已有 `attach`；「SSH 常驻」的语义待明确后收敛为可判定陈述 |
 | G63 | 集群内置批量任务（18 项：update/clean/docker/swap/time/iptables…） | 部分实现 | cluster task；沿用密钥连接，未在生产节点批量执行 |
 | G64 | 集群配置备份/导入导出 | 节点清单范围完成 | v1.10.0 无凭据 JSON、预览/确认合并、冲突拒绝、共享锁与私有原子写入；合法旧 nodes.conf 原格式兼容，异常行人工修复；完整 SSH 配置/密钥/known_hosts 迁移不在范围 |
 | G65 | 游戏服管理面板（启停/重启/状态/内存/存档导入导出/定时备份/改配置/更新/卸载 12 项） | 部分实现 | game-manage；真实隔离卷往返测试通过；无定时备份/游戏内容兼容矩阵 |

@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.36.4-blue)
+![version](https://img.shields.io/badge/version-1.36.5-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -58,14 +58,14 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 
-## 最近更新（v1.36.4）
+## 最近更新（v1.36.5）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **结束双发布线**：GitHub 与 CNB 两个仓库此前各自演进、版本号互相冲突（GitHub 到 1.34.0、CNB 到 1.36.2），同一功能出现两套实现与两套验证资产。现在两个仓库指向**同一个提交、同一个版本号**，后续只维护一条线
-- 测试策略统一：`tests/` 全部随仓库发布并接入 CI（此前一个仓库只放 `tests/run_checks.sh`）；发布包仍经 `.gitattributes` 的 `export-ignore` 不含测试
-- CI 统一为三层：`syntax`（语法/产物/版本一致性 + `run_checks.sh` 快速闸门）→ `tests`（完整套件，root 下跑）→ `release`（仅打标签时，且必须等前两层通过）；CNB 侧流水线继续执行同一份 `run_checks.sh`
-- 同时带入 1.36.3 的一致性修复：`fusionbox help <模块>` 真正分发（与 `fusionbox <模块> help` 逐字节一致、无需 root）、模块未知子命令明确报错（退出码 2）不再静默进菜单、`configs/config.yaml` 只保留真实生效的键、G07 时区预设扩到 29 个城市、G18 文档与代码对齐
+- 新增 **[未完成项与可执行方案（docs/roadmap.md）](docs/roadmap.md)**：把全部未完成项按「未实现 / 环境受限 / 明确不做 / 有边界」四类拆开，每项给出代码现状、缺口、可执行步骤与可判定的验收口径，不再笼统写「后续」
+- 纠正一处长期误判：**5 个「受环境限制」项的条件现在就能造出来**——验证服务器 Docker 一直可用（真实容器生命周期）、第二台主机可用容器扮演（覆盖 5 项集群能力）、真实 ACME 可走 Pebble 或 staging + 含 IP 的公共域名。不需要新增机器，也不需要等待凭据
+- 修正 4 行过期陈述（G12 / G17 / G61 / G62）：复核发现 SSH 登录通知、旧归档读取、`home` 备份范围、会话 `attach` 均已实现，文档却仍写着「未实现 / 后续」
+- 本批为纯文档变更，未改动任何运行时代码；回归检查与完整套件照旧全绿
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -370,7 +370,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 - 统计 Worker 已部署并使用 Cloudflare D1 聚合；匿名统计仍默认关闭，只有用户明确同意后才发送事件，Pages 显示的是去重后的累计匿名装机数
 - 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围
 
-完整对账与待办：[docs/implementation-status.md](docs/implementation-status.md)
+完整对账与待办：[docs/implementation-status.md](docs/implementation-status.md)；**未完成项的具体做法与验收口径**：[docs/roadmap.md](docs/roadmap.md)
 
 ## 附录
 
@@ -497,6 +497,7 @@ fusionbox network bogus
 ## 文档索引
 
 - [实施范围与逐项对账（G 表）](docs/implementation-status.md)
+- [未完成项与可执行方案](docs/roadmap.md)
 - [匿名统计与隐私说明](docs/privacy.md)
 - [声明式应用目录与高权限边界](docs/market-catalog.md)
 - [完整变更历史](docs/CHANGELOG.md)
