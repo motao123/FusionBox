@@ -63,6 +63,11 @@ def no_symlink_ancestors(path, allow_missing=False):
             raise ValueError('Source path unavailable: ' + str(path)) from None
 
 
+def _norm_arch(value):
+    """docker info reports x86_64/aarch64 while image inspect reports amd64/arm64."""
+    return {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(value, value)
+
+
 def daemon_info():
     info = js('info', '--format', '{{json .}}')
     security = [str(item).lower() for item in info.get('SecurityOptions') or []]
@@ -141,8 +146,7 @@ def reject_unsupported(container):
         'DeviceCgroupRules': host.get('DeviceCgroupRules'), 'BlkioWeightDevice': host.get('BlkioWeightDevice'),
         'BlkioDeviceReadBps': host.get('BlkioDeviceReadBps'), 'BlkioDeviceWriteBps': host.get('BlkioDeviceWriteBps'),
         'BlkioDeviceReadIOps': host.get('BlkioDeviceReadIOps'), 'BlkioDeviceWriteIOps': host.get('BlkioDeviceWriteIOps'),
-        'StorageOpt': host.get('StorageOpt'), 'MaskedPaths': host.get('MaskedPaths'),
-        'ReadonlyPaths': host.get('ReadonlyPaths'), 'CgroupParent': host.get('CgroupParent'),
+        'StorageOpt': host.get('StorageOpt'), 'CgroupParent': host.get('CgroupParent'),
     }
     if any(value for value in unsupported.values()):
         names = ', '.join(sorted(key for key, value in unsupported.items() if value))
@@ -158,8 +162,8 @@ def reject_unsupported(container):
     if test and (not isinstance(test, list) or test[0] not in ('NONE', 'CMD-SHELL') or len(test) > 2):
         raise ValueError('Only NONE or one CMD-SHELL healthcheck can be restored losslessly')
     for endpoint in (container.get('NetworkSettings', {}).get('Networks') or {}).values():
-        if endpoint.get('Links') or endpoint.get('DriverOpts') or endpoint.get('MacAddress'):
-            raise ValueError('Network endpoint links, driver options, or static MAC unsupported')
+        if endpoint.get('Links') or endpoint.get('DriverOpts'):
+            raise ValueError('Network endpoint links or driver options unsupported')
     for mount in container.get('Mounts') or []:
         if mount.get('Type') in ('cluster', 'secret', 'config', 'tmpfs', 'npipe'):
             raise ValueError('Secret, config, tmpfs, or nonlocal mounts unsupported')
@@ -232,6 +236,9 @@ def container_declaration(container):
             'global_ipv6_address': endpoint.get('GlobalIPv6Address') or '',
             'ip_prefix_len': endpoint.get('IPPrefixLen'),
             'global_ipv6_prefix_len': endpoint.get('GlobalIPv6PrefixLen'),
+            # Audit only, like ip_address: engine-assigned MACs are per-endpoint on
+            # every real container; a user-pinned MAC travels through create.mac_address.
+            'mac_address': endpoint.get('MacAddress') or '',
         }
     return {
         'id': container['Id'], 'name': container.get('Name', '').lstrip('/'), 'created': container.get('Created'),
@@ -265,6 +272,16 @@ def container_declaration(container):
         },
         'mounts': [{key: mount.get(key) for key in ('Type', 'Name', 'Source', 'Destination', 'Driver', 'Mode', 'RW', 'Propagation')}
                    for mount in container.get('Mounts') or []],
+        # MaskedPaths/ReadonlyPaths are engine-managed isolation metadata: every
+        # container gets engine defaults (including host-specific entries such as
+        # /sys/devices/virtual/block/dm-*, which differ across hosts by design).
+        # There is no CLI flag to set them, so they can never carry user intent
+        # through `docker run`; they are recorded here for audit only, and the
+        # target engine applies its own (never fewer by default) at create time.
+        # Treating them as unsupported made every real `docker run` container
+        # unexportable — found by the first real-machine acceptance run.
+        'masked_paths': host.get('MaskedPaths') or [],
+        'readonly_paths': host.get('ReadonlyPaths') or [],
         'original_running': bool(container.get('State', {}).get('Running')),
     }
 
@@ -342,7 +359,7 @@ def prepare(container_names, project, bind_values, confirmations):
                  'binds': {source: {'logical': logical, 'path': 'data/binds/' + logical}
                            for source, logical in sorted(binds.items())}},
         'restore': {
-            'contract': 1,
+            'contract': 2,
             'platform': {'os': info.get('OSType'), 'architecture': info.get('Architecture')},
             'volumes': {},
         },
@@ -565,7 +582,9 @@ def export(destination, containers, project, binds, confirmations, accepted):
     sources = list(volumes.values()) + [Path(source) for source in mappings]
     with stopped(selected):
         assert_no_external_writers(selected_ids, sources)
-        current_ids = set(docker('ps', '-aq').decode().split())
+        # --no-trunc: plain `docker ps -aq` yields 12-char IDs, which can never
+        # match the 64-char selected IDs. Found by the first real-machine run.
+        current_ids = set(docker('ps', '-aq', '--no-trunc').decode().split())
         if not selected_ids.issubset(current_ids):
             raise RuntimeError('Docker topology changed after stop; refusing snapshot')
         package(destination, selected, volumes, mappings, declaration)
@@ -574,15 +593,16 @@ def export(destination, containers, project, binds, confirmations, accepted):
 
 def _restore_contract(declaration):
     restore = declaration.get('restore')
-    if not isinstance(restore, dict) or set(restore) != {'contract', 'platform', 'volumes'} or restore.get('contract') != 1:
-        raise ValueError('Bundle predates the lossless restore contract; export it again with P1b')
+    if not isinstance(restore, dict) or set(restore) != {'contract', 'platform', 'volumes'} or restore.get('contract') != 2:
+        raise ValueError('Bundle predates restore contract 2 (engine-managed masked/readonly paths); export it again')
     if not isinstance(restore['platform'], dict) or set(restore['platform']) != {'os', 'architecture'}:
         raise ValueError('Invalid restore platform contract')
     if not isinstance(restore['volumes'], dict) or set(restore['volumes']) != set(declaration['data']['volumes']):
         raise ValueError('Volume restore contract mismatch')
     required_container = {'id', 'name', 'created', 'image_reference', 'image_id', 'environment', 'entrypoint',
                           'cmd', 'user', 'working_dir', 'restart_policy', 'healthcheck', 'ports', 'exposed_ports',
-                          'resources', 'network_mode', 'primary_network', 'networks', 'labels', 'create', 'mounts', 'original_running'}
+                          'resources', 'network_mode', 'primary_network', 'networks', 'labels', 'create', 'mounts',
+                          'masked_paths', 'readonly_paths', 'original_running'}
     for container in declaration['containers']:
         if not isinstance(container, dict) or set(container) != required_container:
             raise ValueError('Container declaration cannot be restored losslessly')
@@ -701,7 +721,8 @@ def preflight(source, bind_values, external_policy='reject', resume_journal=None
     restore = _restore_contract(declaration)
     info, docker_root = daemon_info()
     platform = restore['platform']
-    if info.get('OSType') != platform['os'] or info.get('Architecture') != platform['architecture']:
+    if (info.get('OSType') != platform['os']
+            or _norm_arch(info.get('Architecture')) != _norm_arch(platform['architecture'])):
         raise ValueError('Target Docker OS/architecture differs from bundle')
     owned = {(item['kind'], item['name']): item for item in (resume_journal or {}).get('created', [])
              if not item.get('rolled_back')}
@@ -717,7 +738,8 @@ def preflight(source, bind_values, external_policy='reject', resume_journal=None
         declared_tags.update(tags)
         if target_tags.intersection(tags):
             raise ValueError('Declared image RepoTag already exists on target')
-        if image.get('os') != info.get('OSType') or image.get('architecture') != info.get('Architecture'):
+        if (image.get('os') != info.get('OSType')
+                or _norm_arch(image.get('architecture')) != _norm_arch(info.get('Architecture'))):
             raise ValueError('Image OS/architecture is incompatible with target')
         if _existing('image', image.get('id', '')) and ('image', image['id']) not in owned:
             raise ValueError('Declared image already exists on clean target: ' + str(image.get('id')))
@@ -1233,14 +1255,20 @@ def _create_container(container, bind_targets, transaction):
     args.extend(('--network', primary))
     if primary in container['networks']:
         endpoint = container['networks'][primary]
-        if endpoint.get('ip_address'):
-            args.extend(('--ip', endpoint['ip_address']))
-        if endpoint.get('global_ipv6_address'):
-            args.extend(('--ip6', endpoint['global_ipv6_address']))
+        # Static IPs only for user-defined networks: on the default bridge the
+        # engine assigns addresses dynamically and rejects --ip, and the recorded
+        # address is engine-assigned audit data anyway (two-host finding).
+        if not _network_builtin(primary):
+            if endpoint.get('ip_address'):
+                args.extend(('--ip', endpoint['ip_address']))
+            if endpoint.get('global_ipv6_address'):
+                args.extend(('--ip6', endpoint['global_ipv6_address']))
         for alias in endpoint.get('aliases') or []:
             if alias != container['name']:
                 args.extend(('--network-alias', alias))
-    args.append(container['image_id'])
+    # Reference the image the way the original create did (Config.Image, a tag);
+    # the engine-storage-specific image ID may not exist on the target store.
+    args.append(container['image_reference'] or container['image_id'])
     args.extend(container.get('cmd') or [])
     return docker(*args).decode().strip(), first_network
 
@@ -1369,9 +1397,19 @@ def _execute_restore(path, journal):
         if not all(_existing('image', image['id']) for image in declaration['images']):
             docker('image', 'load', '--input', str(stage / 'images/images.tar'))
         for image in declaration['images']:
-            loaded = js('image', 'inspect', image['id'])[0]
-            if loaded['Id'] != image['id']:
-                raise RuntimeError('Loaded image ID does not match declaration')
+            # Image IDs are engine-storage specific: containerd-snapshotter daemons
+            # report manifest digests as the image ID, classic stores report config
+            # digests, and `docker load` does not carry the digest into the other
+            # scheme (RepoDigests come back empty). The bundle payload is already
+            # checksum-verified, so identity is established by the declared
+            # RepoTags; the loaded ID is audit-only. Found by the two-host run.
+            loaded = None
+            for ref in [image['id']] + sorted(image.get('repo_tags') or []):
+                if _existing('image', ref):
+                    loaded = js('image', 'inspect', ref)[0]
+                    break
+            if loaded is None:
+                raise RuntimeError('Loaded image not found: ' + str(image.get('repo_tags')))
             if set(loaded.get('RepoTags') or []) != set(image.get('repo_tags') or []):
                 raise RuntimeError('Loaded image RepoTags do not match declaration')
         journal['image_load']['status'] = 'created'
@@ -1499,8 +1537,11 @@ def restore(source, bind_values, confirmed, external_policy='reject', health_tim
     save_journal(journal_path, journal)
     try:
         return _execute_restore(journal_path, journal)
-    except Exception:
+    except Exception as error:
         journal['state'] = 'failed'
+        # Keep the underlying reason: swallowing it left target-side failures
+        # undebuggable (found by the two-host acceptance run).
+        journal['error'] = '%s: %s' % (type(error).__name__, error)
         save_journal(journal_path, journal)
         raise RuntimeError('Restore failed; use rollback or resume with transaction ' + transaction) from None
 

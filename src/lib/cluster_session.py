@@ -375,6 +375,11 @@ def main():
             mode = item.add_mutually_exclusive_group()
             mode.add_argument('--password', action='store_true')
             mode.add_argument('--password-fd', type=int)
+        if action in ('connect', 'exec'):
+            # run_ssh always supported an explicit identity; the CLI never exposed
+            # it, leaving operators with default keys or an agent only. The
+            # two-host fixture (and any dedicated migration key) needs this.
+            item.add_argument('--identity', help='Private key for key-only authentication')
         if action == 'migrate-key':
             item.add_argument('--public-key')
     args = parser.parse_args(arguments)
@@ -388,11 +393,12 @@ def main():
         trust(node, known_hosts)
         return
     password = read_password(args.password_fd) if args.password or args.password_fd is not None else None
+    identity = getattr(args, 'identity', None)
     if args.action == 'connect':
-        raise SystemExit(run_ssh(node, known_hosts, [], password=password, tty=True))
+        raise SystemExit(run_ssh(node, known_hosts, [], password=password, tty=True, identity=identity))
     if args.action == 'exec':
         command = remote_command[0] if len(remote_command) == 1 else shlex.join(remote_command)
-        raise SystemExit(run_ssh(node, known_hosts, [command], password=password))
+        raise SystemExit(run_ssh(node, known_hosts, [command], password=password, identity=identity))
     key_path, data = public_key(args.public_key)
     identity = migration_identity(key_path, data)
     remote = ['set -eu; umask 077; '

@@ -592,6 +592,54 @@ else
   bad "真机验收脚本存在且语法正确（不进 CI，需 root/Docker）"
 fi
 
+section "18. 跨主机迁移编排与真机验收资产（v1.38.0）"
+# ---------------------------------------------------------------------------
+# 全部为静态检查：不装 Docker、不联网、不需要 root。
+check_contains "编排入口已接线到 panels docker-migration（两个分发点）" \
+  'docker_migration_remote.py' cat "$SRC/modules/panels.sh"
+
+check_contains "编排复用 cluster_session 严格选项（不新写 SSH 语义）" \
+  'cluster_session.key_options' cat "$SRC/lib/docker_migration_remote.py"
+
+check_contains "编排复用已验证的 archive_transfer 传输（含 docker-v1 校验）" \
+  'archive_transfer.run' cat "$SRC/lib/docker_migration_remote.py"
+
+check_contains "restore 失败 / 健康失败都会尝试目标机 rollback" \
+  "_rollback(node, known_hosts, key, args, transaction, summary" \
+  cat "$SRC/lib/docker_migration_remote.py"
+
+check_contains "dry-run 明确声明不写目标机、因此不含目标机预检" \
+  '未向目标机写入任何文件' cat "$SRC/lib/docker_migration_remote.py"
+
+remote_out="$(PYTHONDONTWRITEBYTECODE=1 python3 - "$SRC/lib" <<'PYEOF' 2>&1
+import sys
+sys.path.insert(0, sys.argv[1])
+import docker_migration_remote as dmr
+problems = []
+for const, expect in (('REMOTE_SRC_DEFAULT', '/etc/fusionbox/src'),
+                      ('STORE_DEFAULT', '/var/lib/fusionbox/docker-migration-store')):
+    if getattr(dmr, const) != expect:
+        problems.append(const + ' 漂移')
+if dmr.TRANSACTION.pattern.find('{32}') < 0:
+    problems.append('事务 ID 正则不再约束 32 位十六进制')
+print('OK' if not problems else 'PROBLEM: ' + '; '.join(problems))
+PYEOF
+)"
+if [[ "$remote_out" == "OK" ]]; then
+  ok "编排常量与事务 ID 约束"
+else
+  bad "编排常量：${remote_out:-python 未输出结果}"
+fi
+
+for script in two_host.sh container_lifecycle.sh market_multicontainer.sh openssh_switch.sh; do
+  if [[ -f "$REPO_ROOT/tests/acceptance/$script" ]] \
+     && bash -n "$REPO_ROOT/tests/acceptance/$script" 2>/dev/null; then
+    ok "真机验收资产 tests/acceptance/$script 存在且语法正确"
+  else
+    bad "真机验收资产 tests/acceptance/$script 存在且语法正确"
+  fi
+done
+
 # ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'
 printf '通过 %d / 失败 %d\n' "$PASS" "$FAIL"
