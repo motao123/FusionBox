@@ -1,4 +1,6 @@
-# 当前实施状态（v1.36.6）
+# 当前实施状态（v1.37.0）
+
+2026-09-21 本轮（1.37.0，roadmap 批次 1 的 A1）补齐**多容器应用的完整生命周期**：过去多容器「不缺框架、但没人用、也不能维护」——声明式目录与 Compose 生成本就存在，缺的是服务字段白名单、目录里没有任何多服务应用、`update`/`reinstall` 对声明式应用直接拒绝。现在扩展了 `depends_on`/`shm_size`/`sysctls`/`tmpfs`/`read_only`/`entrypoint` 六项能力（每项独立约束，不做透传），实现事务化 `update`（按服务换镜像、拉齐镜像→写恢复 journal→`--wait`→健康门禁，失败恢复上一快照与镜像，两级都失败才进 `recovery-required` 并拒绝后续变更）与 `reinstall --reuse-data`，并把 `resources()` 的反向校验扩展到每一项新能力。真机（Ubuntu 24.04.5 / Docker 29.8.1）跑通新增验收脚本 `tests/acceptance/market_multicontainer.sh` **34/34**。两处只有真机能发现的问题被修掉：目录里的 `bridge` 曾被写成字面量导致服务名无法互相解析（多容器连不上自己的库），以及 `entrypoint ["/bin/sh","-c"]` + 多元素 `command` 被拼成一个 argv 导致容器静默退出（现在在校验阶段就拒绝）。`sysctls` 白名单按实测确定，并据此如实登记一条能力边界：基于 Elasticsearch 的应用（RAGFlow 等）在无 `--privileged` 的受管模型下无法承载。
 
 2026-09-21 本轮（1.36.6）修一个**自造的 CI flake**：`help <模块>` 与 `<模块> help` 的一致性断言此前直接比对原始输出，而帮助末尾的「本机状态」是对宿主机的实时探测（`docker info` 带 3 秒超时）。同一台机器的两次调用里，探测可能一次超时、一次成功，于是断言**与真实行为无关地**失败——v1.36.5 的 tag 触发的 CI 通过、同一提交的 main 触发的 CI 失败，就是这个原因。修法分两层：探测本身改用更轻的 `docker version --format`（不枚举容器/镜像），并把超时文案从「守护进程未运行」改为不替宿主下结论的「守护进程未响应」；断言改为**先归一化状态行再比对**，同时单独断言状态行非空，并新增一个夹具（让 docker 首次调用故意超时）把「探测结果变动时两种写法仍须一致」固定成回归。一个 flaky 闸门比没有闸门更糟——它会训练人忽略红灯。
 
@@ -219,7 +221,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G48 | 运行时调优模板注入 | 并入 tune 档位 | v1.21.0 tune 档位覆盖 PHP-FPM 池/MySQL buffer/nginx；opcache 细项与 valkey 未单独覆盖 |
 | G49 | 组件热更新（单独升级 nginx/mysql/php/redis） | 受管范围完成 | v1.18.0 web upgrade：真机 nginx 升级路径验证；失败保持原版本，不提供降级 |
 | G50 | LDNMP 环境卸载 | 受管范围完成 | v1.18.0 uninstall-lnmp：真机完整卸载（备份/purge/wipe），验证后恢复原状 |
-| G51 | AI/LLM 类应用 | 部分扩容 | v1.23.0 new-api + v1.24.0 lobe-chat/open-webui/n8n 受管模板（真机验证）；Dify/RAGFlow 等多容器应用需框架支持 compose 多服务，后续 |
+| G51 | AI/LLM 类应用 | 部分扩容 | v1.23.0 new-api + v1.24.0 lobe-chat/open-webui/n8n 受管模板（真机验证）；**v1.37.0 多容器框架已就绪并真机验证**（umami：依赖顺序/换镜像/回滚/数据复用重装），Dify 等多容器应用可按同一模型接入；**RAGFlow 等基于 Elasticsearch 的应用受 sysctl 限制无法承载**（`vm.max_map_count` 需 privileged，本模型不授予） |
 | G52 | 面板类应用 | 部分扩容 | v1.20.0 uptime-kuma 监控面板受管模板（真机全生命周期）；1Panel/Dockge 等未实现（Dockge 需 Docker socket，与受管安全模型冲突） |
 | G53 | 网盘/同步类 | 部分扩容 | v1.24.0 openlist 受管模板（真机全生命周期）；其余应用按需扩容；Syncthing 的 P2P UDP 端口与受管 localhost 模型冲突未收录 |
 | G54 | 媒体/影音类 | 部分扩容 | v1.24.0 navidrome 受管模板（data+music 多卷，真机验证）；其余应用按需扩容 |

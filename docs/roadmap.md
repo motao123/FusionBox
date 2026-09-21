@@ -35,7 +35,9 @@
 
 ## 2. A 类：未实现
 
-### A1 多容器应用（Dify / RAGFlow / JumpServer 等）— G51 G52 G53 G54 G55 G56
+### A1 多容器应用（Dify / RAGFlow / JumpServer 等）— G51 G52 G53 G54 G55 G56 · **v1.37.0 已完成框架部分**
+
+> **状态（2026-09-21，v1.37.0）**：本节描述的框架缺口已全部补齐并真机验证——六项服务字段入白名单（`depends_on`/`shm_size`/`sysctls`/`tmpfs`/`read_only`/`entrypoint`）、事务化 `update`（失败自动回滚、双失败才要求人工）、`reinstall --reuse-data`、`resources()` 逐项反向校验，并以内置真实双服务应用 `umami` + `tests/acceptance/market_multicontainer.sh`（34/34）作证据。两处只有真机能发现的问题已修：`bridge` 曾被写成字面量导致服务名不可解析；shell-form entrypoint 与多元素 command 被拼成一个 argv。**剩下的是目录扩容本身**，以及一条被实测否掉的路：`vm.max_map_count` 在不加 `--privileged` 时不可用，因此 RAGFlow 一类基于 Elasticsearch 的应用在本安全模型下不能承载（见下方 sysctls 表）。
 
 **现状（已核实，且与文档描述不同）**
 

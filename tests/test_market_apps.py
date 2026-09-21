@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src/lib'))
 import market_apps as m
+import market_catalog
 
 
 @unittest.skipIf(os.name == 'nt', 'Linux flock lifecycle')
@@ -241,6 +242,182 @@ class Market(unittest.TestCase):
         self.install()
         with patch.object(m, 'resources', return_value=[]), patch.object(m, 'health', return_value='unhealthy'):
             with self.assertRaisesRegex(ValueError, 'healthy'): m.operate('update', accepted=True)
+
+
+@unittest.skipIf(os.name == 'nt', 'Linux flock lifecycle')
+class ManifestLifecycle(unittest.TestCase):
+    """Declarative multi-container lifecycle: emission, drift checks and transactions."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        self.addCleanup(patch.stopall)
+        patch.object(m.cb, 'BASE', self.base).start()
+        patch.object(m.cb, 'no_links').start()
+        self.docker = patch.object(m.cb, 'docker', return_value=b'').start()
+        self.spec = {
+            'id': 'stack', 'name': 'stack', 'description': 'd', 'revoked': False,
+            'high_privilege': False, 'domain': False, 'bytes': 1024, 'nas_path': False,
+            'services': [
+                {'id': 'db', 'image': 'postgres@sha256:' + 'a' * 64, 'ports': [],
+                 'volumes': [{'name': 'data', 'target': '/var/lib/postgresql/data', 'read_only': False}],
+                 'binds': [], 'devices': [], 'network_mode': 'bridge', 'docker_socket': False,
+                 'memory': '256m', 'cpus': '0.50', 'pids_limit': 128,
+                 'health': ['CMD-SHELL', 'pg_isready'], 'health_retries': 30, 'shm_size': '64m'},
+                {'id': 'app', 'image': 'ghcr.io/example/app@sha256:' + 'b' * 64,
+                 'depends_on': ['db'], 'ports': [{'published': 8090, 'target': 3000, 'protocol': 'tcp'}],
+                 'volumes': [], 'binds': [], 'devices': [], 'network_mode': 'bridge',
+                 'docker_socket': False, 'memory': '1024m', 'cpus': '0.50', 'pids_limit': 256,
+                 'health': ['CMD', 'true'], 'health_retries': 90}],
+        }
+        self.record = {'owner': m.cb.OWNER, 'project': 'fb-market-stack',
+                       'compose': str(self.base / 'fb-market-stack.compose.json'),
+                       'market': {'owner': m.OWNER, 'app': 'stack', 'token': 'c' * 32,
+                                  'state': 'healthy', 'catalog_app': self.spec,
+                                  'catalog_digest': market_catalog.app_digest(self.spec)}}
+        self.registry = self.base / 'fb-market-stack.json'
+        patch.object(m, 'catalog_apps', return_value={'stack': self.spec}).start()
+        patch.object(m, 'docker_preflight').start()
+        patch.object(m, 'health', return_value='healthy').start()
+        self.up = patch.object(m, 'up').start()
+
+    def test_document_emits_multi_container_fields(self):
+        doc = m.document(self.record)['services']
+        self.assertEqual(doc['app']['depends_on'], {'db': {'condition': 'service_healthy'}})
+        self.assertEqual(doc['db']['shm_size'], '64m')
+        self.assertEqual(doc['app']['ports'], ['127.0.0.1:8090:3000/tcp'])
+        # Catalog `bridge` must not become the literal Docker default bridge, or the
+        # services cannot resolve each other (found by real deployment).
+        self.assertNotIn('network_mode', doc['app'])
+        self.assertNotIn('network_mode', doc['db'])
+
+    def test_host_network_passes_through(self):
+        self.spec['services'][1]['network_mode'] = 'host'
+        self.spec['services'][1]['ports'] = []
+        self.record['market']['catalog_digest'] = market_catalog.app_digest(self.spec)
+        self.assertEqual(m.document(self.record)['services']['app']['network_mode'], 'host')
+
+    def test_structural_change_is_refused(self):
+        for mutate in ('service set', 'volumes', 'ports'):
+            live = json.loads(json.dumps(self.spec))
+            if mutate == 'service set':
+                live['services'][1]['id'] = 'worker'
+            elif mutate == 'volumes':
+                live['services'][0]['volumes'][0]['name'] = 'other'
+            else:
+                live['services'][1]['ports'][0]['published'] = 9999
+            with patch.object(m, 'catalog_apps', return_value={'stack': live}):
+                with self.assertRaises(ValueError, msg=mutate):
+                    m.manifest_target(self.record)
+
+    def test_image_override_rules(self):
+        target = m.manifest_target(self.record)
+        with self.assertRaises(ValueError):
+            m.manifest_images(self.record, target, {'nope': 'nginx@sha256:' + 'd' * 64})
+        with self.assertRaises(ValueError):
+            m.manifest_images(self.record, target, {'app': 'nginx:latest'})
+        changed = m.manifest_images(self.record, m.manifest_target(self.record), {'db': 'postgres@sha256:' + 'e' * 64})
+        self.assertEqual(list(changed), ['db'])
+        self.assertEqual(m.manifest_images(self.record, m.manifest_target(self.record), {}), {})
+
+    def test_update_no_change_is_a_no_op(self):
+        m.save(self.registry, self.record)
+        m.write_compose(self.record)
+        m.operate('update', 'stack', accepted=True)
+        self.up.assert_not_called()
+        self.assertFalse((self.base / 'fb-market-stack.update.json').exists())
+        self.assertEqual(json.loads(self.registry.read_text())['market']['state'], 'healthy')
+
+    def test_update_replaces_image_and_commits(self):
+        patch.object(m, 'ensure_images').start()
+        m.manifest_update(self.registry, self.record, {'app': 'ghcr.io/example/app@sha256:' + 'f' * 64})
+        saved = json.loads(self.registry.read_text())
+        self.assertEqual(saved['market']['state'], 'healthy')
+        self.assertTrue(saved['market']['catalog_app']['services'][1]['image'].endswith('f' * 64))
+        self.up.assert_called_once()
+        self.assertFalse((self.base / 'fb-market-stack.update.json').exists())
+
+    def test_update_failure_rolls_back_to_previous_image(self):
+        patch.object(m, 'ensure_images').start()
+        self.up.side_effect = [RuntimeError('unhealthy'), None]
+        with self.assertRaises(RuntimeError):
+            m.manifest_update(self.registry, self.record, {'app': 'ghcr.io/example/app@sha256:' + 'f' * 64})
+        saved = json.loads(self.registry.read_text())
+        self.assertEqual(saved['market']['state'], 'healthy')
+        self.assertTrue(saved['market']['catalog_app']['services'][1]['image'].endswith('b' * 64))
+        self.assertFalse((self.base / 'fb-market-stack.update.json').exists())
+
+    def test_double_failure_retains_recovery_journal(self):
+        patch.object(m, 'ensure_images').start()
+        self.up.side_effect = RuntimeError('unhealthy')
+        with self.assertRaises(RuntimeError):
+            m.manifest_update(self.registry, self.record, {'app': 'ghcr.io/example/app@sha256:' + 'f' * 64})
+        saved = json.loads(self.registry.read_text())
+        self.assertEqual(saved['market']['state'], 'recovery-required')
+        self.assertTrue((self.base / 'fb-market-stack.update.json').exists())
+
+    def test_reinstall_requires_uninstalled_state_and_retained_volume(self):
+        with self.assertRaises(ValueError):
+            m.manifest_reinstall(self.registry, self.record)
+        uninstalled = json.loads(json.dumps(self.record))
+        uninstalled['market']['state'] = 'uninstalled'
+        patch.object(m, 'resources', return_value=[]).start()
+        with patch.object(m.cb, 'docker', return_value=b'other_data\n'):
+            with self.assertRaises(ValueError):
+                m.manifest_reinstall(self.registry, uninstalled)
+        with patch.object(m.cb, 'docker', return_value=b'fb-market-stack_data\n'), patch.object(m, 'ensure_images'):
+            m.manifest_reinstall(self.registry, uninstalled)
+        self.assertEqual(json.loads(self.registry.read_text())['market']['state'], 'healthy')
+
+    def test_resource_drift_is_detected(self):
+        container = {
+            'Id': 'x' * 64, 'Name': '/fb-market-stack-app',
+            'Config': {'Labels': {'io.fusionbox.market': 'c' * 32, 'com.docker.compose.service': 'app',
+                                  'com.docker.compose.project.config_files': self.record['compose']}},
+            'HostConfig': {'NetworkMode': 'fb-market-stack_default', 'Privileged': False,
+                           'ShmSize': 67108864, 'ReadonlyRootfs': False,
+                           'Sysctls': None, 'Tmpfs': None},
+            'Mounts': [], 'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+        }
+        db = json.loads(json.dumps(container))
+        db['Name'] = '/fb-market-stack-db'
+        db['Config']['Labels']['com.docker.compose.service'] = 'db'
+        db['HostConfig']['ShmSize'] = 64 * 1024 * 1024
+        db['Mounts'] = [{'Type': 'volume', 'Name': 'fb-market-stack_data',
+                         'Destination': '/var/lib/postgresql/data', 'RW': True}]
+        volume = {'Labels': {'io.fusionbox.market': 'c' * 32, 'com.docker.compose.project': 'fb-market-stack'},
+                  'Driver': 'local', 'Options': None}
+
+        def fake_docker(*args):
+            return b'fb-market-stack_data\n' if args[:2] == ('volume', 'ls') else b'x' * 64
+
+        def fake_js(*args):
+            return [volume] if args[0] == 'volume' else [container, db]
+
+        docker = patch.object(m.cb, 'docker', side_effect=fake_docker).start()
+        patch.object(m.cb, 'js', side_effect=fake_js).start()
+        m.resources(self.record)
+        # Any single declared capability drifting must be rejected, not silently accepted.
+        for key, value, restore in (('ShmSize', 1, 64 * 1024 * 1024), ('ReadonlyRootfs', True, False)):
+            db['HostConfig'][key] = value
+            with self.assertRaises(ValueError, msg=key):
+                m.resources(self.record)
+            db['HostConfig'][key] = restore
+        for key, value in (('Sysctls', {'net.core.somaxconn': '1024'}), ('Tmpfs', {'/run/probe': ''})):
+            db['HostConfig'][key] = value
+            with self.assertRaises(ValueError, msg=key):
+                m.resources(self.record)
+            db['HostConfig'][key] = None
+        container['Config']['Entrypoint'] = ['/bin/sh', '-c']
+        self.spec['services'][1]['entrypoint'] = ['/usr/bin/entry']
+        self.record['market']['catalog_digest'] = market_catalog.app_digest(self.spec)
+        with self.assertRaises(ValueError):
+            m.resources(self.record)
+        container['HostConfig']['NetworkMode'] = 'bridge'
+        with self.assertRaises(ValueError):
+            m.resources(self.record)
+        docker.assert_called()
 
 
 class Preflight(unittest.TestCase):

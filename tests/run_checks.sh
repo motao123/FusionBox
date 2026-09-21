@@ -524,6 +524,75 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+section "17. 多容器声明式目录（v1.37.0）"
+# ---------------------------------------------------------------------------
+# 全部为静态检查：不装 Docker、不联网、不需要 root。
+manifest_out="$(PYTHONDONTWRITEBYTECODE=1 python3 - "$SRC/lib" <<'PYEOF' 2>&1
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import market_apps as apps, market_catalog as catalog
+
+apps.configure_catalog()
+apps_by_id = apps.catalog_apps()
+umami = apps_by_id.get('umami') or {}
+services = {s['id']: s for s in umami.get('services', [])}
+record = {'project': 'fb-market-umami', 'compose': '/dev/null',
+          'market': {'token': 'a' * 32, 'app': 'umami', 'catalog_app': umami,
+                     'catalog_digest': catalog.app_digest(umami)}}
+doc = apps.manifest_document(record)['services']
+problems = []
+if services.get('app', {}).get('depends_on') != ['db']:
+    problems.append('umami.app 缺少 depends_on')
+if doc['app'].get('depends_on') != {'db': {'condition': 'service_healthy'}}:
+    problems.append('depends_on 未落地为 service_healthy')
+if 'network_mode' in doc['app'] or 'network_mode' in doc['db']:
+    problems.append('声明式 bridge 被写成字面量（服务名将无法互相解析）')
+if doc['db'].get('shm_size') != '64m':
+    problems.append('shm_size 未落地')
+for key in ('net.core.somaxconn', 'net.ipv4.ip_local_port_range', 'net.ipv4.tcp_syncookies'):
+    if key not in catalog.SYSCTLS:
+        problems.append('sysctl 白名单缺少 ' + key)
+for key in ('vm.max_map_count', 'fs.file-max'):
+    if key in catalog.SYSCTLS:
+        problems.append('sysctl 白名单含需 privileged 的 ' + key)
+try:
+    catalog.parse(json.dumps({'schema_version': 1, 'catalog_id': 'x', 'revision': 'abcdef1', 'apps': [
+        {'id': 'x', 'name': 'x', 'description': 'x', 'revoked': False, 'high_privilege': False,
+         'domain': False, 'bytes': 1, 'nas_path': False, 'services': [
+             {'id': 'a', 'image': 'nginx@sha256:' + 'a' * 64, 'entrypoint': ['/bin/sh', '-c'],
+              'command': ['sleep', '600'], 'ports': [], 'volumes': [], 'binds': [], 'devices': [],
+              'network_mode': 'bridge', 'docker_socket': False, 'memory': '64m', 'cpus': '0.50',
+              'pids_limit': 32, 'health': ['CMD', 'true'], 'health_retries': 3}]}]}))
+    problems.append('sh -c + 多元素 command 未被拒绝')
+except ValueError:
+    pass
+print('OK' if not problems else 'PROBLEM: ' + '; '.join(problems))
+PYEOF
+)"
+if [[ "$manifest_out" == "OK" ]]; then
+  ok "多容器目录：depends_on/网络语义/sysctl 白名单/entrypoint 守卫"
+else
+  bad "多容器目录：${manifest_out:-python 未输出结果}"
+fi
+
+check_contains "目录服务字段含 depends_on/shm_size/sysctls/tmpfs/read_only/entrypoint" \
+  "'health_retries', 'depends_on', 'shm_size', 'sysctls', 'tmpfs', 'read_only'" \
+  cat "$SRC/lib/market_catalog.py"
+
+check_contains "多服务 update/reinstall 已接线（不再是「仅 install/status/uninstall」）" \
+  'manifest_update(registry, record, images)' cat "$SRC/lib/market_apps.py"
+
+check_contains "多服务 update 有独立的恢复 journal 与门禁" \
+  "project + '.update.json'" cat "$SRC/lib/market_apps.py"
+
+if [[ -f "$REPO_ROOT/tests/acceptance/market_multicontainer.sh" ]] \
+   && bash -n "$REPO_ROOT/tests/acceptance/market_multicontainer.sh" 2>/dev/null; then
+  ok "真机验收脚本存在且语法正确（不进 CI，需 root/Docker）"
+else
+  bad "真机验收脚本存在且语法正确（不进 CI，需 root/Docker）"
+fi
+
+# ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'
 printf '通过 %d / 失败 %d\n' "$PASS" "$FAIL"
 if (( FAIL > 0 )); then

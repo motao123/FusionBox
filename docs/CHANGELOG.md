@@ -2,6 +2,26 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.37.0 多容器应用：从「只有框架」到「完整生命周期」
+
+roadmap 批次 1 的第一半（A1）。之前多容器「不缺框架、但没人用、也不能维护」：声明式目录与 Compose 生成本就存在，可真正缺的是服务字段白名单、目录里没有任何多服务应用、以及 `update`/`reinstall` 对声明式应用直接拒绝。现在补齐，并配一个真实双服务应用做端到端真机验收。
+
+- **服务字段白名单扩展**：`depends_on` / `shm_size` / `sysctls` / `tmpfs` / `read_only` / `entrypoint`。每一项都是能力，因此每一项都有独立的取值约束，而不是透传给 Docker：
+  - `depends_on` 只能引用同一应用内已声明的服务，拒绝自依赖、重复项与**成环**（环会让启动顺序失去定义）
+  - `sysctls` 只允许**在这台 Docker 上不加 `--privileged` 真的能生效**的键。白名单来自实测（Docker 29.8.1）：`net.core.somaxconn`、`net.ipv4.ip_local_port_range`、`net.ipv4.tcp_syncookies` 可用；`vm.max_map_count`、`fs.file-max` 被拒。这条实测结论直接决定了一个能力边界：**基于 Elasticsearch 的应用（如 RAGFlow）在本安全模型下无法承载**，已如实写入文档与 roadmap，而不是留一个「理论上支持」的说法
+  - `tmpfs` 拒绝相对路径与路径穿越；`shm_size` 复用内存的 `<n>m` 形式；`read_only` 必须是布尔
+- **真机踩到并拦下的一个坑**：`entrypoint: ["/bin/sh","-c"]` + `command: ["sleep","600"]` 会被 Docker 拼成一个 argv —— 实际执行的是 `sleep`，`600` 变成 `$0`，容器起来就退出。这不是配置写错那么好发现的问题（pull 成功、容器创建成功、只在运行时静默失败），因此改成**目录校验阶段直接拒绝**，并留下回归断言。
+- **`network_mode: bridge` 的语义修正（最关键的修复）**：声明式目录里的 `bridge` 现在表示**应用自己的私有网络**（服务之间用服务 ID 互相解析），不再被写成字面量 `bridge`。此前的写法会把每个服务挂到 Docker 全局默认网桥，服务名互相不可解析 —— 多容器应用连不上自己的数据库，容器反复重启。这个问题只有真机部署才会暴露，静态测试与单服务场景都看不出来。仅 `host` 原样透传，且 host 网络服务不得发布端口。
+- **多服务 `update`（事务化、带自动回滚）**：`market managed update <应用> --confirm [--service-image <服务>=<镜像@sha256:…>]`
+  - 先按目录计算目标快照，**结构性变更一律拒绝**（服务集合、卷、发布端口、网络模式、binds、devices、socket —— 那属于迁移，不是升级），只允许换镜像
+  - 无改动时是明确的 no-op，不会白白重建容器
+  - 有改动时是一次事务：先拉齐镜像 → 写私有恢复 journal → 换快照与 Compose → `--wait` 起栈 → 健康门禁；失败则恢复上一份快照与镜像；**两级都失败**才进入 `recovery-required` 并保留 journal，后续变更被拒绝，要求人工介入（不会留下「说不清状态」的中间态）
+- **多服务 `reinstall --reuse-data`**：仅从 `uninstalled` 且无容器、且声明的具名卷全都还在时才允许；绝不新建替代卷掩盖数据丢失。
+- **`resources()` 反向校验扩展**：新增的每一项能力都会与运行中容器的真实参数比对（网络模式、ShmSize、Sysctls、ReadonlyRootfs、Tmpfs、Entrypoint），任何一项漂移即在 stop/remove/recreate 之前被拒绝。
+- **内置目录新增真实应用 `umami`**（网站分析 = 应用 + PostgreSQL 双服务，端口 8090）：用来证明框架不是纸面能力。它的完整生命周期由 `tests/acceptance/market_multicontainer.sh` 在真机上验证。
+- **测试**：`tests/test_market_catalog.py` 新增多容器字段校验矩阵（含环、白名单、shell-form entrypoint 守卫、内置 umami 一致性）；`tests/test_market_apps.py` 新增 `ManifestLifecycle`（Compose 生成、host 网络透传、结构性变更拒绝、镜像覆写规则、no-op、成功/失败回滚、双失败保留 journal、reinstall 条件、**逐字段漂移检测**）；`tests/run_checks.sh` 新增第 17 节（不依赖 Docker/root/网络）。
+- 真机验收（Linux 验证服务器 Ubuntu 24.04.5，Docker 29.8.1）：`tests/acceptance/market_multicontainer.sh` **34/34 通过** —— 安装后 `db` 先于 `app` 启动、两个容器均 healthy、localhost:8090 真实返回 200、`shm_size` 落地 64 MiB、只暴露声明端口；`update` 无改动为 no-op、真换镜像成功、换成必然起不来的镜像时**失败并自动回滚**（容器回到上一镜像且仍健康、journal 已清除）；新字段在真机上既被正确落地、也能在漂移时被抓到；`uninstall` 保留具名卷，`reinstall --reuse-data` 后**此前写入的数据行仍在**。
+
 ## v1.36.6 修掉自造的 CI flake（帮助状态探测）
 
 v1.36.5 的 tag 触发的 CI 通过，**同一提交**由 main 触发的 CI 失败——排查后确认是自己造的 flake，本批修掉。一个 flaky 闸门比没有闸门更糟：它会训练人忽略红灯。

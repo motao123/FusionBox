@@ -191,12 +191,18 @@ def manifest_document(record):
     for item in spec['services']:
         service = {
             'image': item['image'], 'container_name': project + '-' + item['id'],
-            'network_mode': item['network_mode'], 'restart': 'unless-stopped',
+            'restart': 'unless-stopped',
             'labels': labels, 'mem_limit': item['memory'], 'cpus': item['cpus'],
             'pids_limit': item['pids_limit'],
             'logging': {'driver': 'json-file', 'options': {'max-size': '5m', 'max-file': '2'}},
             'healthcheck': {'test': item['health'], 'interval': '2s', 'timeout': '2s',
                             'retries': item['health_retries']}}
+        # Catalog `bridge` means "this application's own private network": emitting
+        # the literal `bridge` would attach every service to Docker's global default
+        # bridge, where service names do not resolve and a multi-container app
+        # cannot reach its own database. Only `host` is passed through verbatim.
+        if item['network_mode'] == 'host':
+            service['network_mode'] = 'host'
         if item['ports']:
             service['ports'] = ['127.0.0.1:%s:%s/%s' % (p['published'], p['target'], p['protocol'])
                                 for p in item['ports']]
@@ -213,9 +219,20 @@ def manifest_document(record):
             service['volumes'] = volumes
         if item['devices']:
             service['devices'] = ['%s:%s:%s' % (d['source'], d['target'], d['permissions']) for d in item['devices']]
-        for field in ('command', 'environment', 'user'):
+        for field in ('command', 'entrypoint', 'environment', 'user'):
             if field in item:
                 service[field] = item[field].copy() if isinstance(item[field], (list, dict)) else item[field]
+        # Every declared service carries a healthcheck (schema requires it), so a
+        # dependency can always gate on actual readiness instead of mere start.
+        if item.get('depends_on'):
+            service['depends_on'] = {dep: {'condition': 'service_healthy'} for dep in item['depends_on']}
+        for field in ('shm_size', 'sysctls'):
+            if field in item:
+                service[field] = item[field].copy() if isinstance(item[field], dict) else item[field]
+        if item.get('tmpfs'):
+            service['tmpfs'] = list(item['tmpfs'])
+        if item.get('read_only'):
+            service['read_only'] = True
         if not spec['high_privilege']:
             service.update(init=True, cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
         result['services'][item['id']] = service
@@ -263,6 +280,13 @@ def save(path, record):
     atomic(path, json.dumps(record) + '\n')
 
 
+def _memory_bytes(value):
+    """Convert a validated `<n>m` catalog size into bytes for Docker API comparison."""
+    if not re.fullmatch(r'[1-9][0-9]*m', value or ''):
+        raise ValueError('Invalid catalog size: ' + str(value))
+    return int(value[:-1]) * 1024 * 1024
+
+
 def write_compose(record, image=None):
     atomic(Path(record['compose']), json.dumps(document(record, image)) + '\n')
 
@@ -302,10 +326,13 @@ def manifest_resources(record):
         name = container['Name'].lstrip('/')
         service = expected_names.get(name)
         labels = container['Config'].get('Labels') or {}
+        # `bridge` in the catalog means the application-private compose network,
+        # so the expected runtime network is the project network, not `bridge`.
+        expected_network = 'host' if service and service['network_mode'] == 'host' else project + '_default'
         if (service is None or labels.get('io.fusionbox.market') != token or
                 labels.get('com.docker.compose.service') != service['id'] or
                 labels.get('com.docker.compose.project.config_files') != record['compose'] or
-                container['HostConfig'].get('NetworkMode') != service['network_mode'] or
+                container['HostConfig'].get('NetworkMode') != expected_network or
                 container['HostConfig'].get('Privileged')):
             raise ValueError('Unknown container ownership/type')
         expected_mounts = {(project + '_' + v['name'], v['target'], not v['read_only']) for v in service['volumes']}
@@ -316,6 +343,19 @@ def manifest_resources(record):
         socket_mounts = [m for m in container.get('Mounts', []) if m.get('Destination') == '/var/run/docker.sock']
         if bool(socket_mounts) != service['docker_socket']:
             raise ValueError('Unexpected Docker socket capability')
+        # The declared multi-container capabilities must be the ones actually in
+        # force; a silent drop would mean the app runs without what it declared.
+        host = container['HostConfig']
+        if service.get('shm_size') and host.get('ShmSize') != _memory_bytes(service['shm_size']):
+            raise ValueError('Unexpected shared memory size')
+        if (host.get('Sysctls') or {}) != (service.get('sysctls') or {}):
+            raise ValueError('Unexpected sysctls')
+        if bool(host.get('ReadonlyRootfs')) != bool(service.get('read_only')):
+            raise ValueError('Unexpected root filesystem mode')
+        if set((host.get('Tmpfs') or {}).keys()) != set(service.get('tmpfs') or []):
+            raise ValueError('Unexpected tmpfs mounts')
+        if service.get('entrypoint') is not None and container['Config'].get('Entrypoint') != service['entrypoint']:
+            raise ValueError('Unexpected container entrypoint')
     volumes = cb.docker('volume', 'ls', '-q').decode().split()
     names = {v['name'] for service in spec['services'] for v in service['volumes']}
     for suffix in names:
@@ -550,8 +590,130 @@ def health(record):
     return status
 
 
+def manifest_shape(spec):
+    """Per-service fields whose change moves data or changes reachability.
+
+    Deliberately excludes image/health/command/environment/memory: those are what
+    an update is allowed to change. Anything else (service set, storage, published
+    ports, network mode, binds, devices, socket) is a migration, not an update.
+    """
+    return {service['id']: {key: service.get(key) for key in
+                            ('volumes', 'ports', 'network_mode', 'binds', 'devices', 'docker_socket', 'user')}
+            for service in spec['services']}
+
+
+def manifest_target(record):
+    """Copy of the catalog spec for this app, refusing any structural change."""
+    stored = record_spec(record)
+    live = catalog_apps().get(record['market']['app'])
+    if live is None:
+        raise ValueError('Application is no longer in the catalog; keep the pinned snapshot or uninstall')
+    if not is_manifest(live):
+        raise ValueError('Catalog entry type changed; refusing in-place update')
+    if manifest_shape(live) != manifest_shape(stored):
+        raise ValueError('Service topology, storage or published ports changed in the catalog; '
+                         'in-place update would move data or change reachability. Uninstall, then install.')
+    return json.loads(json.dumps(live))
+
+
+def manifest_images(record, target, overrides):
+    """Resolve each service image (explicit override wins) and return the changed ones."""
+    stored = {service['id']: service['image'] for service in record_spec(record)['services']}
+    unknown = sorted(set(overrides) - set(stored))
+    if unknown:
+        raise ValueError('Unknown service for --service-image: ' + unknown[0])
+    changed = {}
+    for service in target['services']:
+        image = overrides.get(service['id'], service['image'])
+        if not market_catalog.IMAGE.fullmatch(image):
+            raise ValueError('Service image must be digest-pinned: ' + image)
+        service['image'] = image
+        if image != stored[service['id']]:
+            changed[service['id']] = image
+    return changed
+
+
+def ensure_images(images):
+    """Pull only images that are not present locally (all are digest-pinned)."""
+    for image in images:
+        try:
+            cb.js('image', 'inspect', image)
+        except Exception:  # noqa: BLE001 - absent image is the expected pull trigger
+            cb.docker('pull', image)
+
+
+def manifest_update(registry, record, overrides):
+    """Replace service images of a healthy declarative app as one transaction."""
+    target = manifest_target(record)
+    if record['market']['state'] != 'healthy' or health(record) != 'healthy':
+        raise ValueError('Update requires a healthy managed application; manual recovery required')
+    changed = manifest_images(record, target, dict(overrides or {}))
+    if not changed:
+        print('No image change requested; nothing to do. Use --service-image SERVICE=IMAGE@sha256:...')
+        return
+    ensure_images(sorted(set(changed.values())))
+    journal = cb.BASE / (record['project'] + '.update.json')
+    cb.no_links(journal)
+    original = json.loads(json.dumps(record))
+    save(journal, original)
+    record['market']['catalog_app'] = target
+    record['market']['catalog_digest'] = market_catalog.app_digest(target)
+    record['market']['catalog_revision'] = (RUNTIME_CATALOG or {}).get('revision', record['market'].get('catalog_revision'))
+    record['market']['catalog_source'] = CATALOG_SOURCE
+    record['market']['state'] = 'updating'
+    save(registry, record)
+    try:
+        write_compose(record)
+        up(record)
+    except BaseException:
+        save(registry, original)
+        try:
+            write_compose(original)
+            up(original)
+        except BaseException:
+            original['market']['state'] = 'recovery-required'
+            save(registry, original)
+            raise RuntimeError('Update AND rollback failed; recovery journal ' + str(journal) +
+                               ' retained; data volumes untouched; manual recovery required') from None
+        journal.unlink(missing_ok=True)
+        raise RuntimeError('Update failed; previous images and configuration restored') from None
+    record['market']['state'] = 'healthy'
+    save(registry, record)
+    journal.unlink(missing_ok=True)
+    print('Update completed; healthy; changed services: ' + ', '.join(sorted(changed)))
+
+
+def manifest_reinstall(registry, record):
+    """Recreate a retained declarative application from its pinned snapshot."""
+    if record['market']['state'] != 'uninstalled':
+        raise ValueError('Reinstall requires uninstalled state and no running containers')
+    if resources(record):
+        raise ValueError('Reinstall requires no existing containers')
+    spec = record_spec(record)
+    expected = {record['project'] + '_' + volume['name'] for service in spec['services'] for volume in service['volumes']}
+    missing = sorted(expected - set(cb.docker('volume', 'ls', '-q').decode().split()))
+    if missing:
+        raise ValueError('Retained data volume missing; refusing to create a replacement: ' + missing[0])
+    ensure_images(sorted({service['image'] for service in spec['services']}))
+    try:
+        write_compose(record)
+        up(record)
+        record['market']['state'] = 'healthy'
+        save(registry, record)
+    except BaseException:
+        try:
+            for container in resources(record):
+                cb.docker('stop', container['Id'])
+                cb.docker('rm', container['Id'])
+        except BaseException:
+            raise RuntimeError('Reinstall failed and container cleanup failed; registry/config/data retained; '
+                               'inspect owned resources before retry') from None
+        raise RuntimeError('Reinstall failed; newly created containers removed; original registry/config/data retained') from None
+    print('Reinstall completed; healthy')
+
+
 def operate(action, app='nginx', port=None, accepted=False, project=None, automatic=False, reuse=False,
-            domain=None, listen=80, tls=None, risk_ack=None, nas_path=None):
+            domain=None, listen=80, tls=None, risk_ack=None, nas_path=None, images=None):
     if action not in ('install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls', 'tls-refresh'):
         raise ValueError('Unsupported managed action')
     # catalog needs no docker at all; everything else touches the daemon.
@@ -625,11 +787,22 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             if action in ('domain', 'tls', 'tls-refresh') and not spec['domain']:
                 raise ValueError('Domain/TLS unsupported for this application; localhost only')
             if manifest and action in ('reinstall', 'update'):
-                raise ValueError('Declarative catalog v1 supports install/status/uninstall only')
+                if action == 'update':
+                    manifest_update(registry, record, images)
+                else:
+                    if not reuse:
+                        raise ValueError('Explicit --reuse-data required for retained content')
+                    manifest_reinstall(registry, record)
+                return
             if action != 'status' and (cb.BASE / (project + '.domain-recovery.json')).exists():
                 raise ValueError('Pending domain recovery journal; manual recovery required')
             if action not in ('status', 'tls-refresh') and (cb.BASE / (project + '.tls-refresh.json')).exists():
                 raise ValueError('Pending TLS refresh; repair supplied files and retry tls-refresh --confirm')
+            if (manifest and action not in ('status', 'uninstall') and
+                    (cb.BASE / (project + '.update.json')).exists()):
+                raise ValueError('Pending declarative update journal; the previous update failed. '
+                                 'Inspect status, recover manually if needed, then remove ' +
+                                 str(cb.BASE / (project + '.update.json')))
             if 'domain' in record['market']:
                 market_domain.owned(record)
             if action == 'tls-refresh':
@@ -725,7 +898,7 @@ HELP_TEXT = """受管应用生命周期
   status <应用>              查看本地证书校验与入口状态
   install <应用> --confirm   安装（默认 localhost）
   reinstall <应用> --confirm --reuse-data   复用保留数据重装
-  update <应用> --confirm    更新（镜像版本升级默认拒绝）
+  update <应用> --confirm    更新（单服务：镜像升级默认拒绝；多服务：按服务换镜像并事务化回滚）
   uninstall <应用> --confirm 卸载（保留具名卷数据）
   domain <应用> --domain <域名> --confirm    绑定自有域名（HTTP）
   tls <应用> --cert <证书> --key <私钥> --confirm   使用已有 PEM
@@ -736,6 +909,11 @@ HELP_TEXT = """受管应用生命周期
   --auto-port     占用时最多探测后续 20 个端口（不保证预留）
   --nas-path <路径>  目录模板所需的宿主 NAS 根路径
   --risk-ack <文本>  高权限应用要求的完整确认文本
+  --service-image <服务>=<镜像@sha256:...>   多服务应用按服务换镜像（可重复；仅 update）
+
+多服务（声明式目录）说明: 只支持 install/status/update/reinstall/uninstall；
+update 不接受改动服务集合、卷、发布端口或网络模式的目录变更（那属于迁移），
+显式改镜像用 --service-image，失败会自动回滚到上一组镜像。
 
 示例: fusionbox market managed install nginx --confirm
       fusionbox market managed catalog
@@ -777,7 +955,17 @@ def main(argv=None):
     p.add_argument('--tls-port', type=int, default=443)
     p.add_argument('--no-redirect', action='store_true', help='Explicitly retain HTTP service alongside HTTPS')
     p.add_argument('--disable-tls', action='store_true')
+    p.add_argument('--service-image', action='append', default=[], metavar='SERVICE=IMAGE@sha256:...',
+                   help='Declarative catalog update: replace one service image (repeatable)')
     args = p.parse_args(argv)
+    service_images = {}
+    for item in args.service_image:
+        name, _, image = item.partition('=')
+        if not name or not image:
+            p.error('--service-image requires SERVICE=IMAGE@sha256:...')
+        if name in service_images:
+            p.error('duplicate --service-image for service: ' + name)
+        service_images[name] = image
     source = configure_catalog(args.catalog_url, args.catalog_sha256, args.catalog_revision)
     apps = catalog_apps()
     if args.action == 'catalog':
@@ -820,6 +1008,8 @@ def main(argv=None):
         p.error('--risk-ack applies only to install')
     if args.nas_path and args.action != 'install':
         p.error('--nas-path applies only to install')
+    if service_images and args.action != 'update':
+        p.error('--service-image applies only to update')
     if args.action == 'domain' and not args.confirm:
         p.error('Domain mapping requires explicit --confirm')
     if args.action != 'domain' and (args.domain or args.remove_domain):
@@ -830,7 +1020,7 @@ def main(argv=None):
             domain=None if args.remove_domain else args.domain, listen=args.listen,
             tls={'cert': args.cert, 'key': args.key, 'listen': args.tls_port, 'redirect': not args.no_redirect}
             if args.action == 'tls' and not args.disable_tls else None,
-            risk_ack=args.risk_ack, nas_path=args.nas_path)
+            risk_ack=args.risk_ack, nas_path=args.nas_path, images=service_images)
 
 
 if __name__ == '__main__':

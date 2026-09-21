@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "catalog_id": "fusionbox-builtin",
-  "revision": "builtin-v1",
+  "revision": "builtin-v2",
   "apps": [
     {
       "id": "ntfy-v1",
@@ -57,6 +57,57 @@
           "pids_limit": 64,
           "health": ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9876/ || exit 1"],
           "health_retries": 10
+        }
+      ]
+    },
+    {
+      "id": "umami",
+      "name": "Umami 网站分析",
+      "description": "隐私友好的网站分析；自带 PostgreSQL 具名卷；首登默认账号 admin / 密码 umami，请立即修改；APP_SECRET 为本地默认值，用于公网前必须更换；仅 localhost，无域名/TLS；升级用 --service-image 按服务换镜像",
+      "revoked": false,
+      "high_privilege": false,
+      "domain": false,
+      "bytes": 3221225472,
+      "nas_path": false,
+      "services": [
+        {
+          "id": "db",
+          "image": "postgres@sha256:a46e076249ce434e41203b8c1dadfaa025b9726331d72390df038385d6dc29cd",
+          "environment": {"POSTGRES_USER": "umami", "POSTGRES_PASSWORD": "umami", "POSTGRES_DB": "umami"},
+          "user": "70:70",
+          "ports": [],
+          "volumes": [{"name": "data", "target": "/var/lib/postgresql/data", "read_only": false}],
+          "binds": [],
+          "devices": [],
+          "network_mode": "bridge",
+          "docker_socket": false,
+          "memory": "256m",
+          "cpus": "0.50",
+          "pids_limit": 128,
+          "shm_size": "64m",
+          "health": ["CMD-SHELL", "pg_isready -U umami -d umami"],
+          "health_retries": 30
+        },
+        {
+          "id": "app",
+          "image": "ghcr.io/umami-software/umami@sha256:4fd4bbf741a10c1109eb8387a8aa90f9a40d673972dc268ebd97e41e5b045c0c",
+          "depends_on": ["db"],
+          "environment": {
+            "DATABASE_TYPE": "postgresql",
+            "DATABASE_URL": "postgresql://umami:umami@db:5432/umami",
+            "APP_SECRET": "fusionbox-local-default-change-me"
+          },
+          "ports": [{"published": 8090, "target": 3000, "protocol": "tcp"}],
+          "volumes": [],
+          "binds": [],
+          "devices": [],
+          "network_mode": "bridge",
+          "docker_socket": false,
+          "memory": "1024m",
+          "cpus": "0.50",
+          "pids_limit": 256,
+          "health": ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/heartbeat || exit 1"],
+          "health_retries": 90
         }
       ]
     }
