@@ -1,4 +1,7 @@
-# 当前实施状态（v1.39.0）
+# 当前实施状态（v1.40.0）
+
+2026-09-21 本轮（1.40.0，roadmap 批次 4）按判定收尾：`vocechat` 入内置目录并真机验收（`market_app_expansion.sh`：安装/HTTP/卸载保留卷/reuse-data 重装）；实测 Webtop（s6）与 `cap_drop ALL` 不兼容并如实记录；harness 管理器设计稿（docs/harness-design.md，L1–L4 分层验收）；`netopt_sysctl.sh` 真实改值 + 快照恢复（11 键零漂移）收口 G18/G67 的真实执行缺口；一键 DD 与 Oracle 三件套的判定收口（设计决策）。回归与验收：闸门 177/177（root 与非 root）+ 完整套件 bash 229 项 + Python 741 项（33 模块）零失败，真机脚本全部可一键重放。环境限制未变：真实 OCI 实例、TG/CF 真实凭据、模型 API 凭据。
+
 
 2026-09-21 本轮（1.39.0，roadmap 批次 3）完成 **ACME 两条真机验证路线**：`web ssl issue/renew` 新增 `--server`/`WEB_ACME_SERVER` 覆盖与 LE 目录隔离（自定义目录时 certbot config/work/logs 整体切换，不碰生产 /etc/letsencrypt；保留 TLD 守卫仅对生产路径生效）；`acme_pebble.sh` 24/24（本地 Pebble：真实 certbot 协议链路、SAN/私钥/nginx 装配、真实续期指纹变化、不可达目录回滚）；`acme_staging.sh` 16/16（`<公网IP>.sslip.io` + Let's Encrypt staging：真实 DNS、真实 HTTP-01、真实 CA 签发与受管 TLS 启用、DNS 失败回滚）。G35/G36/G59 据此推进到真机验证。回归：闸门 174/174（root 与非 root），完整套件零失败。环境限制未变：真实 OCI 实例、TG/CF 真实凭据、生产 LE 目录（非 staging）签发。
 
