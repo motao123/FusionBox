@@ -44,6 +44,14 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
+      # 快速回归闸门：无需 root / Docker / 网络，与 CNB 流水线同一份脚本。
+      - name: Regression checks (run_checks.sh)
+        run: |
+          set -e
+          bash tests/run_checks.sh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+
       - name: Release version consistency
         run: |
           set -e
@@ -52,7 +60,8 @@ jobs:
           grep -Fqx "export FUSION_VER=\"$version\"" src/init.sh
           grep -Fq "version-$version" README.md
           grep -Fq "v$version" docs/index.html
-          echo "version.txt / init.sh / README / Pages 版本一致: $version"
+          grep -Fq "v$version" docs/implementation-status.md
+          echo "version.txt / init.sh / README / Pages / 实施状态 版本一致: $version"
 
   # ---------------------------------------------------------------- 完整回归套件
   tests:
@@ -93,6 +102,7 @@ jobs:
           grep -Fqx "export FUSION_VER=\"$version\"" src/init.sh
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      # tests/ 经 .gitattributes 的 export-ignore 排除，发布包不含测试资产。
       - name: Package complete distribution
         run: |
           git archive --format=tar.gz --prefix=FusionBox/ -o FusionBox-${{ steps.version.outputs.tag }}.tar.gz HEAD

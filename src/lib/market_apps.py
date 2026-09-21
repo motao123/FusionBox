@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import shutil
 import socket
+import subprocess
 import sys
 import uuid
 import urllib.request
@@ -378,6 +379,33 @@ def resources(record):
     return containers
 
 
+_COMPOSE_HINT = ('受管应用市场需要 Docker Compose v2（docker compose 子命令）。\n'
+                 '  安装 Docker: curl -fsSL https://get.docker.com | sh\n'
+                 '  安装 compose 插件: apt-get install -y docker-compose-plugin'
+                 '（或 yum install -y docker-compose-plugin）')
+
+
+def docker_preflight():
+    """Explain missing Docker/Compose in Chinese before any docker call runs.
+
+    This runs before the secret-withholding docker wrapper is used, so it can be
+    explicit about the cause; ``output withheld`` must stay reserved for real
+    docker operations that may echo credentials.
+    """
+    if shutil.which('docker') is None:
+        raise ValueError('受管应用市场需要 Docker：未检测到 docker 命令。\n'
+                         '  安装: curl -fsSL https://get.docker.com | sh')
+    probe = subprocess.run(['docker', '--host', 'unix:///var/run/docker.sock', 'info'],
+                           capture_output=True)
+    if probe.returncode:
+        raise ValueError('Docker 守护进程不可用。\n'
+                         '  请检查: systemctl status docker（或 service docker status）')
+    probe = subprocess.run(['docker', '--host', 'unix:///var/run/docker.sock', 'compose', 'version'],
+                           capture_output=True)
+    if probe.returncode:
+        raise ValueError(_COMPOSE_HINT)
+
+
 def preflight(port, check_port=True, app='nginx'):
     if type(port) is not int or not 1024 <= port <= 65535:
         raise ValueError('Port must be 1024-65535')
@@ -526,6 +554,9 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             domain=None, listen=80, tls=None, risk_ack=None, nas_path=None):
     if action not in ('install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls', 'tls-refresh'):
         raise ValueError('Unsupported managed action')
+    # catalog needs no docker at all; everything else touches the daemon.
+    if action != 'catalog':
+        docker_preflight()
     project = project or 'fb-market-' + app
     spec = manifest = None
     if action == 'install':
@@ -685,9 +716,48 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
             print(action.capitalize() + ' completed; healthy; localhost port ' + str(record['market']['port']))
 
 
-def main():
+HELP_TEXT = """受管应用生命周期
+
+用法: fusionbox market managed <操作> [应用] [选项]
+
+操作:
+  catalog                    查看受管目录（应用 ID、端口、资源限制）
+  status <应用>              查看本地证书校验与入口状态
+  install <应用> --confirm   安装（默认 localhost）
+  reinstall <应用> --confirm --reuse-data   复用保留数据重装
+  update <应用> --confirm    更新（镜像版本升级默认拒绝）
+  uninstall <应用> --confirm 卸载（保留具名卷数据）
+  domain <应用> --domain <域名> --confirm    绑定自有域名（HTTP）
+  tls <应用> --cert <证书> --key <私钥> --confirm   使用已有 PEM
+  tls-refresh <应用> --confirm    校验并重载已更新的 PEM
+
+常用选项:
+  --port <端口>   首选 localhost 端口
+  --auto-port     占用时最多探测后续 20 个端口（不保证预留）
+  --nas-path <路径>  目录模板所需的宿主 NAS 根路径
+  --risk-ack <文本>  高权限应用要求的完整确认文本
+
+示例: fusionbox market managed install nginx --confirm
+      fusionbox market managed catalog
+"""
+
+
+class _ChineseArgumentParser(argparse.ArgumentParser):
+    """Print a Chinese menu on missing/invalid arguments, never a raw traceback."""
+
+    def error(self, message):
+        print('参数有误: ' + message, file=sys.stderr)
+        print(HELP_TEXT, file=sys.stderr)
+        raise SystemExit(2)
+
+
+def main(argv=None):
     os.umask(0o077)
-    p = argparse.ArgumentParser(description=__doc__)
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv or argv[0] in ('help', '--help', '-h'):
+        print(HELP_TEXT)
+        return
+    p = _ChineseArgumentParser(description=__doc__)
     p.add_argument('action', choices=('catalog', 'install', 'reinstall', 'status', 'update', 'uninstall', 'domain', 'tls', 'tls-refresh'))
     p.add_argument('app', nargs='?', default='nginx')
     p.add_argument('--catalog-url', help='HTTPS JSON catalog URL; requires a content or revision pin')
@@ -707,7 +777,7 @@ def main():
     p.add_argument('--tls-port', type=int, default=443)
     p.add_argument('--no-redirect', action='store_true', help='Explicitly retain HTTP service alongside HTTPS')
     p.add_argument('--disable-tls', action='store_true')
-    args = p.parse_args()
+    args = p.parse_args(argv)
     source = configure_catalog(args.catalog_url, args.catalog_sha256, args.catalog_revision)
     apps = catalog_apps()
     if args.action == 'catalog':

@@ -9,17 +9,18 @@ system_main() {
     bbr)              system_bbr "$@" ;;
     benchmark|bench)  system_benchmark "$@" ;;
     monitor|top)      system_monitor "$@" ;;
-    backup)           system_backup "$@" ;;
-    restore)          system_restore "$@" ;;
+    backup)           _require_python3 "系统备份" || return 1; system_backup "$@" ;;
+    restore)          _require_python3 "系统恢复" || return 1; system_restore "$@" ;;
     update|up)        system_update "$@" ;;
     clean|cleanup)    system_clean "$@" ;;
-    swap)             system_swap "$@" ;;
-    users)            system_users "$@" ;;
-    hardening)        system_hardening ;;
-    security|sec)     system_security "$@" ;;
+    swap)             _require_python3 "Swap 管理" || return 1; system_swap "$@" ;;
+    users)            _require_python3 "用户管理" || return 1; system_users "$@" ;;
+    hardening)        _require_python3 "系统加固" || return 1; system_hardening ;;
+    security|sec)     _require_python3 "安全审计" || return 1; system_security "$@" ;;
     ssh-preflight)    system_ssh_preflight "$@" ;;
-    sshkey|ssh)       system_sshkey "$@" ;;
-    firewall|fw)      system_firewall "$@" ;;
+    ssh-candidate)    _require_python3 "OpenSSH 候选版本验证" || return 1; system_ssh_candidate "$@" ;;
+    sshkey|ssh)       _require_python3 "SSH 密钥管理" || return 1; system_sshkey "$@" ;;
+    firewall|fw)      _require_python3 "防火墙与 Fail2Ban" || return 1; system_firewall "$@" ;;
     cron|crontab)     system_cron "$@" ;;
     disk)             system_disk "$@" ;;
     timezone|tz)      system_timezone "$@" ;;
@@ -28,13 +29,14 @@ system_main() {
     hostname)         system_hostname "$@" ;;
     hosts)            system_hosts "$@" ;;
     mirror)           system_mirror "$@" ;;
-    log)              system_log "$@" ;;
+    log|logs)         system_log "$@" ;;
+    rescue)           system_rescue "$@" ;;
     traffic-guard)    system_traffic_guard "$@" ;;
     notify)           system_notify "$@" ;;
-    login-alert)      system_login_alert "$@" ;;
+    login-alert)      _require_python3 "登录提醒" || return 1; system_login_alert "$@" ;;
     netopt)           system_netopt "$@" ;;
-    tuning|tune)      system_tuning "$@" ;;
-    fail2ban|f2b)     system_fail2ban "$@" ;;
+    tuning|tune)      _require_python3 "内核调优" || return 1; system_tuning "$@" ;;
+    fail2ban|f2b)     _require_python3 "Fail2Ban 管理" || return 1; system_fail2ban "$@" ;;
     env)              system_env "$@" ;;
     rsync)            system_rsync "$@" ;;
     file)             system_file "$@" ;;
@@ -57,8 +59,8 @@ system_info() {
 
   # CPU
   local cpu_model; cpu_model=$(lscpu 2>/dev/null | grep "Model name" | cut -d: -f2 | xargs)
-  local cpu_cores; cpu_cores=$(nproc --all)
-  msg "  ${F_BOLD}CPU:${F_RESET} ${cpu_model:-未知} (${cpu_cores} 核)"
+  local cpu_cores; cpu_cores=$(_cpu_cores_display)
+  msg "  ${F_BOLD}CPU:${F_RESET} ${cpu_model:-未知} (${cpu_cores})"
 
   # Load
   local load; load=$(uptime | awk -F'average:' '{print $2}' | xargs)
@@ -739,7 +741,7 @@ system_benchmark() {
   msg_info "正在运行基准测试..."
 
   # CPU - simple sieve
-  msg "  ${F_BOLD}CPU 核心:${F_RESET} $(nproc --all)"
+  msg "  ${F_BOLD}CPU 核心:${F_RESET} $(_cpu_cores_display)"
   local cpu_start; cpu_start=$(date +%s)
   local prime_count=0
   for ((i=2; i<=50000; i++)); do
@@ -864,6 +866,75 @@ system_monitor() {
   done
 }
 
+
+# ---- 救援指引 (B 档)：出事时用户最需要「现在该敲什么」 ----
+# 只读汇总，不修改系统。定位对标的「重装/DD」高风险功能，但只做安全的
+# 「恢复指引」：列出受管服务恢复命令、备份位置、回滚步骤。
+system_rescue() {
+  _require_root
+  local backup_dir="${1:-/root/backups}"
+  msg_title "系统救援指引（只读）"
+  msg ""
+  msg_warn "本页只显示恢复路径，不会自动执行任何修改。请逐条确认后再手动执行。"
+  msg ""
+
+  msg "  ${F_BOLD}[1] FusionBox 部署状态${F_RESET}"
+  if [[ -d /etc/fusionbox ]]; then
+    msg "    部署目录: /etc/fusionbox"
+    msg "    版本: $(tr -d '[:space:]' < /etc/fusionbox/version.txt 2>/dev/null || echo '未知')"
+  else
+    msg "    未在 /etc/fusionbox 检测到部署（可能为源码运行）"
+  fi
+  msg "    配置与日志: $FUSION_CONFIG_DIR"
+  msg ""
+
+  msg "  ${F_BOLD}[2] 可用备份${F_RESET}"
+  local found=0 f
+  for f in "$backup_dir"/fusionbox_backup_*.tar.gz; do
+    [[ -f "$f" && ! -L "$f" ]] || continue
+    msg "    $(basename "$f")  ( $(du -h "$f" 2>/dev/null | cut -f1) )"
+    found=1
+  done
+  [[ $found -eq 1 ]] || msg "    $backup_dir 下暂无备份；建议先执行: fusionbox system backup"
+  msg "    恢复命令: fusionbox system restore $backup_dir"
+  msg ""
+
+  msg "  ${F_BOLD}[3] 受管应用（Compose）${F_RESET}"
+  if [[ -d /var/lib/fusionbox/compose-projects ]]; then
+    local proj
+    for proj in /var/lib/fusionbox/compose-projects/*.json; do
+      [[ -f "$proj" ]] || continue
+      msg "    项目: $(basename "$proj" .json)"
+    done
+    msg "    查看状态: fusionbox market managed catalog && fusionbox market managed status <应用>"
+    msg "    备份: fusionbox panels compose-backup backup <项目名> <归档路径> --confirm-stop-writers"
+  else
+    msg "    未检测到受管 Compose 项目"
+  fi
+  msg ""
+
+  msg "  ${F_BOLD}[4] 系统服务${F_RESET}"
+  local svc
+  for svc in docker nginx sshd; do
+    if command -v systemctl &>/dev/null && systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\.service"; then
+      msg "    $svc: $(systemctl is-active "$svc" 2>/dev/null || echo unknown)"
+    fi
+  done
+  msg "    重启示例: systemctl restart <服务名>；看日志: journalctl -u <服务名> -n 100"
+  msg ""
+
+  msg "  ${F_BOLD}[5] 常见恢复路径${F_RESET}"
+  msg "    服务起不来  → fusionbox system log（或 fusionbox log）看 FusionBox 日志；journalctl -xe 看系统日志"
+  msg "    配置改错    → fusionbox system restore 选对应 scope，冲突策略选 replace（会先备份现状）"
+  msg "    应用坏了    → fusionbox market managed reinstall <应用> --confirm --reuse-data（复用数据卷）"
+  msg "    想彻底卸载  → fusionbox uninstall（只删本体，业务数据与配置保留）"
+  msg ""
+
+  if [[ -t 0 && "${FUSION_NONINTERACTIVE:-0}" != "1" ]]; then
+    pause
+  fi
+}
+
 # ---- System Backup ----
 _fb_backup_scopes() {
   local scopes="fusion,web,docker" answer scope
@@ -893,8 +964,18 @@ system_backup() {
   msg_warn "请先停止写入服务；数据库不在一致性保证内，需另做应用原生 dump。"
   msg_warn "只归档显式 scope；拒绝符号链接、特殊文件、跨文件系统和路径逃逸，不做整机 tar。"
   [[ -n "$scopes" ]] || scopes=$(_fb_backup_scopes) || return 1
+  _require_python3 "系统备份" || return 1
   msg_info "将备份 scope: $scopes"
-  python3 "$FUSION_SRC/lib/archive.py" create "$scopes" "$backup_file" || return 1
+  # Fresh hosts have none of the default sources; skip what is missing (reported
+  # in Chinese by archive.py) and only fail when nothing at all is left.
+  local create_out
+  if ! create_out=$(python3 "$FUSION_SRC/lib/archive.py" create "$scopes" "$backup_file" 2>&1); then
+    msg_err "备份失败"
+    msg "$create_out"
+    msg_info "提示: 全新机器可直接备份已存在的范围，例如 fusionbox system backup /root/backups ssh"
+    return 1
+  fi
+  [[ -z "$create_out" ]] || msg "$create_out"
   msg_ok "备份已创建: $backup_file"
   _log_write "系统备份已创建: $backup_file (scopes=$scopes)"
   pause
@@ -1409,6 +1490,16 @@ system_ssh_preflight() {
   python3 -B "$FUSION_SRC/lib/system_safety.py" ssh-preflight
 }
 
+# ---- Isolated OpenSSH candidate lifecycle ----
+system_ssh_candidate() {
+  _require_root
+  [[ $# -ge 1 ]] || {
+    msg_err "用法: fusionbox system ssh-candidate fetch|verify|build|test|status|clean [选项]"
+    return 2
+  }
+  python3 -B "$FUSION_SRC/lib/openssh_candidate.py" "$@"
+}
+
 # ---- Security Audit ----
 system_security() {
   _require_root
@@ -1627,7 +1718,8 @@ _fb_sshkey_import_url() {
   [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt 0 ] || { rm -f "$tmp"; msg_err "未获取到任何公钥"; return 1; }
   msg_info "获取到 $n 行，逐条校验并确认："
   while IFS= read -r line; do
-    line="${line%$''}"
+    line="${line%$'
+'}"
     [[ -n "$line" ]] || continue
     if ! _fb_pubkey_valid "$line"; then
       msg_warn "  跳过无效行"
@@ -2954,6 +3046,10 @@ _system_log_clean() {
 
 system_log() {
   _require_root
+  # fusionbox system log fusionbox|--self  → FusionBox 自身日志（主菜单/帮助均可发现）
+  case "${1:-}" in
+    fusionbox|fb|--self|self) show_logs "${2:-200}"; pause; return 0 ;;
+  esac
   local has_journal=0
   command -v journalctl &>/dev/null && has_journal=1
 
@@ -4465,6 +4561,7 @@ system_help() {
   msg "  fusionbox system hardening      SSH 加固：新建密钥用户并收紧 root 登录"
   msg "  fusionbox system security       安全审计与加固"
   msg "  fusionbox system ssh-preflight  只读检查 sshd 配置/服务/监听，不切换版本"
+  msg "  fusionbox system ssh-candidate  下载校验并在独立高端口验证 OpenSSH 候选版本"
   msg "  fusionbox system sshkey         SSH 密钥管理"
   msg "  fusionbox system firewall       防火墙管理 (UFW/iptables)"
   msg "  fusionbox system cron           定时任务管理"
