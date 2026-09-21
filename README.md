@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.38.0-blue)
+![version](https://img.shields.io/badge/version-1.39.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -59,16 +59,17 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 | umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（懒依赖 db 健康后才启动；复用数据重装、按服务换镜像） |
 
-## 最近更新（v1.38.0）
+## 最近更新（v1.39.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **roadmap 批次 2 完成**：两主机夹具（Docker 造第二台主机）+ 真实容器生命周期 + **跨主机迁移编排** `panels docker-migration remote`（目标机 preflight → 校验传输 → 目标机 restore → 健康校验 → 失败自动回滚）
-- **两主机真机验收 `tests/acceptance/two_host.sh` 29/29**：cluster add/trust/node-exec/exec（严格 known_hosts + 专用密钥）、docker-v1 归档 push/pull 往返、完整迁移成功、目标机冲突被 preflight 拒绝且不波及健康状态、**restore 中途掐断 SSH 后目标机 rollback 清零不留半成品**
-- **容器生命周期真机验收 `tests/acceptance/container_lifecycle.sh` 17/17**：真实 HTTP 部署、停止/启动、compose 备份、模拟数据全损（`down -v`）后重建空壳并灌回数据、数据行逐字节复核
-- 真机修复 4 个既有缺陷：迁移契约拒绝引擎默认注入的 `MaskedPaths/ReadonlyPaths`（导致**任何真实容器都无法导出**）、`docker ps -aq` 截断 ID 使拓扑校验恒假、跨镜像存储后端（containerd ↔ 经典）镜像 ID 不可移植、`docker info` 与镜像 inspect 的架构命名不一致（x86_64 vs amd64）
-- 新增 `cluster node-exec --identity`（专用密钥直连，run_ssh 早已支持但 CLI 未暴露）；restore 失败原因写入 journal（不再被吞）
+- **roadmap 批次 3 完成：ACME 两条真机验证路线**，G35/G36/G59 从「部分实现」推进到「真机验证」
+- `web ssl issue/renew` 新增 `--server` 覆盖（`WEB_ACME_SERVER`）：指向 Pebble 或 Let's Encrypt staging 等非生产 ACME 目录；自定义 `WEB_ACME_LE_DIR` 时 certbot 的 config/work/logs 目录整体切换，**绝不污染生产 /etc/letsencrypt**
+- **路线 A（协议级）`tests/acceptance/acme_pebble.sh` 24/24**：本地 Pebble 容器（`PEBBLE_VA_ALWAYS_VALID=1`，challenge 判定交给 staging 路线覆盖）→ 真实 certbot 签发 Pebble 证书 → SAN/私钥/nginx 装配 → **真实续期（指纹变化）** → 不可达目录 URL 时签发失败且 challenge 配置回滚
+- **路线 B（真实 CA）`tests/acceptance/acme_staging.sh` 16/16**：`<公网IP>.sslip.io` + Let's Encrypt staging——**真实 DNS、真实 HTTP-01 传输、真实 CA 签发**，staging 中间证书 + 受管 TLS 启用；DNS 无法解析的域失败回滚
+- 设计取舍如实记录：保留 TLD（`.invalid` 等）守卫保护生产签发路径，显式 `--server` 覆盖时才放行；生产默认行为零变化
 
+完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 

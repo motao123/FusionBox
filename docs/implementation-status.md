@@ -1,4 +1,7 @@
-# 当前实施状态（v1.38.0）
+# 当前实施状态（v1.39.0）
+
+2026-09-21 本轮（1.39.0，roadmap 批次 3）完成 **ACME 两条真机验证路线**：`web ssl issue/renew` 新增 `--server`/`WEB_ACME_SERVER` 覆盖与 LE 目录隔离（自定义目录时 certbot config/work/logs 整体切换，不碰生产 /etc/letsencrypt；保留 TLD 守卫仅对生产路径生效）；`acme_pebble.sh` 24/24（本地 Pebble：真实 certbot 协议链路、SAN/私钥/nginx 装配、真实续期指纹变化、不可达目录回滚）；`acme_staging.sh` 16/16（`<公网IP>.sslip.io` + Let's Encrypt staging：真实 DNS、真实 HTTP-01、真实 CA 签发与受管 TLS 启用、DNS 失败回滚）。G35/G36/G59 据此推进到真机验证。回归：闸门 174/174（root 与非 root），完整套件零失败。环境限制未变：真实 OCI 实例、TG/CF 真实凭据、生产 LE 目录（非 staging）签发。
+
 
 2026-09-21 本轮（1.38.0，roadmap 批次 2）建立 **Docker 两主机夹具**并跑通跨主机迁移：容器扮演第二台主机（cluster_session 对远端无物理机依赖），`tests/acceptance/two_host.sh` 29/29 覆盖 cluster add/trust/node-exec/exec、docker-v1 归档 push/pull 往返、`panels docker-migration remote` 编排全流程（目标机 preflight → 传输 → restore → 健康校验 → 失败自动回滚）与中断场景（掐断 SSH 后目标机 rollback 清零）。`container_lifecycle.sh` 17/17 覆盖真实 HTTP 部署、停止/启动、compose 备份与数据全损恢复。真机修复 4 个既有缺陷：迁移契约拒绝引擎默认 MaskedPaths/ReadonlyPaths（任何真实容器都无法导出）、`docker ps -aq` 截断 ID 使拓扑校验恒假、跨镜像存储后端镜像 ID 不可移植（containerd manifest digest vs 经典 config digest，load 不保留 RepoDigests）、架构命名不一致（x86_64 vs amd64）；并新增 `cluster node-exec --identity`、journal 记录失败原因、编排单点 JSON 摘要。回归：闸门 168/168（root 与非 root），完整套件 bash 229 项 + Python 741 项（33 模块）零失败。环境限制未变：真实 OCI 实例、TG/CF 真实凭据仍未验证。
 
@@ -210,8 +213,8 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G32 | Oracle 防回收（lookbusy 容器按 CPU/内存比例占用） | 只读/未启用 | v1.32.0 增加 OCI 本地/受限 metadata 识别与旧/受管状态检查；固定镜像 digest、负载生命周期和隔离验收未完成，安装入口明确拒绝 |
 | G33 | Oracle：R 探长开机（oci-helper） | 后续 | 未实现；需独立设计、实现与隔离验证 |
 | G34 | Oracle：root 密码登录切换 + IPv6 恢复 | 后续 | 未实现；需独立设计、实现与隔离验证 |
-| G35 | 证书自动续期（flock + sha256 指纹 + 到期前 15 天 + webroot/standalone 回退 + cron） | 部分实现 | web ssl auto/renew；检查已有 timer/cron；真实 ACME 未验证 |
-| G36 | 证书到期状态表（全站证书 + 剩余天数） | 已提供入口 | web ssl status；实际域名证书未验证 |
+| G35 | 证书自动续期（flock + sha256 指纹 + 到期前 15 天 + webroot/standalone 回退 + cron） | 真机验证 | v1.39.0 Pebble 真实续期（指纹变化）24/24；`--server`/LE 目录隔离支持非生产 ACME |
+| G36 | 证书到期状态表（全站证书 + 剩余天数） | 真机验证 | v1.39.0 staging 真实域名证书状态 16/16 |
 | G37 | 站点清单表（解析 server_name 生成访问地址+证书状态） | 已提供入口 | web sites；解析常规 Nginx 配置，不是完整 Nginx 语法解析器 |
 | G38 | 删除站点（目录/conf/证书/库全清） | 部分实现 | web site del；备份配置，数据与证书另行确认；不自动删数据库 |
 | G39 | 克隆站点（建库+dump 导入+全表替换域名） | 受管范围完成 | v1.18.0 web clone：目录+配置克隆真机验证；WP 库克隆实现（wp-config 检测+dump 域名替换），真实库场景未验证 |
@@ -234,7 +237,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G56 | 运维工具类（Lucky/ddns-go/AllinSSL/searxng/Umami/Beszel/komari/思源/Wallos） | 部分扩容 | v1.13.0 ntfy + v1.20.0 ddns-go 受管模板；其余列举应用未实现 |
 | G57 | 市场机制：统一登记（appno.txt 原子写 0600）+ flock 并发锁 + 端口占用探测分配 + 已装检测 + 镜像更新检测 + 卸载清理 | 部分实现 | v1.6.1 复用 Compose JSON 登记/锁、20 端口有界探测、归属/健康、镜像 ID 更新与回滚；卸载保留数据并支持显式重装；旧安装迁移后续 |
 | G58 | 应用访问模式持久化（direct/domain_only 记录并在更新后恢复） | 部分实现 | v1.7.0 localhost-direct / HTTP 映射登记与更新/重装持久化；无 domain_only 防火墙隔离 |
-| G59 | 一键域名访问（应用=反代+证书一条龙） | 部分实现 | v1.8.1 自有宿主 HTTP/自备 PEM HTTPS、SAN/有效期/密钥校验与重载回滚；真实 ACME 后续 |
+| G59 | 一键域名访问（应用=反代+证书一条龙） | 真机验证 | v1.39.0 真实 ACME（staging + 真实 HTTP-01）签发并启用受管 TLS 16/16；生产 LE 目录签发未验证（同一代码路径） |
 | G60 | 磁盘空间预检（按应用体积校验 + NAS 路径软链） | 部分实现 | v1.13.0 每应用数据驱动最低预检：Nginx 256 MiB、ntfy 512 MiB，注册表/Docker 数据盘均检查；非配额，NAS/任意应用体积估算后续 |
 | G61 | 全量备份/还原（/home 打包 + 可 scp 异地） | 部分实现 | v1.11.1 完成现有 config/system/web 安全归档 SSH push/pull/status；单服务器隔离 SSH 验证；**`home` 已是可选敏感 scope（逐项确认）**；剩余：应用重建与两主机灾备（见 [roadmap.md](roadmap.md) B3） |
 | G62 | 后台工作区增强（编号会话、注入命令、SSH 常驻） | 受管范围完成 | v1.19.0 workspace work：tmux 编号会话+注入真机验证；`screen`/`tmux`/`work` 均已有 `attach`；「SSH 常驻」的语义待明确后收敛为可判定陈述 |
