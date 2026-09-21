@@ -37,6 +37,28 @@ MAX_TARBALL_BYTES = 64 * 1024 * 1024
 MAX_SIGNATURE_BYTES = 1024 * 1024
 MAX_KEY_BYTES = 1024 * 1024
 
+# Production-side defaults. Every one of them can be pointed elsewhere explicitly
+# on the command line, which is how the acceptance fixture exercises the whole
+# switch transaction against a disposable daemon instead of the access path.
+SSHD_BINARY = "/usr/sbin/sshd"
+SSHD_CONFIG = "/etc/ssh/sshd_config"
+SSHD_PIDFILE = "/run/sshd.pid"
+SSHD_RELOAD = "systemctl reload ssh.service"
+SSHD_RESTART = "systemctl restart ssh.service"
+# Effective values compared between the running daemon and the candidate. A
+# difference means the switch would silently change authentication policy, which
+# is refused unless the operator explicitly accepts the drift.
+SECURITY_KEYS = (
+    "port", "listenaddress", "permitrootlogin", "passwordauthentication",
+    "pubkeyauthentication", "kbdinteractiveauthentication",
+    "challengeresponseauthentication", "permitemptypasswords",
+    "authorizedkeysfile", "usepam", "hostkey", "subsystem", "allowusers",
+)
+WATCHDOG_GRACE = 60
+# How long the post-reload probe waits for the re-executed daemon to accept again.
+SWITCH_PROBE_TIMEOUT = 20
+SWITCH_STATUSES = ("verifying", "verified", "rolled-back", "auto-rolled-back")
+
 
 class CandidateError(ValueError):
     pass
@@ -398,7 +420,12 @@ def _stop_process(process):
 def _candidate_test(state, port):
     files = _runtime_files(state, port)
     _run([files["sshd"], "-t", "-f", files["config"]], timeout=30)
-    effective = _run([files["sshd"], "-T", "-f", files["config"]], timeout=30).stdout
+    # `sshd -T` prints canonical mixed-case keys on OpenSSH 10.x (`Port 50222`,
+    # `PasswordAuthentication no`) while older releases printed lower case. Compare
+    # case-insensitively so the check means "the effective value is what we set"
+    # rather than "this exact release spells keys this way" — the previous
+    # lower-case-only match silently passed on 9.x and failed on a real 10.5 build.
+    effective = _run([files["sshd"], "-T", "-f", files["config"]], timeout=30).stdout.lower()
     if f"port {port}\n" not in effective:
         raise CandidateError("Candidate effective configuration did not retain the isolated port")
     if "passwordauthentication no\n" not in effective or "kbdinteractiveauthentication no\n" not in effective:
@@ -436,6 +463,284 @@ def _candidate_test(state, port):
     return result
 
 
+def _switch_record_path(state):
+    return state / "switch.json"
+
+
+def _load_switch_record(state):
+    path = _switch_record_path(state)
+    if not path.exists():
+        return None
+    _regular(path, 8192)
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise CandidateError("Invalid production switch record") from error
+    if record.get("owner") != OWNER_MARKER or record.get("status") not in SWITCH_STATUSES:
+        raise CandidateError("Production switch record does not belong to this owner")
+    return record
+
+
+def _save_switch_record(state, record):
+    _atomic_write(_switch_record_path(state), (json.dumps(record, sort_keys=True) + "\n").encode())
+
+
+def _effective(binary, config):
+    """Security-relevant effective values as reported by `sshd -T`."""
+    output = _run([str(binary), "-T", "-f", str(config)], timeout=60).stdout
+    values = {}
+    for line in output.splitlines():
+        key, _, value = line.partition(" ")
+        key = key.strip().lower()
+        if key in SECURITY_KEYS:
+            values.setdefault(key, []).append(value.strip())
+    return {key: sorted(value) for key, value in values.items()}
+
+
+def _banner(port, timeout=5):
+    """Read the SSH identification string from the production listener."""
+    try:
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=timeout) as connection:
+            connection.settimeout(timeout)
+            data = connection.recv(128).decode("ascii", "replace")
+    except OSError:
+        return None
+    return data if data.startswith("SSH-2.0-") else None
+
+
+def _wait_for_banner(port, timeout=20, interval=0.25):
+    """Poll for the SSH banner instead of sampling once.
+
+    SIGHUP makes sshd re-exec the on-disk binary, and during that handover the old
+    process has already released the listener while the new one has not bound yet.
+    A single immediate probe therefore races the re-exec and reports a false
+    failure — observed on a real switch, where it caused an unnecessary rollback.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        banner = _banner(port, timeout=2)
+        if banner:
+            return banner
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(interval)
+
+
+def _candidate_binary(state):
+    candidate = state / "prefix/sbin/sshd"
+    _regular(candidate, 64 * 1024 * 1024)
+    if not os.access(candidate, os.X_OK):
+        raise CandidateError("Candidate sshd is not executable")
+    return candidate
+
+
+def _hash(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _settings(args):
+    return {
+        "sshd": Path(args.sshd_path),
+        "config": Path(args.config),
+        "pidfile": Path(args.pid_file),
+        "reload": args.reload_command,
+        "restart": args.restart_command,
+    }
+
+
+def _switch_gates(state, args):
+    """Everything that must hold before the production binary is replaced."""
+    settings = _settings(args)
+    _load_verification(state)
+    test = _load_test_record(state)
+    candidate = _candidate_binary(state)
+    binary = settings["sshd"]
+    if binary.is_symlink() or not binary.is_file():
+        raise CandidateError(f"Production sshd path is not a regular file: {binary}")
+    if not settings["config"].is_file():
+        raise CandidateError(f"Production sshd config is missing: {settings['config']}")
+    _run([str(candidate), "-t", "-f", str(settings["config"])], timeout=60)
+    running = _effective(binary, settings["config"])
+    planned = _effective(candidate, settings["config"])
+    drift = {key: {"current": running.get(key), "candidate": planned.get(key)}
+             for key in SECURITY_KEYS if running.get(key) != planned.get(key)}
+    if drift and not args.accept_config_drift:
+        raise CandidateError(
+            "Candidate changes effective SSH policy; review and re-run with --accept-config-drift: " +
+            json.dumps(drift, sort_keys=True))
+    port = (running.get("port") or ["22"])[0]
+    banner = _banner(port)
+    if banner is None:
+        raise CandidateError(f"Production sshd on port {port} is not answering; refusing to switch")
+    return {"settings": settings, "candidate": candidate, "binary": binary, "port": int(port),
+            "drift": drift, "banner": banner.strip(), "candidate_sha256": _hash(candidate),
+            "before_sha256": _hash(binary)}
+
+
+def _replace_atomically(target, payload, mode):
+    target = Path(target)
+    if target.is_symlink():
+        raise CandidateError(f"Symlink production path refused: {target}")
+    directory = target.parent
+    fd, temporary = tempfile.mkstemp(prefix=f".{target.name}.", dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, mode)
+        if os.geteuid() == 0:
+            os.chown(temporary, 0, 0)
+        os.replace(temporary, target)
+        handle = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(handle)
+        finally:
+            os.close(handle)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def _run_service_command(command, timeout=120):
+    return subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)
+
+
+def _restore_previous(state, record, settings):
+    """Put the recorded previous binary back and make it take effect again."""
+    backup = state / record["backup"]
+    _regular(backup, 64 * 1024 * 1024)
+    payload = backup.read_bytes()
+    if hashlib.sha256(payload).hexdigest() != record["before_sha256"]:
+        raise CandidateError("Recorded backup no longer matches its digest")
+    _replace_atomically(settings["sshd"], payload, 0o755)
+    reloaded = _run_service_command(settings["reload"])
+    probe = _wait_for_banner(record["port"], SWITCH_PROBE_TIMEOUT)
+    if probe is None:
+        restarted = _run_service_command(settings["restart"])
+        probe = _wait_for_banner(record["port"], SWITCH_PROBE_TIMEOUT)
+        if probe is None:
+            return {"restored": True, "reloaded": False, "restarted": restarted.returncode,
+                    "detail": (restarted.stderr or restarted.stdout or "").strip()[:200]}
+        return {"restored": True, "reloaded": False, "restarted": restarted.returncode}
+    return {"restored": True, "reloaded": reloaded.returncode, "probe": probe.strip()}
+
+
+def _watchdog(state, settings, grace):
+    """Detached safety net: if the new binary does not serve, undo the switch."""
+    record = _load_switch_record(state)
+    if record is None or record.get("status") != "verifying":
+        return 1
+    time.sleep(max(1, grace))
+    record = _load_switch_record(state)
+    if record is None or record.get("status") != "verifying":
+        return 0
+    if _wait_for_banner(record["port"], SWITCH_PROBE_TIMEOUT):
+        record["status"] = "verified"
+        record["detail"] = "watchdog probe succeeded"
+        _save_switch_record(state, record)
+        return 0
+    try:
+        outcome = _restore_previous(state, record, settings)
+        record["status"] = "auto-rolled-back"
+        record["detail"] = f"production sshd did not answer after the switch: {outcome}"
+    except (CandidateError, OSError, subprocess.SubprocessError) as error:
+        record["status"] = "rolled-back"
+        record["detail"] = f"watchdog rollback failed: {error}"
+    _save_switch_record(state, record)
+    return 1
+
+
+def _load_test_record(state):
+    path = state / "test.json"
+    _regular(path, 8192)
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise CandidateError("Invalid candidate test record") from error
+    if (record.get("owner") != OWNER_MARKER or record.get("version") != OPENSSH_VERSION or
+            record.get("independent_login") is not True or record.get("config_valid") is not True or
+            record.get("effective_config_valid") is not True):
+        raise CandidateError("Candidate test record does not prove an isolated login")
+    return record
+
+
+def _spawn_watchdog(state, settings, grace):
+    """Detached safety net process; returns the Popen handle.
+
+    Kept as its own function so tests can replace the spawn without touching
+    subprocess globally (patching subprocess.Popen would also break _run).
+    """
+    return subprocess.Popen(
+        [sys.executable, "-B", str(Path(__file__).resolve()), "watchdog",
+         "--state-dir", str(state), "--sshd-path", str(settings["sshd"]),
+         "--config", str(settings["config"]), "--pid-file", str(settings["pidfile"]),
+         "--reload-command", settings["reload"], "--restart-command", settings["restart"],
+         "--grace", str(grace)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def _switch(state, args):
+    gate = _switch_gates(state, args)
+    settings = gate["settings"]
+    backup_dir = state / "backup"
+    _ensure_directory(backup_dir)
+    backup = backup_dir / (gate["before_sha256"][:16] + "-sshd")
+    if not backup.exists():
+        _atomic_write(backup, settings["sshd"].read_bytes(), 0o700)
+    record = {
+        "owner": OWNER_MARKER, "version": OPENSSH_VERSION, "status": "verifying",
+        "sshd_path": str(settings["sshd"]), "config": str(settings["config"]),
+        "config_sha256": _hash(settings["config"]),
+        "backup": str(backup.relative_to(state)),
+        "before_sha256": gate["before_sha256"], "after_sha256": gate["candidate_sha256"],
+        "port": gate["port"], "drift_acknowledged": bool(gate["drift"]),
+        "reload_command": settings["reload"],
+    }
+    if args.dry_run:
+        record["status"] = "verified"
+        record["detail"] = "dry run: every gate passed; nothing was replaced"
+        print(json.dumps({"dry_run": True, "plan": record, "drift": gate["drift"]}, sort_keys=True))
+        return record
+    _replace_atomically(settings["sshd"], gate["candidate"].read_bytes(), 0o755)
+    _save_switch_record(state, record)
+    watchdog = _spawn_watchdog(state, settings, args.grace)
+    reloaded = _run_service_command(settings["reload"])
+    record["reload_rc"] = reloaded.returncode
+    probe = _wait_for_banner(gate["port"], SWITCH_PROBE_TIMEOUT)
+    if probe is not None:
+        record["status"] = "verified"
+        record["detail"] = f"new binary serving: {probe.strip()}"
+        _save_switch_record(state, record)
+    else:
+        outcome = _restore_previous(state, record, settings)
+        record["status"] = "rolled-back"
+        record["detail"] = f"new binary did not answer; previous restored: {outcome}"
+        _save_switch_record(state, record)
+    record["watchdog_pid"] = watchdog.pid
+    print(json.dumps(record, sort_keys=True))
+    return record
+
+
+def _rollback(state, args):
+    record = _load_switch_record(state)
+    if record is None:
+        raise CandidateError("No production switch to roll back")
+    if record["status"] == "rolled-back":
+        raise CandidateError("The previous binary is already restored; nothing to roll back")
+    settings = _settings(args)
+    outcome = _restore_previous(state, record, settings)
+    record["status"] = "rolled-back"
+    record["detail"] = f"manual rollback: {outcome}"
+    _save_switch_record(state, record)
+    print(json.dumps(record, sort_keys=True))
+    return record
+
+
 def _status(state):
     verification = state / "verification.json"
     build = state / "build.json"
@@ -454,6 +759,18 @@ def _status(state):
         "production_reload": False,
         "production_config_changed": False,
     }
+    switch_record = _load_switch_record(state) if state.is_dir() else None
+    if switch_record is not None:
+        result["production_switch"] = switch_record["status"] in ("verifying", "verified")
+        result["production_reload"] = switch_record["status"] in ("verifying", "verified")
+        result["switch_status"] = switch_record["status"]
+        result["switch_detail"] = switch_record.get("detail", "")
+        result["switch_sshd_path"] = switch_record.get("sshd_path", "")
+        current = Path(switch_record.get("sshd_path", ""))
+        if current.is_file():
+            digest = _hash(current)
+            result["production_matches_candidate"] = digest == switch_record["after_sha256"]
+            result["production_matches_backup"] = digest == switch_record["before_sha256"]
     if test.is_file():
         try:
             result["candidate_port"] = json.loads(test.read_text(encoding="utf-8")).get("port", DEFAULT_PORT)
@@ -487,12 +804,34 @@ def _clean(state):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Isolated signed OpenSSH candidate lifecycle")
-    parser.add_argument("action", choices=["fetch", "verify", "build", "test", "status", "clean"])
+    parser.add_argument("action", choices=["fetch", "verify", "build", "test", "status", "clean",
+                                           "switch", "rollback", "watchdog"])
     parser.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     parser.add_argument("--port", default=str(DEFAULT_PORT))
+    parser.add_argument("--sshd-path", default=SSHD_BINARY,
+                        help="Production sshd binary (overridable for the acceptance fixture)")
+    parser.add_argument("--config", default=SSHD_CONFIG, help="Production sshd configuration file")
+    parser.add_argument("--pid-file", default=SSHD_PIDFILE, help="Production sshd PID file")
+    parser.add_argument("--reload-command", default=SSHD_RELOAD,
+                        help="Command that makes the daemon re-exec the on-disk binary")
+    parser.add_argument("--restart-command", default=SSHD_RESTART,
+                        help="Last-resort command used when a reload does not bring the listener back")
+    parser.add_argument("--accept-config-drift", action="store_true",
+                        help="Allow a candidate whose effective SSH policy differs (review the diff first)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Run every gate and print the plan without touching production")
+    parser.add_argument("--grace", type=int, default=WATCHDOG_GRACE,
+                        help="Seconds the detached watchdog waits before verifying or undoing a switch")
     args = parser.parse_args(argv)
     if args.action == "clean":
         state = _state_dir(args.state_dir, create=False)
+    elif args.action == "watchdog":
+        state = _state_dir(args.state_dir, create=False)
+        try:
+            return _watchdog(state, _settings(args), max(1, args.grace))
+        except (CandidateError, OSError, subprocess.SubprocessError) as error:
+            print(f"Watchdog refused: {error}", file=sys.stderr)
+            return 1
     else:
         state = _state_dir(args.state_dir, create=args.action != "status")
     try:
@@ -500,6 +839,15 @@ def main(argv=None):
             return 0 if _status(state) else 1
         if args.action == "clean":
             _clean(state)
+            return 0
+        if args.action in ("switch", "rollback"):
+            if os.name != "posix" or os.geteuid() != 0:
+                raise CandidateError("Switching the production sshd requires a POSIX root host")
+            _claim_state(state)
+            if args.action == "switch":
+                _switch(state, args)
+            else:
+                _rollback(state, args)
             return 0
         _claim_state(state)
         if args.action == "fetch":
