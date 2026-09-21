@@ -2,6 +2,30 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.41.0 Cloudflare 联动真实凭据验证与 Global Key 铸造（B4 收口）
+
+- B4 收口（Cloudflare 半边）：用户提供 Global API Key 后，按 roadmap 建议
+  现场铸造仅限测试 Zone（endgo.top）的最小权限 API Token
+  （Zone Read + Zone Settings Read/Write + Firewall Services Write，14 天
+  有效期），Global Key 本身不落盘
+- 真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，不进 CI）：
+  Token verify、security_level 基线、缺凭据显式拒绝（conf 缺失/Token 缺失/
+  非法 IP 三路全部退出 1）、封禁 → API 侧确认 → 幂等 → 解封 → 确认消失、
+  cf-guard 高负载档真实切到 under_attack + 幂等 + 负载回落恢复基线 medium +
+  state 文件断言；任何退出路径恢复 security_level 基线并清理测试规则
+  （默认测试 IP 192.0.2.1 TEST-NET-1，绝不误伤真实用户）
+- **实测修复（静态测试抓不到）**：CF API 返回 pretty JSON（`"success": true`
+  冒号带空格），cf-ban 的 `"success":true`/`"id":"..."` 紧凑断言与 cf 配置
+  purge 的同类断言全部改为空白容忍正则；find_rule_id 改 sed 提取
+- **新功能**：`web guard → Cloudflare 联动配置` 支持直接粘贴 Global API Key
+  （37 位十六进制识别）——验证邮箱 → 列出账户 Zone → 选择 → 现场铸造
+  仅限所选 Zone 的最小权限 Token 并写入配置；真实 Key 端到端验证通过
+  （菜单驱动 → 铸造 → verify active → 读取 security_level）
+- 单测：`test_notifications.py` 新增 cf-ban pretty/compact 双格式矩阵
+  （封禁/失败/幂等/解封七场景）与 Global Key 铸造流程（成功 + 失败显式
+  拒绝，绝不把 Global Key 写进配置）
+- TG 半边维持：`system notify` 真实发送仍待 bot token，凭据缺失显式拒绝
+
 ## v1.40.0 应用扩容、harness 设计与真实参数收尾（roadmap 批次 4）
 
 - A6 首批扩容：`vocechat` 入内置目录（digest 固定、单容器 256m、具名卷 data、

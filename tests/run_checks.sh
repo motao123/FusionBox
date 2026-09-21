@@ -682,6 +682,40 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+section "21. Cloudflare 联动真机验证（v1.41.0）"
+
+if [[ -f "$REPO_ROOT/tests/acceptance/cloudflare_guard.sh" ]] \
+   && bash -n "$REPO_ROOT/tests/acceptance/cloudflare_guard.sh" 2>/dev/null; then
+  ok "真机验收资产 tests/acceptance/cloudflare_guard.sh 存在且语法正确"
+else
+  bad "真机验收资产 tests/acceptance/cloudflare_guard.sh 存在且语法正确"
+fi
+
+# cf-ban 的 JSON 断言必须兼容 pretty（冒号带空格）格式——真机实测教训
+check_contains "cf-ban find_rule_id 使用空白容忍 sed 提取" \
+  'sed -n' cat "$SRC/modules/web.sh"
+if grep -Eq '\[\[ "\$resp" =~ \\"success\\"' "$SRC/modules/web.sh" \
+   || grep -Eq '"success"\[\[:space:\]\]\*:\[\[:space:\]\]\*true' "$SRC/modules/web.sh"; then
+  ok "CF purge 响应断言空白容忍"
+else
+  bad "CF purge 响应断言空白容忍"
+fi
+if grep -Eq '"success"\[\[:space:\]\]\*:\[\[:space:\]\]\*true' "$SRC/modules/web.sh" \
+   && ! grep -Eq 'grep -q .\"success\":true' "$SRC/modules/web.sh"; then
+  ok "cf-ban 成功断言已无紧凑格式残留"
+else
+  bad "cf-ban 成功断言已无紧凑格式残留"
+fi
+
+# Global API Key 自动铸造：识别 37 位十六进制 + 权限组常量 + 现场铸造
+check_contains "Global Key 识别（37 位十六进制）" \
+  '^[a-f0-9]{37}$' cat "$SRC/modules/web.sh"
+check_contains "铸造 payload 含 Firewall Services Write 权限组" \
+  '43137f8d07884d3198dc0ee77ca6e79b' cat "$SRC/modules/web.sh"
+check_contains "Global Key 分支不直接写入原始 Key（先铸造）" \
+  'token=$minted' cat "$SRC/modules/web.sh"
+
+# ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'
 printf '通过 %d / 失败 %d\n' "$PASS" "$FAIL"
 if (( FAIL > 0 )); then
