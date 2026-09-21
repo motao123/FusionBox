@@ -88,5 +88,95 @@ class Catalog(unittest.TestCase):
         self.assertEqual(len(parsed['apps']['media-stack']['services']), 2)
 
 
+class MultiContainerFields(unittest.TestCase):
+    """New declarative fields: every one is a capability, so every one is checked."""
+
+    def document(self, **service):
+        base = {'id': 'app', 'image': 'nginx@sha256:' + 'a' * 64, 'ports': [], 'volumes': [],
+                'binds': [], 'devices': [], 'network_mode': 'bridge', 'docker_socket': False,
+                'memory': '128m', 'cpus': '0.50', 'pids_limit': 64, 'health': ['CMD', 'true'],
+                'health_retries': 3}
+        base.update(service)
+        return {'schema_version': 1, 'catalog_id': 'probe', 'revision': 'abcdef1',
+                'apps': [{'id': 'demo', 'name': 'demo', 'description': 'd', 'revoked': False,
+                          'high_privilege': False, 'domain': False, 'bytes': 1024, 'nas_path': False,
+                          'services': [base]}]}
+
+    def parse(self, **service):
+        return catalog.parse(json.dumps(self.document(**service)))
+
+    def test_depends_on_within_application_only(self):
+        two = self.document()
+        second = json.loads(json.dumps(two['apps'][0]['services'][0]))
+        second['id'] = 'web'
+        second['depends_on'] = ['app']
+        two['apps'][0]['services'].append(second)
+        parsed = catalog.parse(json.dumps(two))
+        self.assertEqual(parsed['apps']['demo']['services'][1]['depends_on'], ['app'])
+        for bad, label in ((['missing'], 'undeclared'), (['web'], 'self'), (['app', 'app'], 'duplicate')):
+            broken = self.document()
+            broken['apps'][0]['services'][0]['id'] = 'web'
+            broken['apps'][0]['services'][0]['depends_on'] = bad
+            with self.assertRaises(ValueError, msg=label):
+                catalog.parse(json.dumps(broken))
+        cyclic = self.document()
+        second = json.loads(json.dumps(cyclic['apps'][0]['services'][0]))
+        second['id'] = 'web'
+        second['depends_on'] = ['app']
+        cyclic['apps'][0]['services'][0]['depends_on'] = ['web']
+        cyclic['apps'][0]['services'].append(second)
+        with self.assertRaises(ValueError):
+            catalog.parse(json.dumps(cyclic))
+
+    def test_sysctls_are_allowlisted_from_real_probe(self):
+        # The allowlist is not aspirational: it is what Docker accepts without
+        # --privileged on the verified host. vm.max_map_count is refused there.
+        self.parse(sysctls={'net.core.somaxconn': '1024'})
+        self.assertIn('net.core.somaxconn', catalog.SYSCTLS)
+        self.assertNotIn('vm.max_map_count', catalog.SYSCTLS)
+        for bad in ({'vm.max_map_count': '262144'}, {'fs.file-max': '1'}, {'net.core.somaxconn': '1\n2'}):
+            with self.assertRaises(ValueError):
+                self.parse(sysctls=bad)
+
+    def test_shm_tmpfs_read_only_and_entrypoint(self):
+        self.parse(shm_size='64m', tmpfs=['/run/probe'], read_only=True, entrypoint=['/bin/sh', '-c', 'sleep 1'])
+        for bad in ({'shm_size': '64'}, {'shm_size': 64}):
+            with self.assertRaises(ValueError):
+                self.parse(**bad)
+        for bad in ({'tmpfs': ['run/probe']}, {'tmpfs': ['/run/../etc']}, {'tmpfs': []}):
+            with self.assertRaises(ValueError):
+                self.parse(**bad)
+        with self.assertRaises(ValueError):
+            self.parse(read_only='yes')
+        for bad in ({'entrypoint': []}, {'entrypoint': [1]}, {'entrypoint': ['']}):
+            with self.assertRaises(ValueError):
+                self.parse(**bad)
+
+    def test_shell_entrypoint_with_argument_list_rejected(self):
+        # Found by real deployment: "sh -c" + ["sleep","600"] actually runs `sleep`
+        # with $0=600, so the container exits with a usage error at runtime.
+        with self.assertRaises(ValueError):
+            self.parse(entrypoint=['/bin/sh', '-c'], command=['sleep', '600'])
+        with self.assertRaises(ValueError):
+            self.parse(entrypoint=['/bin/sh', '-lc'], command=['a', 'b'])
+        self.parse(entrypoint=['/bin/sh', '-c'], command=['true'])
+        self.parse(entrypoint=['/bin/sh', '-c', 'sleep 600'])
+        self.parse(entrypoint=['/usr/bin/nginx'], command=['-g', 'daemon off;'])
+
+    def test_builtin_catalog_umami_is_consistent(self):
+        apps = json.loads(catalog.BUILTIN.read_bytes())['apps']
+        umami = next(app for app in apps if app['id'] == 'umami')
+        services = {service['id']: service for service in umami['services']}
+        self.assertEqual(services['app']['depends_on'], ['db'])
+        self.assertTrue(services['app']['ports'] and services['db']['ports'] == [])
+        self.assertEqual(services['db']['shm_size'], '64m')
+        published = [port['published'] for service in umami['services'] for port in service['ports']]
+        for other in apps:
+            if other['id'] == 'umami':
+                continue
+            used = {port['published'] for service in other['services'] for port in service['ports']}
+            self.assertFalse(used.intersection(published))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -17,6 +17,12 @@ IMAGE = re.compile(r'[a-z0-9./:_-]+@sha256:[a-f0-9]{64}')
 ENV = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 REVISION = re.compile(r'[A-Fa-f0-9]{7,64}')
 ABS_PATH = re.compile(r'/[A-Za-z0-9_. /{}-]+')
+# Namespaced sysctls only, and only ones this Docker actually accepts without
+# --privileged. Probed on Docker 29.8.1: net.core.somaxconn /
+# net.ipv4.ip_local_port_range / net.ipv4.tcp_syncookies are accepted;
+# vm.max_map_count and fs.file-max are refused (they would require privileged,
+# which the managed model never grants). Keep this list empirically grounded.
+SYSCTLS = frozenset(('net.core.somaxconn', 'net.ipv4.ip_local_port_range', 'net.ipv4.tcp_syncookies'))
 
 
 def _exact(value, keys, required, where):
@@ -71,9 +77,9 @@ def _device(value, where):
 
 
 def _service(value, where):
-    keys = ('id', 'image', 'command', 'environment', 'user', 'ports', 'volumes', 'binds',
+    keys = ('id', 'image', 'command', 'entrypoint', 'environment', 'user', 'ports', 'volumes', 'binds',
             'devices', 'network_mode', 'docker_socket', 'memory', 'cpus', 'pids_limit',
-            'health', 'health_retries')
+            'health', 'health_retries', 'depends_on', 'shm_size', 'sysctls', 'tmpfs', 'read_only')
     required = ('id', 'image', 'ports', 'volumes', 'binds', 'devices', 'network_mode',
                 'docker_socket', 'memory', 'cpus', 'pids_limit', 'health', 'health_retries')
     _exact(value, keys, required, where)
@@ -101,13 +107,72 @@ def _service(value, where):
     if 'command' in value and (not isinstance(value['command'], list) or not value['command'] or
                                any(not isinstance(x, str) or '\x00' in x for x in value['command'])):
         raise ValueError('Invalid command at ' + where)
+    if 'entrypoint' in value and (not isinstance(value['entrypoint'], list) or not value['entrypoint'] or
+                                  any(not isinstance(x, str) or not x or '\x00' in x for x in value['entrypoint'])):
+        raise ValueError('Invalid entrypoint at ' + where)
+    # Docker concatenates entrypoint + command into one argv. With a shell form
+    # entrypoint, `sh -c script [name [args...]]` swallows everything after the
+    # first argument: `entrypoint ["/bin/sh","-c"] + command ["sleep","600"]`
+    # really runs `sleep` with `$0=600` and fails at runtime with a usage error.
+    # Real deployment surfaced this, so reject it while the catalog is validated.
+    if ('entrypoint' in value and value['entrypoint'][-1] in ('-c', '-lc', '-ec') and
+            len(value.get('command', [])) > 1):
+        raise ValueError('Shell-form entrypoint with a multi-argument command would drop arguments; '
+                         'put the whole script in entrypoint at ' + where)
     if 'environment' in value and (not isinstance(value['environment'], dict) or
             any(not isinstance(k, str) or not ENV.fullmatch(k) or not isinstance(v, str) or '\x00' in v
                 for k, v in value['environment'].items())):
         raise ValueError('Invalid environment at ' + where)
     if 'user' in value and (not isinstance(value['user'], str) or not re.fullmatch(r'[0-9]+(?::[0-9]+)?', value['user'])):
         raise ValueError('Invalid service user at ' + where)
+    # Multi-container fields. Each one is a capability, so each gets an explicit
+    # allowlist rather than being passed through to Docker unchecked.
+    if 'depends_on' in value:
+        deps = value['depends_on']
+        if (not isinstance(deps, list) or not deps or
+                any(not isinstance(d, str) or not ID.fullmatch(d) for d in deps)):
+            raise ValueError('Invalid depends_on at ' + where)
+        if len(set(deps)) != len(deps):
+            raise ValueError('Duplicate depends_on entry at ' + where)
+        if value['id'] in deps:
+            raise ValueError('Service cannot depend on itself at ' + where)
+    if 'shm_size' in value and (not isinstance(value['shm_size'], str) or
+                                not re.fullmatch(r'[1-9][0-9]*m', value['shm_size'])):
+        raise ValueError('Invalid shm_size at ' + where)
+    if 'sysctls' in value:
+        entries = value['sysctls']
+        if (not isinstance(entries, dict) or not entries or
+                any(key not in SYSCTLS or not isinstance(val, str) or
+                    not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 .:,_-]{0,63}', val)
+                    for key, val in entries.items())):
+            raise ValueError('Unsupported sysctl at ' + where + ' (allowed: ' + ', '.join(sorted(SYSCTLS)) + ')')
+    if 'tmpfs' in value:
+        entries = value['tmpfs']
+        if (not isinstance(entries, list) or not entries or
+                any(not isinstance(item, str) or not re.fullmatch(r'/[A-Za-z0-9_./-]{1,120}', item) or
+                    any(part in ('', '.', '..') for part in item.split('/')[1:]) for item in entries)):
+            raise ValueError('Invalid tmpfs path at ' + where)
+    if 'read_only' in value and type(value['read_only']) is not bool:
+        raise ValueError('Invalid read_only at ' + where)
     return result
+
+
+def _reject_cycles(graph, where):
+    """Reject dependency cycles (a cycle would make startup ordering undefined)."""
+    state = {}
+
+    def visit(node, trail):
+        if state.get(node) == 'done':
+            return
+        if state.get(node) == 'open':
+            raise ValueError('depends_on cycle at ' + where + ': ' + ' -> '.join(trail + [node]))
+        state[node] = 'open'
+        for edge in graph.get(node, ()):
+            visit(edge, trail + [node])
+        state[node] = 'done'
+
+    for name in sorted(graph):
+        visit(name, [])
 
 
 def parse(raw):
@@ -151,6 +216,18 @@ def parse(raw):
         services = [_service(x, where + '.services') for x in app['services']]
         if len({x['id'] for x in services}) != len(services):
             raise ValueError('Duplicate service ID at ' + where)
+        # depends_on must reference services declared in the same application, and
+        # must be acyclic: Docker would fail late (or start a service before its
+        # dependency) if we let a dangling or circular edge through.
+        known = {x['id'] for x in services}
+        graph = {}
+        for service in services:
+            edges = service.get('depends_on', [])
+            unknown = [d for d in edges if d not in known]
+            if unknown:
+                raise ValueError('depends_on references undeclared service at ' + where + ': ' + unknown[0])
+            graph[service['id']] = list(edges)
+        _reject_cycles(graph, where)
         published_ports = [(port['published'], port['protocol']) for service in services for port in service['ports']]
         if len(set(published_ports)) != len(published_ports):
             raise ValueError('Duplicate published port/protocol at ' + where)

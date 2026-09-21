@@ -576,8 +576,8 @@ market_managed_help() {
   msg "  ${F_GREEN}catalog${F_RESET}                      查看受管目录（应用 ID、端口、资源限制）"
   msg "  ${F_GREEN}status${F_RESET} <应用>               查看本地证书校验与入口状态"
   msg "  ${F_GREEN}install${F_RESET} <应用> --confirm    安装（默认 localhost，端口可 --port/--auto-port）"
-  msg "  ${F_GREEN}reinstall${F_RESET} <应用> --confirm --reuse-data  复用保留数据重装"
-  msg "  ${F_GREEN}update${F_RESET} <应用> --confirm     更新（镜像版本升级默认拒绝）"
+  msg "  ${F_GREEN}reinstall${F_RESET} <应用> --confirm --reuse-data  复用保留数据重装（单服务与多服务应用都支持）"
+  msg "  ${F_GREEN}update${F_RESET} <应用> --confirm     更新（单服务：镜像升级默认拒绝；多服务：按服务换镜像，事务化+失败回滚）"
   msg "  ${F_GREEN}uninstall${F_RESET} <应用> --confirm  卸载（保留具名卷数据）"
   msg "  ${F_GREEN}domain${F_RESET} <应用> --domain <域名> --confirm    绑定自有域名（HTTP）"
   msg "  ${F_GREEN}tls${F_RESET} <应用> --cert <证书> --key <私钥> --confirm  使用已有 PEM"
@@ -588,9 +588,11 @@ market_managed_help() {
   msg "  --auto-port         占用时最多探测后续 20 个端口（不保证预留）"
   msg "  --nas-path <路径>   目录模板所需的宿主 NAS 根路径"
   msg "  --risk-ack <文本>   高权限应用要求的完整确认文本"
+  msg "  --service-image <服务>=<镜像@sha256:...>   多服务应用按服务换镜像（可重复；仅 update）"
   msg ""
   msg "  示例: fusionbox market managed install nginx --confirm"
   msg "        fusionbox market managed catalog"
+  msg "        fusionbox market managed update <多服务应用> --confirm --service-image api=<镜像@sha256:...>"
   msg ""
 }
 

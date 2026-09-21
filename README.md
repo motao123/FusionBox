@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.36.6-blue)
+![version](https://img.shields.io/badge/version-1.37.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -57,16 +57,17 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | n8n | 自动化 | 8087 | 工作流自动化 |
 | openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
+| umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（懒依赖 db 健康后才启动；复用数据重装、按服务换镜像） |
 
-## 最近更新（v1.36.6）
+## 最近更新（v1.37.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- 修掉一个**自造的 CI flake**：帮助里「两种写法输出一致」的断言此前直接比对原始输出，而末尾「本机状态」是实时探测（`docker info` 带 3 秒上限），负载波动时可能一次超时一次成功，断言于是与真实行为无关地失败——同一提交一次通过一次失败就是这么来的
-- 探测改用更轻的 `docker version --format`，超时文案由「守护进程未运行」改为不替宿主下结论的「守护进程未响应」
-- 断言改为**先归一化状态行再比对**（帮助正文仍逐字节比对），并新增「状态行非空」的独立断言；再加一个夹具（让 docker 首次调用故意超时）把「探测结果变动时两种写法仍须一致」固定成回归
-- 文档口径同步收紧：改为「帮助正文完全相同（末尾状态行是实时探测）」，并说明这一行为什么可能不同
-- 回归检查 153/153（root 与非 root），完整套件 bash 229 项 + Python 697 项全绿
+- **多容器应用从「只有框架」到完整生命周期**：补上服务字段白名单（`depends_on`/`shm_size`/`sysctls`/`tmpfs`/`read_only`/`entrypoint`），并新增事务化的 `update`（按服务换镜像、失败自动回滚、双失败才要求人工介入）与 `reinstall --reuse-data`
+- 修正一个**真机才会暴露**的语义错误：目录里的 `bridge` 曾被写成字面量，把每个服务挂到 Docker 全局默认网桥，服务名互相不可解析 —— 多容器应用连不上自己的数据库。现在 `bridge` 表示应用私有网络，仅 `host` 原样透传
+- 目录校验阶段拦掉一个新踩到的坑：`entrypoint ["/bin/sh","-c"]` + 多元素 `command` 会被拼成一个 argv，参数被吃掉，容器静默退出
+- `sysctls` 白名单按实测确定（Docker 29.8.1 不加 privileged 真的能生效的键），并据此如实记录一条能力边界：基于 Elasticsearch 的应用（如 RAGFlow）在本安全模型下无法承载
+- 内置目录新增真实双服务应用 `umami`（应用 + PostgreSQL，端口 8090）；真机验收脚本 `tests/acceptance/market_multicontainer.sh` **34/34 通过**（依赖顺序、健康、真换镜像、失败自动回滚、数据保留重装）
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
