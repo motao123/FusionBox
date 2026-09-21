@@ -1,4 +1,6 @@
-# 当前实施状态（v1.37.0）
+# 当前实施状态（v1.37.1）
+
+2026-09-21 本轮（1.37.1，roadmap 批次 1 的 A2）把 OpenSSH 候选从「能验证不能切换」补成**带自动恢复的切换事务**：新增 `switch`/`rollback`，门禁要求已验证源码记录 + 独立登录记录 + 候选对现有生产配置通过 `sshd -t` + 生产当前在应答；比对生产与候选对同一配置的 12 项有效策略，有差异**默认拒绝**（`--accept-config-drift` 才放行）；同目录临时文件 + `fsync` + `rename` 原子替换并备份原二进制；用 `reload` 让 sshd 重 exec（不影响现有连接）；**独立看门狗**在宽限期内发现端口不应答就自动放回旧二进制（`auto-rolled-back`）；`--dry-run` 跑完门禁但不动任何文件。真机验证时修掉两个只有真实产物才会暴露的问题：**OpenSSH 10.x 的 `sshd -T` 保留键名大小写**（既有 `_candidate_test` 的小写比对在真实 10.5 构建上必然失败，该路径此前从未跑过真实产物），以及 **reload 后立刻探测的竞态**（re-exec 窗口内旧进程已释放监听、新进程未绑定，单次探测误判失败并触发一次不必要的回滚，改为轮询）。真机验收 `tests/acceptance/openssh_switch.sh` **32/32**（真实签名获取与 GPG 验签、真实构建、独立端口回连、dry-run 不变更、漂移拒绝、切换后客户端看到的远端版本即候选版本、看门狗复核、手动回滚、三类拒绝路径），并断言宿主 `/usr/sbin/sshd` 与配置哈希全程未变。**边界**：切换事务在容器里验证——宿主机是唯一访问路径，在生产 sshd 上执行切换需以带外通道为前提，这一判定未变。
 
 2026-09-21 本轮（1.37.0，roadmap 批次 1 的 A1）补齐**多容器应用的完整生命周期**：过去多容器「不缺框架、但没人用、也不能维护」——声明式目录与 Compose 生成本就存在，缺的是服务字段白名单、目录里没有任何多服务应用、`update`/`reinstall` 对声明式应用直接拒绝。现在扩展了 `depends_on`/`shm_size`/`sysctls`/`tmpfs`/`read_only`/`entrypoint` 六项能力（每项独立约束，不做透传），实现事务化 `update`（按服务换镜像、拉齐镜像→写恢复 journal→`--wait`→健康门禁，失败恢复上一快照与镜像，两级都失败才进 `recovery-required` 并拒绝后续变更）与 `reinstall --reuse-data`，并把 `resources()` 的反向校验扩展到每一项新能力。真机（Ubuntu 24.04.5 / Docker 29.8.1）跑通新增验收脚本 `tests/acceptance/market_multicontainer.sh` **34/34**。两处只有真机能发现的问题被修掉：目录里的 `bridge` 曾被写成字面量导致服务名无法互相解析（多容器连不上自己的库），以及 `entrypoint ["/bin/sh","-c"]` + 多元素 `command` 被拼成一个 argv 导致容器静默退出（现在在校验阶段就拒绝）。`sysctls` 白名单按实测确定，并据此如实登记一条能力边界：基于 Elasticsearch 的应用（RAGFlow 等）在无 `--privileged` 的受管模型下无法承载。
 
@@ -190,7 +192,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G17 | 系统备份范围扩展 + 备份管理 | 部分实现 | 配置任务归属登记、完整性校验、显式保留/恢复；scope 已含 config/fusion/web/docker/ssh/cron/usr-local/home，**旧归档读取已实现**（`archive.py` `legacy_map`）；剩余边界见 [roadmap.md](roadmap.md) D 类 |
 | G18 | 内核参数优化面板（6 场景自适应 + 恢复） | 受管范围完成 | v1.36.3 修正文档与代码不一致：`system tuning apply` 已支持 high/balanced/web/stream/game/db 六个场景 + status/restore，此前误标「后续」；未改动的运行值快照恢复由 mock 断言覆盖，未改服务器真实 sysctl |
 | G19 | 病毒扫描（ClamAV 全盘/指定目录+日志） | 受管范围完成 | v1.19.0 market clamav 扫描动作（按需安装、0600 日志、威胁 rc 传播）；真实扫描 mock 覆盖 |
-| G20 | 修复 OpenSSH 高危版本（源码编译升级） | 只读预检 | v1.33.0 `system ssh-preflight` 检查 sshd 配置/有效策略/监听/socket activation；不做源码替换或服务切换，候选升级与回滚仍后续 |
+| G20 | 修复 OpenSSH 高危版本（源码编译升级） | 受管范围完成 | v1.33.0 只读预检；**v1.37.1 补齐候选全链路**：真实签名获取 + GPG 验签 + 编译 + 独立端口回连（`ssh-candidate fetch/verify/build/test`），以及**切换事务** `switch`/`rollback`（策略漂移默认拒绝、原子替换 + reload、独立看门狗自动回滚、`--dry-run`）；真机验收 32/32。边界：切换事务在容器内验证，宿主机生产切换需带外通道为前提 |
 | G21 | SSH 密钥远端导入（GitHub / URL 一键抓取） | 受管范围完成 | v1.19.0 sshkey 菜单 7：https 拉取+逐条校验确认；真机 GitHub 拉取验证，拒绝时零改动 |
 | G22 | 小工具集 | 基本完成 | hostname/hosts/语言切换/密码生成器/gai.conf 已加入（v1.22.0）；命令收藏/快捷键由 cluster kcmd 覆盖；PS1 美化未做（低价值） |
 | G23 | 测试脚本合集（17 项评测矩阵，数据表驱动） | 部分实现 | network bench 列表及确认执行；未声称全部上游可用 |

@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.37.0-blue)
+![version](https://img.shields.io/badge/version-1.37.1-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -59,15 +59,14 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 | umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（懒依赖 db 健康后才启动；复用数据重装、按服务换镜像） |
 
-## 最近更新（v1.37.0）
+## 最近更新（v1.37.1）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **多容器应用从「只有框架」到完整生命周期**：补上服务字段白名单（`depends_on`/`shm_size`/`sysctls`/`tmpfs`/`read_only`/`entrypoint`），并新增事务化的 `update`（按服务换镜像、失败自动回滚、双失败才要求人工介入）与 `reinstall --reuse-data`
-- 修正一个**真机才会暴露**的语义错误：目录里的 `bridge` 曾被写成字面量，把每个服务挂到 Docker 全局默认网桥，服务名互相不可解析 —— 多容器应用连不上自己的数据库。现在 `bridge` 表示应用私有网络，仅 `host` 原样透传
-- 目录校验阶段拦掉一个新踩到的坑：`entrypoint ["/bin/sh","-c"]` + 多元素 `command` 会被拼成一个 argv，参数被吃掉，容器静默退出
-- `sysctls` 白名单按实测确定（Docker 29.8.1 不加 privileged 真的能生效的键），并据此如实记录一条能力边界：基于 Elasticsearch 的应用（如 RAGFlow）在本安全模型下无法承载
-- 内置目录新增真实双服务应用 `umami`（应用 + PostgreSQL，端口 8090）；真机验收脚本 `tests/acceptance/market_multicontainer.sh` **34/34 通过**（依赖顺序、健康、真换镜像、失败自动回滚、数据保留重装）
+- **OpenSSH 候选版本切换与回滚**（roadmap 批次 1 的 A2）：新增 `system ssh-candidate switch|rollback`，把「替换生产 sshd」做成**带独立看门狗的事务**——门禁（签名验证记录 + 独立登录记录 + 候选对现有配置 `sshd -t` + 生产当前在应答）、策略漂移默认拒绝并要求显式接受、原子替换 + reload、**切换后若端口不应答由看门狗自动把旧二进制放回**；`--dry-run` 跑完所有门禁但不动任何文件
+- 真机验证修掉两个只有真实产物才会暴露的问题：OpenSSH **10.x 的 `sshd -T` 保留键名大小写**（既有小写比对在真实 10.5 构建上必然失败）、**reload 后立刻探测的竞态**（re-exec 窗口内误判失败并触发不必要的回滚，改为轮询）
+- 真机验收 `tests/acceptance/openssh_switch.sh` **32/32**：真实签名获取与 GPG 验签、真实构建、独立端口回连、切换后**客户端看到的远端版本就是候选版本**、看门狗复核、手动回滚、三类拒绝路径，且**宿主 sshd 与配置哈希全程未变**
+- 边界如实说明：切换事务在容器里验证（宿主机是唯一访问路径，生产切换需带外通道作为前提）；新增事务层单元测试 13 项进 CI
 
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 

@@ -52,6 +52,7 @@ PY_TESTS=(
   test_market_domain.py
   test_market_apps.py
   test_market_catalog.py
+  test_openssh_switch.py
   test_compose_backup.py
   test_backup_jobs.py
   test_notifications.py

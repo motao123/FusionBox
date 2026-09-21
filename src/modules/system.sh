@@ -1494,7 +1494,12 @@ system_ssh_preflight() {
 system_ssh_candidate() {
   _require_root
   [[ $# -ge 1 ]] || {
-    msg_err "用法: fusionbox system ssh-candidate fetch|verify|build|test|status|clean [选项]"
+    msg_err "用法: fusionbox system ssh-candidate fetch|verify|build|test|status|clean|switch|rollback [选项]"
+    msg "  切换生产 sshd 前请确认你有带外通道（VPS 控制台/救援模式）："
+    msg "    fusionbox system ssh-candidate switch --dry-run     # 只跑全部门禁并打印计划，不动任何文件"
+    msg "    fusionbox system ssh-candidate switch               # 原子替换 + reload，失败自动回滚"
+    msg "    fusionbox system ssh-candidate rollback             # 手动回到上一份二进制"
+    msg "  选择安全策略有差异的候选需显式加 --accept-config-drift（会打印差异）。"
     return 2
   }
   python3 -B "$FUSION_SRC/lib/openssh_candidate.py" "$@"
@@ -4561,7 +4566,7 @@ system_help() {
   msg "  fusionbox system hardening      SSH 加固：新建密钥用户并收紧 root 登录"
   msg "  fusionbox system security       安全审计与加固"
   msg "  fusionbox system ssh-preflight  只读检查 sshd 配置/服务/监听，不切换版本"
-  msg "  fusionbox system ssh-candidate  下载校验并在独立高端口验证 OpenSSH 候选版本"
+  msg "  fusionbox system ssh-candidate  下载校验、独立端口回连验证，并可切换/回滚生产 OpenSSH（switch 带自动回滚）"
   msg "  fusionbox system sshkey         SSH 密钥管理"
   msg "  fusionbox system firewall       防火墙管理 (UFW/iptables)"
   msg "  fusionbox system cron           定时任务管理"
