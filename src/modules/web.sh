@@ -52,7 +52,13 @@ _web_acme_domain_valid() {
     [[ "$rest" == *.* ]] || break
     rest="${rest#*.}"
   done
-  [[ "$domain" != *.local && "$domain" != *.localhost && "$domain" != *.invalid && "$domain" != *.test ]]
+  # 保留 TLD 守卫保护的是生产签发路径；显式覆盖 ACME 目录（Pebble/staging 测试）
+  # 时由调用方传入第二参数放行。
+  if [[ -z "${2:-}" ]]; then
+    [[ "$domain" != *.local && "$domain" != *.localhost && "$domain" != *.invalid && "$domain" != *.test ]]
+  else
+    return 0
+  fi
 }
 
 _web_acme_email_valid() {
@@ -60,7 +66,7 @@ _web_acme_email_valid() {
   [[ ${#email} -le 254 && "$email" =~ ^[A-Za-z0-9.!#$%\&\'*+/=?^_\`{|}~-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,63}$ ]] || return 1
   local_part="${email%@*}"; email_domain="${email#*@}"
   [[ ${#local_part} -le 64 && "$local_part" != .* && "$local_part" != *. && "$local_part" != *..* ]] || return 1
-  _web_acme_domain_valid "$email_domain"
+  _web_acme_domain_valid "$email_domain" "${WEB_ACME_SERVER:+allow-reserved}"
 }
 
 _web_acme_path_valid() {
@@ -330,6 +336,10 @@ NEOF
 # ---- ACME transaction workflow ----
 _WEB_ACME_NGINX_DIR="${WEB_ACME_NGINX_DIR:-/etc/nginx}"
 _WEB_ACME_LE_DIR="${WEB_ACME_LE_DIR:-/etc/letsencrypt}"
+# 覆盖 ACME 目录 URL（默认走 certbot 生产配置）：指向 Pebble / Let's Encrypt
+# staging 等非生产服务时必须显式传入；同时自动切换 certbot 的 config/work/logs
+# 目录到受管 LE 目录，绝不污染生产 /etc/letsencrypt。
+_WEB_ACME_SERVER="${WEB_ACME_SERVER:-}"
 _WEB_ACME_STATE_DIR="${WEB_ACME_STATE_DIR:-/var/lib/fusionbox/acme}"
 _WEB_ACME_HTTP_PORT="${WEB_ACME_HTTP_PORT:-80}"
 _WEB_ACME_HTTPS_PORT="${WEB_ACME_HTTPS_PORT:-443}"
@@ -339,6 +349,7 @@ _web_acme_usage() {
   msg "  fusionbox web ssl preflight --domain <域名> [--email <邮箱>] [--webroot <绝对路径>]"
   msg "  fusionbox web ssl status [--domain <域名>]"
   msg "  fusionbox web ssl issue --domain <域名> --email <邮箱> [--webroot <绝对路径>]"
+  msg "  fusionbox web ssl issue ... [--server <https ACME 目录 URL>]  # Pebble/staging 覆盖"
   msg "  fusionbox web ssl renew [--days <1-90>]"
 }
 
@@ -367,10 +378,13 @@ _web_acme_parse() {
       --email|-m) [[ $# -ge 2 ]] || return 2; WEB_ACME_EMAIL="$2"; shift 2 ;;
       --webroot|-w) [[ $# -ge 2 ]] || return 2; WEB_ACME_WEBROOT="$2"; shift 2 ;;
       --days) [[ $# -ge 2 ]] || return 2; WEB_ACME_DAYS="$2"; shift 2 ;;
+      --server) [[ $# -ge 2 ]] || return 2; WEB_ACME_SERVER="$2"; shift 2 ;;
       *) msg_err "未知参数: $1"; return 2 ;;
     esac
   done
-  [[ -z "$WEB_ACME_DOMAIN" ]] || _web_acme_domain_valid "$WEB_ACME_DOMAIN" || { msg_err "域名格式不合法: $WEB_ACME_DOMAIN"; return 2; }
+  WEB_ACME_SERVER="${WEB_ACME_SERVER:-$_WEB_ACME_SERVER}"
+  [[ -z "$WEB_ACME_SERVER" || "$WEB_ACME_SERVER" == https://* ]] || { msg_err "--server 必须是 https:// ACME 目录 URL"; return 2; }
+  [[ -z "$WEB_ACME_DOMAIN" ]] || _web_acme_domain_valid "$WEB_ACME_DOMAIN" "${WEB_ACME_SERVER:+allow-reserved}" || { msg_err "域名格式不合法: $WEB_ACME_DOMAIN"; return 2; }
   [[ -z "$WEB_ACME_EMAIL" ]] || _web_acme_email_valid "$WEB_ACME_EMAIL" || { msg_err "邮箱格式不合法: $WEB_ACME_EMAIL"; return 2; }
   [[ -z "$WEB_ACME_WEBROOT" ]] || _web_acme_path_valid "$WEB_ACME_WEBROOT" || { msg_err "webroot 必须是无遍历片段的绝对路径"; return 2; }
   [[ "$WEB_ACME_DAYS" =~ ^[0-9]+$ ]] && (( WEB_ACME_DAYS >= 1 && WEB_ACME_DAYS <= 90 )) || { msg_err "--days 必须为 1-90"; return 2; }
@@ -461,7 +475,7 @@ _web_acme_certbot_check() {
 
 _web_acme_preflight_run() {
   local domain="$1" email="$2" webroot="$3" site="" site_file="" site_root=""
-  _web_acme_domain_valid "$domain" || { msg_err "必须提供有效公网域名"; return 2; }
+  _web_acme_domain_valid "$domain" "${WEB_ACME_SERVER:+allow-reserved}" || { msg_err "必须提供有效公网域名"; return 2; }
   [[ -z "$email" ]] || _web_acme_email_valid "$email" || { msg_err "邮箱格式不合法"; return 2; }
   [[ -z "$webroot" ]] || _web_acme_path_valid "$webroot" || { msg_err "webroot 路径不合法"; return 2; }
   command -v nginx >/dev/null 2>&1 || { msg_err "未安装 nginx"; return 1; }
@@ -605,6 +619,19 @@ _web_acme_issue_cleanup() {
   return "$original_rc"
 }
 
+# 非生产 ACME 目录或受管 LE 目录时，显式给 certbot 传目录参数；并输出参数数组。
+_web_acme_certbot_dirs() {
+  local server="$1" le="$_WEB_ACME_LE_DIR"
+  if [[ -n "$server" ]]; then
+    CERTBOT_ARGS=(--server "$server")
+  else
+    CERTBOT_ARGS=()
+  fi
+  if [[ "$le" != "/etc/letsencrypt" ]]; then
+    CERTBOT_ARGS+=(--config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs")
+  fi
+}
+
 web_ssl_issue() (
   _require_root
   _web_acme_parse "$@"
@@ -642,8 +669,9 @@ web_ssl_issue() (
   fi
   mkdir -p "$webroot/.well-known/acme-challenge" || return 1
   msg_info "调用 certbot webroot 签发；成功前不会声明证书已签发"
+  _web_acme_certbot_dirs "$WEB_ACME_SERVER"
   certbot certonly --webroot -w "$webroot" -d "$domain" --cert-name "$domain" \
-    --non-interactive --agree-tos --email "$WEB_ACME_EMAIL"
+    --non-interactive --agree-tos --email "$WEB_ACME_EMAIL" "${CERTBOT_ARGS[@]}"
   rc=$?
   if (( challenge_active )); then
     _web_acme_restore_file "$challenge" "$work/challenge.backup" "$challenge_existed" || return 1
@@ -715,7 +743,8 @@ web_ssl_renew() {
   done
   if (( due == 0 )); then msg_ok "没有剩余 $WEB_ACME_DAYS 天以内的证书，无需续期"; return 0; fi
   before=$(_web_acme_fingerprints)
-  certbot renew --non-interactive --deploy-hook /bin/true
+  _web_acme_certbot_dirs "${WEB_ACME_SERVER:-}"
+  certbot renew --non-interactive --deploy-hook /bin/true "${CERTBOT_ARGS[@]}"
   rc=$?
   (( rc == 0 )) || { msg_err "certbot renew 失败（退出码 $rc）"; return "$rc"; }
   after=$(_web_acme_fingerprints)

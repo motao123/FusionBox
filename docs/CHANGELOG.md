@@ -2,6 +2,30 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.39.0 ACME 两条真机验证路线（Pebble + Let's Encrypt staging）
+
+roadmap 批次 3（P2）：G35/G36/G59 从「部分实现」推进到「真机验证」。
+
+- `web ssl issue/renew` 新增 `--server`（`WEB_ACME_SERVER` env）：覆盖 ACME 目录
+  URL，指向 Pebble / Let's Encrypt staging 等非生产服务；必须为 https://
+- 自定义 `WEB_ACME_LE_DIR` 时 certbot 的 `--config-dir/--work-dir/--logs-dir`
+  整体切换——测试签发绝不污染生产 /etc/letsencrypt
+- 保留 TLD 守卫（拒绝 `.invalid/.test/.local/.localhost`）保护生产签发路径；
+  显式 server 覆盖时放行，用于测试域名——生产默认行为零变化
+- 路线 A `tests/acceptance/acme_pebble.sh`（24/24）：本地 Pebble 容器 +
+  `PEBBLE_VA_ALWAYS_VALID=1`（challenge 判定交由路线 B 的真实传输覆盖）——
+  真实 certbot 协议链路、SAN/私钥/受管 TLS 装配、Pebble 证书短有效期断言、
+  `renew --days 30` 真实触发（指纹变化 + nginx 重载）、不可达目录 URL 失败后
+  无证书且 challenge 配置回滚
+- 路线 B `tests/acceptance/acme_staging.sh`（16/16）：`<公网IP>.sslip.io` +
+  Let's Encrypt staging——真实 DNS 解析报告、真实 HTTP-01 传输、真实 CA 签发
+  （staging 中间证书）、受管 TLS 启用、DNS 不可解析域失败回滚
+- run_checks 新增第 19 节（server 覆盖/放行参数/目录隔离/验收资产静态检查）
+
+验证（Linux 验证服务器 Ubuntu 24.04.5）：闸门 174/174（root 与非 root）；
+完整套件零失败；两条 ACME 路线真机全过。生产 LE 目录（非 staging）签发
+未验证——同代码路径，但速率限制与真实账号注册不同，如实标注。
+
 ## v1.38.0 两主机夹具、真实容器生命周期与跨主机迁移编排
 
 roadmap 批次 2（P1）：B1 真实容器生命周期 + B3 两主机夹具 + A4 跨主机迁移编排（G29，

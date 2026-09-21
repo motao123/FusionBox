@@ -640,6 +640,30 @@ for script in two_host.sh container_lifecycle.sh market_multicontainer.sh openss
   fi
 done
 
+section "19. ACME 两条验证路线与 server 覆盖（v1.39.0）"
+# ---------------------------------------------------------------------------
+# 全部为静态检查：不装 certbot、不联网、不需要 root。
+check_contains "web ssl issue/renew 支持 --server 覆盖（Pebble/staging）" \
+  'WEB_ACME_SERVER="${WEB_ACME_SERVER:-$_WEB_ACME_SERVER}"' cat "$SRC/modules/web.sh"
+
+check_contains "server 覆盖时放行保留 TLD（生产守卫不变）" \
+  '"${WEB_ACME_SERVER:+allow-reserved}"' cat "$SRC/modules/web.sh"
+
+check_contains "自定义 LE 目录时 certbot 显式切换 config/work/logs" \
+  '--config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs"' cat "$SRC/modules/web.sh"
+
+check_contains "非 https 的 --server 被拒绝" \
+  '"--server 必须是 https:// ACME 目录 URL"' cat "$SRC/modules/web.sh"
+
+for script in acme_pebble.sh acme_staging.sh; do
+  if [[ -f "$REPO_ROOT/tests/acceptance/$script" ]] \
+     && bash -n "$REPO_ROOT/tests/acceptance/$script" 2>/dev/null; then
+    ok "真机验收资产 tests/acceptance/$script 存在且语法正确"
+  else
+    bad "真机验收资产 tests/acceptance/$script 存在且语法正确"
+  fi
+done
+
 # ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'
 printf '通过 %d / 失败 %d\n' "$PASS" "$FAIL"

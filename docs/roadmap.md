@@ -329,9 +329,9 @@ B1 真实容器生命周期 + B3 两主机夹具 + A4 跨主机迁移编排。�
 
 - DoD：`tests/acceptance/` 真机脚本可一键重放；跨主机迁移成功 + 中断不留半成品
 
-### 批次 3（P2，ACME 两路）
+### 批次 3（P2，ACME 两路）→ **已完成：v1.39.0**
 
-B2 路线 A（Pebble）+ 路线 B（staging + `sslip.io`）→ 把 G35/G36/G59 从「部分实现」推到完成。
+B2 路线 A（Pebble）+ 路线 B（staging + `sslip.io`）→ G35/G36/G59 已真机验证。验收：`acme_pebble.sh` 24/24（协议级 + 续期 + 失败回滚）、`acme_staging.sh` 16/16（真实 CA + 真实 HTTP-01）；`web ssl issue/renew` 新增 `--server` 覆盖与 LE 目录隔离。
 
 - DoD：签发/续期/回滚全过，且证书与配置在失败时保持不变
 
