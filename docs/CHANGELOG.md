@@ -2,6 +2,56 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.38.0 两主机夹具、真实容器生命周期与跨主机迁移编排
+
+roadmap 批次 2（P1）：B1 真实容器生命周期 + B3 两主机夹具 + A4 跨主机迁移编排（G29，
+同时覆盖 G15/G16/G61/G63 的真实条件验证）。
+
+- 新增 `panels docker-migration remote`（`src/lib/docker_migration_remote.py`）：
+  目标机环境门禁（python3/docker/守护进程/FusionBox 安装/0700 落地目录）→
+  `archive_transfer --kind docker-v1` 校验传输（源包保留）→ 目标机只读 preflight →
+  目标机 `restore`（事务化）→ 逐容器健康校验；restore 失败或健康不达标时目标机
+  自动 rollback，rollback 也失败则报告事务 ID 与恢复指引；`--dry-run` 不向目标机
+  写入任何文件；`--json` 输出单行机器可读摘要（单点上报，无中间行污染）
+- 编排只做顺序化，不新写 SSH/传输/恢复机制：复用 `cluster_session.key_options`
+  （严格 known_hosts、禁密码、禁 agent）、`archive_transfer.run`、目标机自身的
+  `docker_migration.py preflight|restore|rollback`
+- 两主机夹具：privileged 容器（ubuntu + sshd + 内嵌 dockerd vfs）扮演第二台主机；
+  `cluster_session.run_ssh` 对远端只要求 bash/python3，无物理机依赖；专用临时密钥
+  （一次性 ssh-agent 或 `--identity`），不复用生产密钥；容器销毁即回收
+- `cluster node-exec|connect` 新增 `--identity`：`run_ssh` 一直支持显式身份，
+  CLI 此前未暴露；真机同时确认 OpenSSH 默认身份取自 passwd 而非 $HOME，
+  HOME 覆盖对 ssh 无效
+- 真机修复 4 个既有缺陷（全部只在真实 Docker 上暴露）：
+  1) 迁移契约拒绝 `MaskedPaths/ReadonlyPaths`——引擎对每个容器注入默认值
+     （且含宿主特定条目），导致任何真实 `docker run` 容器都无法导出；改为纳入
+     声明做审计（engine-managed，无 CLI 入口，不可能携带用户意图），契约升为 2
+  2) `docker ps -aq` 返回截断的 12 位 ID，与 64 位选中 ID 比对恒假——
+     「拓扑一致性」校验在真实 Docker 上从未生效；补 `--no-trunc`
+  3) 跨镜像存储后端镜像 ID 不可移植：containerd snapshotter 以 manifest digest
+     为镜像 ID，经典存储以 config digest 为 ID，`docker load` 不保留
+     RepoDigests——加载校验改为以声明 RepoTags + 离线包完整性为准，
+     create 用原始 `image_reference`（tag）而非引擎特定 ID
+  4) 架构命名不一致：`docker info` 报 x86_64/aarch64，镜像 inspect 报
+     amd64/arm64，preflight 的 OS/架构比较恒假；加归一映射
+- restore 失败原因写入 journal（`error` 字段）——此前 `from None` 吞掉底层异常，
+  目标机失败不可诊断；编排失败时读取并展示 journal 错误与最近 stderr
+- compose-backup 的市场集成确认：market install 即以 `fusionbox-compose-v1`
+  登记，卸载删除登记；restore 语义为「向已重建项目灌回数据」而非从零引导，
+  已在验收脚本中如实覆盖
+- 新增真机验收（不进 CI，需 root/Docker/网络，可一键重放）：
+  `tests/acceptance/two_host.sh` **29/29**（登记/信任/出站/批量/归档往返/
+  dry-run 零写入/门禁拒绝/完整迁移/preflight 冲突不波及健康状态/中断回滚清零），
+  `tests/acceptance/container_lifecycle.sh` **17/17**（真实 HTTP 部署/停止启动/
+  compose 备份确定性/数据全损后重建并灌回/数据行逐字节复核）
+- 新增 `tests/test_docker_migration_remote.py`（15 项进 CI）：门禁拒绝矩阵、
+  dry-run 零写入、preflight 拒绝保 target_clean、restore 失败回滚、回滚失败
+  要求人工介入、无事务即失败、健康不达标回滚、成功路径与 JSON 单行输出
+
+验证（Linux 验证服务器 Ubuntu 24.04.5 / Docker 29.8.1，目标机 Docker 29.1.3 vfs）：
+闸门 `run_checks.sh` 168/168（root 与非 root，新增第 18 节）；完整套件
+bash 229 项 + Python 741 项（33 模块）全过、零失败。
+
 ## v1.37.1 OpenSSH 候选切换与回滚（带自动恢复）
 
 roadmap 批次 1 的第二半（A2）。此前 `ssh-candidate` 只有 `fetch/verify/build/test/status/clean` —— 能验证候选，不能切换。补上 `switch` 与 `rollback`，并把安全网做成机制而不是叮嘱。

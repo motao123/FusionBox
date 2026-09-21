@@ -32,8 +32,12 @@ panels_docker_migration_help() {
   msg "  ${F_GREEN}restore${F_RESET} <bundle>      恢复（--confirm-clean-target 清空目标）"
   msg "  ${F_GREEN}rollback${F_RESET} <事务ID>     回滚"
   msg "  ${F_GREEN}resume${F_RESET} <事务ID>       续跑中断的恢复"
+  msg "  ${F_GREEN}remote${F_RESET} <节点>         跨主机迁移编排（目标机 preflight → 传输 → 目标机"
+  msg "                                  restore → 健康校验 → 失败自动回滚；详见 --help）"
   msg ""
   msg "  示例: fusionbox panels docker-migration preflight ./mybundle"
+  msg "        fusionbox panels docker-migration remote node2 --bundle app.tar.gz \\"
+  msg "               --name app.tar.gz --key ~/.ssh/migrate --known-hosts /etc/fusionbox/cluster/known_hosts"
   msg ""
 }
 
@@ -51,9 +55,14 @@ panels_main() {
     docker-migration)
       _require_root
       [[ $# -ge 1 ]] || { panels_docker_migration_help; return 2; }
-      _require_docker "Docker 离线迁移" || return 1
-      _require_python3 "Docker 离线迁移" || return 1
-      python3 "$FUSION_SRC/lib/docker_migration.py" "$@"
+      if [[ "$1" == "remote" ]]; then
+        _require_python3 "Docker 跨主机迁移编排" || return 1
+        python3 "$FUSION_SRC/lib/docker_migration_remote.py" "$@"
+      else
+        _require_docker "Docker 离线迁移" || return 1
+        _require_python3 "Docker 离线迁移" || return 1
+        python3 "$FUSION_SRC/lib/docker_migration.py" "$@"
+      fi
       ;;
     docker|dk)            panels_docker "$@" ;;
     mirror|mirrors)       panels_docker_mirror "${1:-}" ;;
@@ -86,9 +95,14 @@ panels_docker() {
       shift
       _require_root
       [[ $# -ge 1 ]] || { panels_docker_migration_help; return 2; }
-      _require_docker "Docker 离线迁移" || return 1
-      _require_python3 "Docker 离线迁移" || return 1
-      python3 "$FUSION_SRC/lib/docker_migration.py" "$@"
+      if [[ "$1" == "remote" ]]; then
+        _require_python3 "Docker 跨主机迁移编排" || return 1
+        python3 "$FUSION_SRC/lib/docker_migration_remote.py" "$@"
+      else
+        _require_docker "Docker 离线迁移" || return 1
+        _require_python3 "Docker 离线迁移" || return 1
+        python3 "$FUSION_SRC/lib/docker_migration.py" "$@"
+      fi
       ;;
     mirror|mirrors) panels_docker_mirror "${2:-}" ;;
     port-block|pb)  shift; panels_docker_port_block "$@" ;;

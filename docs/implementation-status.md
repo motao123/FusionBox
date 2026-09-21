@@ -1,4 +1,7 @@
-# 当前实施状态（v1.37.1）
+# 当前实施状态（v1.38.0）
+
+2026-09-21 本轮（1.38.0，roadmap 批次 2）建立 **Docker 两主机夹具**并跑通跨主机迁移：容器扮演第二台主机（cluster_session 对远端无物理机依赖），`tests/acceptance/two_host.sh` 29/29 覆盖 cluster add/trust/node-exec/exec、docker-v1 归档 push/pull 往返、`panels docker-migration remote` 编排全流程（目标机 preflight → 传输 → restore → 健康校验 → 失败自动回滚）与中断场景（掐断 SSH 后目标机 rollback 清零）。`container_lifecycle.sh` 17/17 覆盖真实 HTTP 部署、停止/启动、compose 备份与数据全损恢复。真机修复 4 个既有缺陷：迁移契约拒绝引擎默认 MaskedPaths/ReadonlyPaths（任何真实容器都无法导出）、`docker ps -aq` 截断 ID 使拓扑校验恒假、跨镜像存储后端镜像 ID 不可移植（containerd manifest digest vs 经典 config digest，load 不保留 RepoDigests）、架构命名不一致（x86_64 vs amd64）；并新增 `cluster node-exec --identity`、journal 记录失败原因、编排单点 JSON 摘要。回归：闸门 168/168（root 与非 root），完整套件 bash 229 项 + Python 741 项（33 模块）零失败。环境限制未变：真实 OCI 实例、TG/CF 真实凭据仍未验证。
+
 
 2026-09-21 本轮（1.37.1，roadmap 批次 1 的 A2）把 OpenSSH 候选从「能验证不能切换」补成**带自动恢复的切换事务**：新增 `switch`/`rollback`，门禁要求已验证源码记录 + 独立登录记录 + 候选对现有生产配置通过 `sshd -t` + 生产当前在应答；比对生产与候选对同一配置的 12 项有效策略，有差异**默认拒绝**（`--accept-config-drift` 才放行）；同目录临时文件 + `fsync` + `rename` 原子替换并备份原二进制；用 `reload` 让 sshd 重 exec（不影响现有连接）；**独立看门狗**在宽限期内发现端口不应答就自动放回旧二进制（`auto-rolled-back`）；`--dry-run` 跑完门禁但不动任何文件。真机验证时修掉两个只有真实产物才会暴露的问题：**OpenSSH 10.x 的 `sshd -T` 保留键名大小写**（既有 `_candidate_test` 的小写比对在真实 10.5 构建上必然失败，该路径此前从未跑过真实产物），以及 **reload 后立刻探测的竞态**（re-exec 窗口内旧进程已释放监听、新进程未绑定，单次探测误判失败并触发一次不必要的回滚，改为轮询）。真机验收 `tests/acceptance/openssh_switch.sh` **32/32**（真实签名获取与 GPG 验签、真实构建、独立端口回连、dry-run 不变更、漂移拒绝、切换后客户端看到的远端版本即候选版本、看门狗复核、手动回滚、三类拒绝路径），并断言宿主 `/usr/sbin/sshd` 与配置哈希全程未变。**边界**：切换事务在容器里验证——宿主机是唯一访问路径，在生产 sshd 上执行切换需以带外通道为前提，这一判定未变。
 
@@ -201,7 +204,7 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G26 | 容器管理增强（进容器/日志/占用/详细信息） | 只读详情范围完成 | v1.12.0 detail/菜单：环境值隐藏、状态/健康/镜像/端口/挂载/网络/重启/配置限额与运行占用；已有日志/exec/stats 保留，非所有管理功能认证 |
 | G27 | 容器名级端口开关（按容器+宿主 IP 生成规则） | 受管范围完成 | v1.17.0 port-block：DOCKER-USER 原始目标规则+comment 标记；真机转发流量验证 DROP/恢复；IPv4/非持久明示 |
 | G28 | Docker 备份增强（compose 项目整备 + 自动生成还原脚本） | 部分实现 | v1.5.0 受管本机单文件 Compose + local named volumes 备份/同项目恢复；数据库/外部卷/迁移仍后续 |
-| G29 | Docker 远程迁移（scp 到目标机） | 后续 | 未在本批补齐；需独立设计、实现与隔离验证 |
+| G29 | Docker 远程迁移（scp 到目标机） | 受管范围完成 | **v1.38.0** `panels docker-migration remote` 编排（目标机 preflight → 校验传输 → restore → 健康校验 → 失败自动回滚），两主机容器夹具真机验收 29/29 含中断回滚清零；边界：夹具中的目标机是容器，生产主机迁移同理需已安装 FusionBox |
 | G30 | Docker 一键卸载（清容器/镜像/包/daemon.json） | 受管范围完成 | v1.17.0 uninstall：YES 门禁+可选数据保留+按包管理器 purge；真机仅门禁路径，完整流 mock |
 | G31 | Docker 全局状态总览（容器/镜像/网络/卷计数+全列） | 只读总览范围完成 | v1.12.0 summary/--all 与菜单，全状态/引擎镜像/网络/卷计数、完整列表和 Docker 磁盘口径；失败不报零，顺序查询非原子快照 |
 | G32 | Oracle 防回收（lookbusy 容器按 CPU/内存比例占用） | 只读/未启用 | v1.32.0 增加 OCI 本地/受限 metadata 识别与旧/受管状态检查；固定镜像 digest、负载生命周期和隔离验收未完成，安装入口明确拒绝 |

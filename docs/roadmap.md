@@ -323,9 +323,9 @@
 - 为什么最先：A1 一个改动解锁 G51/G52/G53/G54/G55/G56 六组应用；A2 只差两个动作；两者都**不依赖真实 OCI、真实 ACME、第二台机器**
 - DoD：新增字段的合法/非法矩阵测试 + `run_checks.sh` 字段闭环断言 + 验证服务器上真实部署 Dify 全流程 + OpenSSH 真机切换并回滚
 
-### 批次 2（P1，Docker 夹具）→ 覆盖 5 项
+### 批次 2（P1，Docker 夹具）→ **已完成：v1.38.0**
 
-B1 真实容器生命周期 + B3 两主机夹具 + A4 跨主机迁移编排。
+B1 真实容器生命周期 + B3 两主机夹具 + A4 跨主机迁移编排。验收：`tests/acceptance/two_host.sh` 29/29、`container_lifecycle.sh` 17/17；真机修复 4 个既有缺陷（MaskedPaths 契约、ps 截断 ID、跨镜像存储 ID、架构命名）。
 
 - DoD：`tests/acceptance/` 真机脚本可一键重放；跨主机迁移成功 + 中断不留半成品
 

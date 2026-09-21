@@ -42,6 +42,7 @@ PY_TESTS=(
   test_docker_diagnostics.py
   test_docker_migration.py
   test_docker_migration_restore.py
+  test_docker_migration_remote.py
   test_archive_transfer.py
   test_archive_scopes.py
   test_acme_transaction.py

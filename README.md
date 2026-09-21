@@ -1,6 +1,6 @@
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.37.1-blue)
+![version](https://img.shields.io/badge/version-1.38.0-blue)
 ![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
@@ -59,15 +59,17 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 | umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（懒依赖 db 健康后才启动；复用数据重装、按服务换镜像） |
 
-## 最近更新（v1.37.1）
+## 最近更新（v1.38.0）
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **OpenSSH 候选版本切换与回滚**（roadmap 批次 1 的 A2）：新增 `system ssh-candidate switch|rollback`，把「替换生产 sshd」做成**带独立看门狗的事务**——门禁（签名验证记录 + 独立登录记录 + 候选对现有配置 `sshd -t` + 生产当前在应答）、策略漂移默认拒绝并要求显式接受、原子替换 + reload、**切换后若端口不应答由看门狗自动把旧二进制放回**；`--dry-run` 跑完所有门禁但不动任何文件
-- 真机验证修掉两个只有真实产物才会暴露的问题：OpenSSH **10.x 的 `sshd -T` 保留键名大小写**（既有小写比对在真实 10.5 构建上必然失败）、**reload 后立刻探测的竞态**（re-exec 窗口内误判失败并触发不必要的回滚，改为轮询）
-- 真机验收 `tests/acceptance/openssh_switch.sh` **32/32**：真实签名获取与 GPG 验签、真实构建、独立端口回连、切换后**客户端看到的远端版本就是候选版本**、看门狗复核、手动回滚、三类拒绝路径，且**宿主 sshd 与配置哈希全程未变**
-- 边界如实说明：切换事务在容器里验证（宿主机是唯一访问路径，生产切换需带外通道作为前提）；新增事务层单元测试 13 项进 CI
+- **roadmap 批次 2 完成**：两主机夹具（Docker 造第二台主机）+ 真实容器生命周期 + **跨主机迁移编排** `panels docker-migration remote`（目标机 preflight → 校验传输 → 目标机 restore → 健康校验 → 失败自动回滚）
+- **两主机真机验收 `tests/acceptance/two_host.sh` 29/29**：cluster add/trust/node-exec/exec（严格 known_hosts + 专用密钥）、docker-v1 归档 push/pull 往返、完整迁移成功、目标机冲突被 preflight 拒绝且不波及健康状态、**restore 中途掐断 SSH 后目标机 rollback 清零不留半成品**
+- **容器生命周期真机验收 `tests/acceptance/container_lifecycle.sh` 17/17**：真实 HTTP 部署、停止/启动、compose 备份、模拟数据全损（`down -v`）后重建空壳并灌回数据、数据行逐字节复核
+- 真机修复 4 个既有缺陷：迁移契约拒绝引擎默认注入的 `MaskedPaths/ReadonlyPaths`（导致**任何真实容器都无法导出**）、`docker ps -aq` 截断 ID 使拓扑校验恒假、跨镜像存储后端（containerd ↔ 经典）镜像 ID 不可移植、`docker info` 与镜像 inspect 的架构命名不一致（x86_64 vs amd64）
+- 新增 `cluster node-exec --identity`（专用密钥直连，run_ssh 早已支持但 CLI 未暴露）；restore 失败原因写入 journal（不再被吞）
 
+完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 命令参考

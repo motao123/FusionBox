@@ -162,6 +162,23 @@ class DockerMigration(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 dm.reject_unsupported(container)
 
+    def test_engine_managed_masked_paths_captured_not_rejected(self):
+        """Real `docker run` containers always carry these engine defaults; the
+        first real-machine acceptance run proved rejecting them made every real
+        container unexportable. They are engine-managed (no CLI flag exists), so
+        they are recorded for audit instead of refused."""
+        container = json.loads(json.dumps(self.container))
+        container['HostConfig']['MaskedPaths'] = ['/proc/kcore', '/sys/devices/virtual/block/dm-0']
+        container['HostConfig']['ReadonlyPaths'] = ['/proc/bus', '/proc/sys']
+        container['Config']['Healthcheck'] = {'Test': ['CMD-SHELL', 'true']}
+        dm.reject_unsupported(container)  # must not raise
+        declaration = dm.container_declaration(container)
+        self.assertEqual(declaration['masked_paths'], ['/proc/kcore', '/sys/devices/virtual/block/dm-0'])
+        self.assertEqual(declaration['readonly_paths'], ['/proc/bus', '/proc/sys'])
+        clean = dm.container_declaration(self.container)
+        self.assertEqual(clean['masked_paths'], [])
+        self.assertEqual(clean['readonly_paths'], [])
+
     def test_image_declaration_deduplicates_for_prepare_pattern(self):
         images = {}
         image = {'id': 'sha256:image', 'repo_digests': [], 'architecture': 'amd64', 'os': 'linux', 'variant': None}
