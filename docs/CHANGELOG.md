@@ -2,6 +2,27 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.0 双语支持第二批：模块层 100% 双语（全仓文案收口）
+
+- **9 个模块全部双语化**：system / web / panels / cluster / network / market / workspace /
+  proxy / warp；语言包从 290 键扩到 **3247 键**，中英两套**逐键对等**（键集合、占位符数量与顺序
+  由 `tests/test_i18n.py` 与 `run_checks.sh` 第 22 节强制）
+- **抽取器覆盖全部文案出口**（不再只认 `msg/echo/printf`）：
+  - 交互与守卫：`read -p`、`confirm`、`read_input`、`select_option`、
+    `_fb_user_read_password`、`_require_python3/_docker/_docker_compose`、`shutdown -h +5`
+  - 日志：`_log_write`
+  - 变量赋值：`local status="${F_RED}离线${F_RESET}"`、`note="[FusionBox] 流量告警：…"`
+  - 数据表：应用市场目录（74 条 `分类:名称:包:描述`）、VPS 评测矩阵（13 条
+    `名称|分类|说明|URL|模式`）、时区预设（29 条）、Docker 镜像源、集群任务表
+  - 值表达式：`${x:-默认}` / `${#arr[@]}` / `${arr[$i]}` / `$((算术))` / `$(命令)` / `$1`
+    一律**整体作为参数透传**（同一行内求值时机与结果等价，语言包里因此不留变量）
+- **全仓未抽取文案归零**：`scripts/i18n_audit.py --coverage` 逐文件均为 0；
+  `run_checks.sh` 第 22 节由「核心层」升级为「全仓」强制——新增的中文字面量出口会让闸门直接变红
+- 语言包取值统一做 shell 转义（`\`、`"`、`$`、反引号），避免 `.` 加载时被二次展开
+- 修掉 here-string（`<<<`）被误判为 heredoc、以及 `printf` 跨行格式串被跳过的两个抽取器缺陷
+- 实测（真机，逐字节对比 v1.42.0）：中文输出**完全一致**；英文模式下 9 个模块的帮助、
+  菜单与入口输出 **0 中文**
+
 ## v1.42.0 双语支持第一批：核心层 100% 双语 + 语言切换命令
 
 - i18n 核心独立为 `src/lib/i18n.sh`：两套**地位对等**的完整语言包

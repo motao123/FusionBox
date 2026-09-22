@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.42.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.0-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -142,8 +142,8 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 层 | 项目 | 结果 |
 |---|---|---|
-| 静态门禁 | `bash tests/run_checks.sh` | **184 / 184**（root 与非 root 双跑都过） |
-| 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **741** 项（33 模块），零失败 |
+| 静态门禁 | `bash tests/run_checks.sh` | **193 / 193**（root 与非 root 双跑都过） |
+| 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **764** 项（34 模块），零失败 |
 | 真实自装 | 官方 `install.sh` | Release 资产下载 + SHA256 校验 → 安装 → `fusionbox help` / 模块帮助 / 非 root 拒绝 / 未知子命令退出码 2 全部符合预期 |
 | 真机验收 | `tests/acceptance/` 9 个脚本 | **9 / 9 通过**（见下表） |
 
@@ -165,15 +165,14 @@ CI 分两层，两个仓库（GitHub / CNB）共用同一份资产：`syntax`（
 
 ## 最近更新
 
-> 当前版本 **v1.42.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **双语支持进入实施（第一批：核心层 100% 双语）**：不再有「中文模式漏英文 / 英文模式漏中文」——主菜单、全局帮助、通用提示、安装器全部走语言包，新增 `fusionbox lang zh_CN|en|auto` 命令（写入 `config.yaml` 的 `general.lang`，非 root 可查看）
-- **两套完整语言包**：`src/i18n/zh_CN.sh` 与 `src/i18n/en.sh` 各 **290 键**，键集合与占位符由测试逐键校验；英文包「含中文」直接判失败
-- **实测口径**：全新 Ubuntu 22.04 上逐字节对比——中文模式输出与 v1.41.0 **完全一致**（仅新增 `lang` 帮助行），英文模式 `help`/`version`/`status`/`隐私`/主菜单 **0 中文**
-- **顺带修掉一个脚本化缺陷**：只读命令（如 `fusionbox help system`）不再在非交互场景卡在「按 Enter 键继续...」，管道与 CI 中可直接消费输出
-- **模块层待续**：system/web/panels/cluster 等模块的菜单与提示共约 2500 条文案已具备抽取工具与门禁（`scripts/i18n_extract.py`、`scripts/i18n_audit.py`），按模块分批推进，覆盖进度只增不减
+- **双语支持收口（第二批：模块层 100% 双语）**：9 个模块全部走语言包，语言包 **3247 键**（中英逐键对等）——中文模式与 v1.42.0 输出**逐字节一致**（30 个只读场景 diff=0），英文模式下帮助、菜单与入口输出 **0 中文**
+- **抽取器覆盖全部文案出口**：除输出函数外，还处理 `read -p`/`confirm`/`select_option` 等交互参数、`_log_write`/`_require_*` 守卫、变量赋值（状态标签）、以及菜单与数据表（应用目录 74 条、评测矩阵 13 条、时区预设 29 条）
+- **全仓未抽取文案归零**：`run_checks.sh` 第 22 节升级为「全仓」强制，新增中文字面量出口会让闸门直接变红
+- **实测口径**：真机（Ubuntu 22.04）闸门 **193/193**（root 与非 root），完整套件 bash **229** 项 + Python **764** 项（34 模块）零失败；中文对照 v1.42.0 一致、英文零中文
 
 
 - **B4 收口（Cloudflare 半边）**：最小权限 API Token 真实凭据验证完成——`fusionbox-cf-guard` 负载自适应开盾真机 8/8（security_level 真实切到 under_attack + 负载回落恢复基线 + 幂等），`fusionbox-cf-ban` 封禁/解封/幂等真机全过；新增真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，任何退出路径恢复 security_level 基线并清理测试规则）
@@ -485,7 +484,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 ## 诚实边界
 
 - 测试结论严格区分四档：**本地 mock / 隔离夹具 / 真机实测 / 未验证**，发布说明随版本附带精确范围
-- 当前真机口径（v1.41.0，Ubuntu 22.04 全新环境）：快速闸门 **184/184**（root 与非 root 双跑）、完整套件 bash **229** 项 + Python **741** 项（33 模块）零失败、9 个真机验收脚本全部通过
+- 当前真机口径（v1.43.0，Ubuntu 22.04 全新环境）：快速闸门 **193/193**（root 与非 root 双跑）、完整套件 bash **229** 项 + Python **764** 项（34 模块）零失败、9 个真机验收脚本全部通过
 - **已收口的凭据依赖项**：Cloudflare 联动（v1.41.0，最小权限 Token 真机验证）、ACME 签发两条路线（v1.39.0，本地 Pebble + Let's Encrypt staging 真实 HTTP-01）
 - **仍需真实条件才能验证**：Telegram 送达（需要 bot token）、真实 OCI 实例（Oracle 三件套）、真机关机分支；OCI G32 仅完成只读识别，lookbusy 负载、oci-helper（G33）与 root/IPv6（G34）尚未实现
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见实施跟踪文档
