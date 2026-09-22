@@ -184,15 +184,15 @@ cluster_sync() {
 # 数据表: 名称|说明|远端命令
 # 命令内不包含 $ 与反引号，故可安全存放在双引号数组中；远端由目标机 shell 解析
 CLUSTER_TASKS=(
-  "$(L MSG_CL_0299)"
-  "$(L MSG_CL_0300)"
-  "$(L MSG_CL_0301)"
-  "$(L MSG_CL_0302)"
-  "$(L MSG_CL_0303)"
-  "$(L MSG_CL_0304)"
-  "$(L MSG_CL_0305)"
-  "$(L MSG_CL_0306)"
-  "$(L MSG_CL_0307)"
+  "status|$(L MSG_CL_0301)|uptime; free -h | head -2; df -h / | tail -1"
+  "update|$(L MSG_CL_0302)|if command -v apt-get >/dev/null; then apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade; elif command -v dnf >/dev/null; then dnf -y upgrade; elif command -v yum >/dev/null; then yum -y update; fi"
+  "clean|$(L MSG_CL_0303)|if command -v apt-get >/dev/null; then apt-get -y autoremove && apt-get clean; elif command -v dnf >/dev/null; then dnf -y autoremove; fi"
+  "bbr|$(L MSG_CL_0304)|sysctl -w net.ipv4.tcp_congestion_control=bbr && sysctl -w net.core.default_qdisc=fq && sysctl -n net.ipv4.tcp_congestion_control"
+  "timezone|$(L MSG_CL_0305)|(timedatectl set-timezone Asia/Shanghai 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime) && date"
+  "docker-ps|$(L MSG_CL_0306)|docker ps --format 'table {{.Names}}\t{{.Status}}'"
+  "fail2ban|$(L MSG_CL_0307)|(if command -v apt-get >/dev/null; then DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban; elif command -v dnf >/dev/null; then dnf -y install fail2ban; else exit 1; fi) && systemctl enable --now fail2ban && echo done"
+  "swap1g|$(L MSG_CL_0536)|if swapon --show=NAME --noheadings | grep -Fxq /swapfile; then echo '已有 swap'; else test ! -e /swapfile && test ! -L /swapfile && fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && (grep -Eq '^[[:space:]]*/swapfile[[:space:]]' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab); fi"
+  "reboot|$(L MSG_CL_0537)|reboot"
 )
 
 cluster_task() {
