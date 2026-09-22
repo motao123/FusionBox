@@ -239,7 +239,7 @@ check_contains "槽位 w3 -> w3" "w3" \
 check_contains "槽位 work3 -> w3" "w3" \
   bash -c 'source "'"$SRC"'/lib/common.sh"; source "'"$SRC"'/modules/workspace.sh"; _ws_work_name work3'
 check_contains "槽位 11 越界被拒" "1-10" \
-  bash -c 'source "'"$SRC"'/lib/common.sh"; source "'"$SRC"'/modules/workspace.sh"; _ws_work_name 11'
+  bash -c 'FUSION_SRC="'"$SRC"'"; . "$FUSION_SRC/lib/common.sh"; . "$FUSION_SRC/modules/workspace.sh"; _i18n_init; _ws_work_name 11'
 
 # ---------------------------------------------------------------------------
 section "10. 依赖守卫存在性覆盖"
@@ -504,12 +504,13 @@ else
   bad "general.color=false 清空 ANSI 变量"
 fi
 
-# 16.10 G07 时区预设
-tz_count="$(sed -n '/^SYSTEM_TZ_PRESETS=(/,/^)/p' "$SRC/modules/system.sh" | grep -cE '^  "[^|]+\|[^|]+\|[^|]+"$')"
-if (( tz_count >= 20 )); then
-  ok "时区预设 $tz_count >= 20"
+# 16.10 G07 时区预设（条目已走语言包：源码数调用点，语言包数文案）
+tz_count="$(sed -n '/^SYSTEM_TZ_PRESETS=(/,/^)/p' "$SRC/modules/system.sh" | grep -cE '^  "')"
+tz_pack="$(grep -cE '^MSG_SYS_[0-9]+="[^|]+\|[^|]+\|[^|]+"' "$SRC/i18n/zh_CN.sh")"
+if (( tz_count >= 20 )) && (( tz_pack >= 20 )); then
+  ok "时区预设 $tz_count >= 20（语言包 $tz_pack 条）"
 else
-  bad "时区预设 $tz_count >= 20"
+  bad "时区预设 $tz_count >= 20（语言包 $tz_pack 条）"
 fi
 check_contains "时区校验函数存在（防路径穿越）" "_system_tz_apply()" \
   grep -n '^_system_tz_apply()' "$SRC/modules/system.sh"
@@ -656,8 +657,10 @@ check_contains "server 覆盖时放行保留 TLD（生产守卫不变）" \
 check_contains "自定义 LE 目录时 certbot 显式切换 config/work/logs" \
   '--config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs"' cat "$SRC/modules/web.sh"
 
-check_contains "非 https 的 --server 被拒绝" \
-  '"--server 必须是 https:// ACME 目录 URL"' cat "$SRC/modules/web.sh"
+check_contains "非 https 的 --server 被拒绝（文案在语言包）" \
+  "server 必须是 https:// ACME 目录 URL" grep -F "server 必须是 https:// ACME 目录 URL" "$SRC/i18n/zh_CN.sh"
+check_contains "web.sh 的 --server 校验分支走语言包" \
+  'WEB_ACME_SERVER" == https://* ]] || { msg_err "$(L MSG_WEB_' cat "$SRC/modules/web.sh"
 
 for script in acme_pebble.sh acme_staging.sh; do
   if [[ -f "$REPO_ROOT/tests/acceptance/$script" ]] \
