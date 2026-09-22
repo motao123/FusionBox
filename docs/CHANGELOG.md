@@ -2,7 +2,32 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.42.0 双语支持第一批：核心层 100% 双语 + 语言切换命令
+
+- i18n 核心独立为 `src/lib/i18n.sh`：两套**地位对等**的完整语言包
+  （`src/i18n/zh_CN.sh` / `en.sh`，各 290 键），按当前语言取值、缺键回落另一语言
+  并登记缺失；颜色与变量一律作为参数传入，语言包内不含转义码
+- 新增 `fusionbox lang [zh_CN|en|auto]`：查看/切换界面语言（写入
+  `config.yaml` 的 `general.lang`，非 root 可查看）；`FUSION_LANG` 仍可单次覆盖
+- **核心层完成**：主菜单、全局帮助、通用提示（暂停/确认/选择）、依赖守卫、
+  卸载流程、安装器全部走语言包；`fusionbox help` 新增 `lang` 一行
+- **顺带修掉脚本化缺陷**：只读命令在非交互场景不再卡在「按 Enter 键继续...」
+  （`pause` 在 stdin 非 TTY 时立即返回），管道与 CI 可直接消费输出
+- 工具与门禁：`scripts/i18n_extract.py`（抽取/改写，带两条防丢变量自检）、
+  `scripts/i18n_audit.py`（键与占位符一致性、英文包无中文、覆盖进度、安装器内置表漂移）、
+  `tests/test_i18n.py`（21 项契约测试）、`run_checks.sh` 第 22 节
+- 实测（全新 Ubuntu 22.04，逐字节对比 v1.41.0）：中文模式输出**完全一致**（仅新增 lang 帮助行）；
+  英文模式 `help` / `version` / `status` / `privacy` / 主菜单 **0 中文**
+- 模块层待续：system(911) / web(578) / panels(298) / cluster(230) / network(120) /
+  market(110) / workspace(98) / proxy(93) / warp(76) 共约 2514 条文案，已有工具链，
+  按模块分批推进，覆盖计数用棘轮约束只增不减
+
 ## v1.41.0 Cloudflare 联动真实凭据验证与 Global Key 铸造（B4 收口）
+
+- **B4 收口（Cloudflare 半边）**：最小权限 API Token 真实凭据验证完成——`fusionbox-cf-guard` 负载自适应开盾真机 8/8（security_level 真实切到 under_attack + 负载回落恢复基线 + 幂等），`fusionbox-cf-ban` 封禁/解封/幂等真机全过；新增真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，任何退出路径恢复 security_level 基线并清理测试规则）
+- **实测修复**：CF API 会返回 pretty JSON（`"success": true` 冒号带空格），cf-ban/cf-guard 的紧凑格式断言全部改为空白容忍——静态测试抓不到、真机首跑即现形
+- **新功能**：Cloudflare 联动配置支持直接粘贴 Global API Key——自动列出账户 Zone、现场铸造仅限所选 Zone 的最小权限 Token（Zone Settings + Firewall Services，14 天有效期），Global Key 本身绝不落盘；真实 Key 端到端验证通过（铸造 → verify active → 读取 security_level）
+- **TG 半边维持**：`system notify` 真实发送验证仍需 bot token，凭据缺失时显式拒绝的姿势保持不变
 
 - B4 收口（Cloudflare 半边）：用户提供 Global API Key 后，按 roadmap 建议
   现场铸造仅限测试 Zone（endgo.top）的最小权限 API Token

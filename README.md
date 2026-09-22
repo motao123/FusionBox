@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.41.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.42.0-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -67,6 +67,7 @@ fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路�
 帮助体系是只读的，**非 root 也能查**；`fusionbox help system` 与 `fusionbox system help` 输出正文逐字相同：
 
 ```bash
+fusionbox lang en                     # 切换界面语言（zh_CN / en / auto）
 fusionbox help                        # 总帮助：9 大模块 + 全局命令
 fusionbox help system                 # 模块详细帮助（含命令清单 + 本机实时状态行）
 fusionbox system help                 # 等价写法，正文相同
@@ -164,9 +165,16 @@ CI 分两层，两个仓库（GitHub / CNB）共用同一份资产：`syntax`（
 
 ## 最近更新
 
-> 当前版本 **v1.41.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.42.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
+
+- **双语支持进入实施（第一批：核心层 100% 双语）**：不再有「中文模式漏英文 / 英文模式漏中文」——主菜单、全局帮助、通用提示、安装器全部走语言包，新增 `fusionbox lang zh_CN|en|auto` 命令（写入 `config.yaml` 的 `general.lang`，非 root 可查看）
+- **两套完整语言包**：`src/i18n/zh_CN.sh` 与 `src/i18n/en.sh` 各 **290 键**，键集合与占位符由测试逐键校验；英文包「含中文」直接判失败
+- **实测口径**：全新 Ubuntu 22.04 上逐字节对比——中文模式输出与 v1.41.0 **完全一致**（仅新增 `lang` 帮助行），英文模式 `help`/`version`/`status`/`隐私`/主菜单 **0 中文**
+- **顺带修掉一个脚本化缺陷**：只读命令（如 `fusionbox help system`）不再在非交互场景卡在「按 Enter 键继续...」，管道与 CI 中可直接消费输出
+- **模块层待续**：system/web/panels/cluster 等模块的菜单与提示共约 2500 条文案已具备抽取工具与门禁（`scripts/i18n_extract.py`、`scripts/i18n_audit.py`），按模块分批推进，覆盖进度只增不减
+
 
 - **B4 收口（Cloudflare 半边）**：最小权限 API Token 真实凭据验证完成——`fusionbox-cf-guard` 负载自适应开盾真机 8/8（security_level 真实切到 under_attack + 负载回落恢复基线 + 幂等），`fusionbox-cf-ban` 封禁/解封/幂等真机全过；新增真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，任何退出路径恢复 security_level 基线并清理测试规则）
 - **实测修复**：CF API 会返回 pretty JSON（`"success": true` 冒号带空格），cf-ban/cf-guard 的紧凑格式断言全部改为空白容忍——静态测试抓不到、真机首跑即现形
@@ -483,6 +491,9 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
 - 统计 Worker 已部署并使用 Cloudflare D1 聚合；Pages 显示的是去重后的累计匿名装机数
+- **双语口径**：核心层（主菜单/全局帮助/通用提示/安装器）为两套完整语言包，英文模式无中文；
+  模块层菜单与提示仍在分批抽取（约 2500 条），进度与约定见 [docs/i18n.md](docs/i18n.md)
+- 第三方工具（docker/certbot/apt）的原始输出与品牌专有名词不做翻译
 - 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围
 
 完整对账与待办：[docs/implementation-status.md](docs/implementation-status.md)；**未完成项的具体做法与验收口径**：[docs/roadmap.md](docs/roadmap.md)
@@ -524,6 +535,7 @@ fusionbox status      # 系统状态概览
 fusionbox version     # 查看版本
 fusionbox update      # 更新 FusionBox
 fusionbox privacy status|on|off|reset-id  # 匿名统计（默认关闭）
+fusionbox lang zh_CN|en|auto             # 界面语言（可随时切换，非 root 可查看）
 fusionbox uninstall   # 卸载 FusionBox 本体（不动各模块安装的服务）
 ```
 
@@ -605,6 +617,7 @@ FusionBox/
 - [未完成项与可执行方案](docs/roadmap.md)
 - [匿名统计与隐私说明](docs/privacy.md)
 - [声明式应用目录与高权限边界](docs/market-catalog.md)
+- [界面语言与本地化约定](docs/i18n.md)
 - [完整变更历史](docs/CHANGELOG.md)
 - [项目主页（Pages）](https://motao123.github.io/FusionBox/)
 

@@ -265,7 +265,11 @@ section "11. A/B 档新入口"
 check_contains "fusion.sh 路由 log" "show_logs" grep -F 'show_logs' "$REPO_ROOT/fusion.sh"
 check_contains "system_rescue 存在" "system_rescue()" grep -F 'system_rescue()' "$SRC/modules/system.sh"
 check_contains "cluster alias 速查表入口" "cluster_k_alias()" grep -F 'cluster_k_alias()' "$SRC/modules/cluster.sh"
-check_contains "help 补充依赖说明" "依赖" grep -F '依赖:' "$REPO_ROOT/fusion.sh"
+# 文案已抽进语言包（v1.42.0）：断言改为语言包内容 + 调用点存在
+check_contains "help 补充依赖说明（语言包）" "依赖:" \
+  grep -F 'MSG_MAIN_0083=' "$SRC/i18n/zh_CN.sh"
+check_contains "help 依赖说明调用点存在" "MSG_MAIN_0083" \
+  grep -F 'MSG_MAIN_0083' "$REPO_ROOT/fusion.sh"
 
 # ---------------------------------------------------------------------------
 section "12. C 档: 更新后展示本次变更"
@@ -714,6 +718,39 @@ check_contains "铸造 payload 含 Firewall Services Write 权限组" \
   '43137f8d07884d3198dc0ee77ca6e79b' cat "$SRC/modules/web.sh"
 check_contains "Global Key 分支不直接写入原始 Key（先铸造）" \
   'token=$minted' cat "$SRC/modules/web.sh"
+
+# ---------------------------------------------------------------------------
+section "22. 双语语言包契约（v1.42.0）"
+# ---------------------------------------------------------------------------
+if python3 "$REPO_ROOT/scripts/i18n_audit.py" --quiet >/dev/null 2>&1; then
+  ok "语言包审计通过（键/占位符一致、英文包无中文、安装器内置表同步）"
+else
+  bad "语言包审计通过（键/占位符一致、英文包无中文、安装器内置表同步）"
+  python3 "$REPO_ROOT/scripts/i18n_audit.py" 2>&1 | tail -8 | sed 's/^/       | /'
+fi
+
+# 核心层必须已 100% 抽取（模块层按批次推进，用棘轮防止回退）
+if REPO_ROOT="$REPO_ROOT" python3 - <<'PYEOF' >/dev/null 2>&1
+import sys, os
+sys.path.insert(0, os.environ['REPO_ROOT'] + '/scripts')
+import i18n_audit
+rows, total = i18n_audit.count_untranslated(i18n_audit.CORE_FILES)
+sys.exit(0 if total == 0 else 1)
+PYEOF
+then
+  ok "核心层（主菜单/全局帮助/通用提示/安装器）已全部走语言包"
+else
+  bad "核心层（主菜单/全局帮助/通用提示/安装器）已全部走语言包"
+fi
+
+check_contains "i18n 核心独立成文件（门禁提示可提前本地化）" \
+  '_i18n_init' cat "$SRC/lib/i18n.sh"
+check_contains "lang 子命令已接入路由" \
+  'lang_command' cat "$REPO_ROOT/fusion.sh"
+check_contains "非交互下 pause 不阻塞" \
+  '[[ -t 0 ]] || return 0' cat "$SRC/lib/common.sh"
+check_contains "语言包加载在根权限门禁之前" \
+  'i18n.sh' grep -F 'lib/i18n.sh' "$REPO_ROOT/fusion.sh"
 
 # ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'
