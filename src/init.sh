@@ -1,13 +1,13 @@
 # FusionBox Initialization
 # Loaded by fusion.sh on startup
 
-export FUSION_VER="1.41.0"
+export FUSION_VER="1.42.0"
 export FUSION_CODENAME="FusionBox"
 
 # Source common library
 FUSION_SRC="${FUSION_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 . "$FUSION_SRC/lib/common.sh" || {
-  echo "致命错误：无法加载公共函数库 $FUSION_SRC/lib/common.sh"
+  echo "$(L MSG_INIT_0001 "$FUSION_SRC")"
   exit 1
 }
 
@@ -24,7 +24,7 @@ _detect_env
 _load_config
 
 # Initialize language
-_init_lang
+_i18n_init
 
 # Initialize logging unless this is an explicitly read-only Oracle inspection.
 if [[ "${FUSION_READONLY:-0}" != "1" ]]; then
@@ -42,8 +42,8 @@ _print_banner() {
   msg "  ██║     ╚██████╔╝███████║██║╚██████╔╝██║ ╚████║██████╔╝╚██████╔╝██╔╝ ██╗"
   msg "  ╚═╝      ╚═════╝ ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝"
   msg "${F_RESET}"
-  msg "  ${F_GREEN}欢迎使用 FusionBox - Linux 全能管理工具箱${F_RESET}"
-  msg "  ${F_CYAN}版本: $FUSION_VER ($FUSION_CODENAME)${F_RESET}"
+  msg "$(L MSG_INIT_0002 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_INIT_0003 "${F_CYAN}" "$FUSION_VER" "$FUSION_CODENAME" "${F_RESET}")"
   msg "  ${F_YELLOW}OS: $F_OS_NAME $F_OS_VER | Arch: $F_ARCH | Kernel: $F_KERNEL${F_RESET}"
   msg ""
   _log_write "FusionBox v$FUSION_VER started on $F_OS_NAME $F_OS_VER ($F_ARCH)"
@@ -64,7 +64,7 @@ _load_module() {
 # Check root (most operations require root)
 _require_root() {
   if [[ $F_IS_ROOT -ne 1 ]]; then
-    msg_err "需要 root 权限，请以 root 身份运行"
+    msg_err "$(L MSG_INIT_0004)"
     exit 1
   fi
 }

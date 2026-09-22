@@ -62,6 +62,7 @@ PY_TESTS=(
   test_installer.py
   test_proxy_lifecycle.py
   test_release_downloads.py
+  test_i18n.py
 )
 
 # ---- 自检：不允许存在未登记的测试文件 ----

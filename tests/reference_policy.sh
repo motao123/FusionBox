@@ -12,7 +12,8 @@
 
 cd "$(dirname "$0")/.." || exit 1
 
-AUTHORIZED_233BOY_FILES="./README.md ./docs/CHANGELOG.md ./fusion.sh ./src/modules/proxy.sh"
+# 语言包里也保留了 233boy 署名文案（MSG_* 条目），因此两个语言包同样属于授权文件。
+AUTHORIZED_233BOY_FILES="./README.md ./docs/CHANGELOG.md ./fusion.sh ./src/modules/proxy.sh ./src/i18n/zh_CN.sh ./src/i18n/en.sh"
 FORBIDDEN_PATTERNS="kejilion BlueSkyXN SKY-BOX Neo-TOWeR"
 
 rc=0

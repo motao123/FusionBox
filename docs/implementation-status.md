@@ -1,4 +1,4 @@
-# 当前实施状态（v1.41.0）
+# 当前实施状态（v1.42.0）
 
 2026-09-21 本轮（1.40.0，roadmap 批次 4）按判定收尾：`vocechat` 入内置目录并真机验收（`market_app_expansion.sh`：安装/HTTP/卸载保留卷/reuse-data 重装）；实测 Webtop（s6）与 `cap_drop ALL` 不兼容并如实记录；harness 管理器设计稿（docs/harness-design.md，L1–L4 分层验收）；`netopt_sysctl.sh` 真实改值 + 快照恢复（11 键零漂移）收口 G18/G67 的真实执行缺口；一键 DD 与 Oracle 三件套的判定收口（设计决策）。回归与验收：闸门 177/177（root 与非 root）+ 完整套件 bash 229 项 + Python 741 项（33 模块）零失败，真机脚本全部可一键重放。环境限制未变：真实 OCI 实例、TG/CF 真实凭据、模型 API 凭据。
 

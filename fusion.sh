@@ -36,20 +36,32 @@ esac
 case "${1:-}" in
   help|h|version|v) ;;
   privacy)
-    [[ "${2:-status}" == status || $EUID -eq 0 ]] || { echo "需要 root 权限"; exit 1; } ;;
-  *) [[ $EUID -eq 0 || $FUSION_READONLY -eq 1 || $FUSION_HELPONLY -eq 1 ]] || { echo "需要 root 权限"; exit 1; } ;;
+    [[ "${2:-status}" == status || $EUID -eq 0 ]] || { echo "$(L MSG_MAIN_0001)"; exit 1; } ;;
+  lang|language)
+    [[ "${2:-status}" == status || $EUID -eq 0 ]] || { echo "$(L MSG_MAIN_0001)"; exit 1; } ;;
+  *) [[ $EUID -eq 0 || $FUSION_READONLY -eq 1 || $FUSION_HELPONLY -eq 1 ]] || { echo "$(L MSG_MAIN_0001)"; exit 1; } ;;
 esac
 
 # Resolve script path through symlinks (install.sh links /usr/local/bin/fusionbox
 # to /etc/fusionbox/fusion.sh; using $0 directly would break the install layout)
 _source_path="${BASH_SOURCE[0]}"
-while [[ -L "$_source_path" ]]; do
+# 语言包必须在根权限门禁之前就绪：门禁提示同样需要本地化。
+_fb_resolve_self() {
+  while [[ -L "$_source_path" ]]; do
   _link_dir="$(cd "$(dirname "$_source_path")" && pwd)"
   _source_path="$(readlink "$_source_path")"
   [[ $_source_path != /* ]] && _source_path="$_link_dir/$_source_path"
 done
-export FUSION_BASE="$(cd "$(dirname "$_source_path")" && pwd)"
-export FUSION_SRC="$FUSION_BASE/src"
+  export FUSION_BASE="$(cd "$(dirname "$_source_path")" && pwd)"
+  export FUSION_SRC="$FUSION_BASE/src"
+}
+_fb_resolve_self
+
+if [[ -f "$FUSION_SRC/lib/i18n.sh" ]]; then
+  . "$FUSION_SRC/lib/i18n.sh"
+  [[ -n "${FUSION_LANG:-}" ]] && F_LANG="$FUSION_LANG"
+  _i18n_init
+fi
 
 # Inspection exits before normal startup loads configuration, logging or telemetry.
 if [[ $FUSION_READONLY -eq 1 ]]; then
@@ -130,7 +142,7 @@ route() {
       ;;
     version|v)
       msg "$FUSION_CODENAME v$FUSION_VER"
-      msg "版本: $FUSION_VER"
+      msg "$(L MSG_MAIN_0002 "$FUSION_VER")"
       ;;
     update|up)
       if [[ "${1:-}" == "--cron" ]]; then
@@ -148,6 +160,10 @@ route() {
       ;;
     privacy)
       privacy_command "$@"
+      ;;
+    # 界面语言：查看/切换（写入 config.yaml 的 general.lang）
+    lang|language)
+      lang_command "$@"
       ;;
     # FusionBox 自身日志（主菜单/帮助里也可发现）
     log|logs)
@@ -171,8 +187,8 @@ route() {
       main_menu
       ;;
     *)
-      msg_err "未知命令: $cmd"
-      msg_info "用法: fusionbox help"
+      msg_err "$(L MSG_MAIN_0003 "$cmd")"
+      msg_info "$(L MSG_MAIN_0004)"
       return 1
       ;;
   esac
@@ -181,7 +197,7 @@ route() {
 # ---- Status Overview ----
 show_status() {
   _print_banner
-  msg_title "系统状态概览"
+  msg_title "$(L MSG_MAIN_0005)"
   msg ""
   msg "  ${F_BOLD}CPU:${F_RESET} $(_cpu_cores_display) | $(free -h | awk '/Mem/{print $2}') RAM"
   msg "  ${F_BOLD}Disk:${F_RESET} $(df -h / | awk 'NR==2{print $3 "/" $2 " (" $5 ")"}')"
@@ -192,23 +208,23 @@ show_status() {
   msg ""
 
   # Check proxy status
-  local proxy_status="未安装"
+  local proxy_status="$(L MSG_MAIN_0110)"
   if [[ -f /etc/fusionbox/proxy/current_backend ]]; then
     if systemctl is-active fusionbox-proxy &>/dev/null; then
-      proxy_status="运行中"
+      proxy_status="$(L MSG_MAIN_0111)"
     else
-      proxy_status="已停止"
+      proxy_status="$(L MSG_MAIN_0112)"
     fi
   fi
-  _module_status "代理管理" "$proxy_status"
+  _module_status "$(L MOD_PROXY)" "$proxy_status"
 
   # Check 233boy sing-box
   if [[ -x /usr/local/bin/sing-box && -d /etc/sing-box/sh ]]; then
     local sb_st
     if systemctl is-active sing-box &>/dev/null; then
-      sb_st="运行中"
+      sb_st="$(L MSG_MAIN_0111)"
     else
-      sb_st="已停止"
+      sb_st="$(L MSG_MAIN_0112)"
     fi
     _module_status "sing-box(233boy)" "$sb_st"
   fi
@@ -219,7 +235,7 @@ show_status() {
 
   # Check Docker
   if command -v docker &>/dev/null; then
-    _module_status "Docker" "$(docker info --format '{{.ServerVersion}}' 2>/dev/null || echo "未运行")"
+    _module_status "Docker" "$(docker info --format '{{.ServerVersion}}' 2>/dev/null || echo "$(L MSG_MAIN_0006)")"
   fi
 
   # Check Nginx
@@ -332,7 +348,7 @@ self_update() (
   trap 'rm -rf -- "$tmpdir"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  msg_info "正在检查更新..."
+  msg_info "$(L MSG_MAIN_0007)"
 
   metadata="$tmpdir/latest-release.json"
   if _update_download "$FUSION_API/releases/latest" "$metadata" \
@@ -344,14 +360,14 @@ self_update() (
       asset="FusionBox-$tag.tar.gz"
       archive_root="FusionBox"
       if [[ "$remote_ver" == "$FUSION_VER" ]]; then
-        msg_ok "已是最新版本"
+        msg_ok "$(L MSG_MAIN_0008)"
         return 0
       fi
       _version_is_newer "$remote_ver" "$FUSION_VER" || {
-        msg_warn "最新稳定 Release ($remote_ver) 早于当前版本 ($FUSION_VER)，拒绝降级"
+        msg_warn "$(L MSG_MAIN_0009 "$remote_ver" "$FUSION_VER")"
         return 0
       }
-      msg_info "发现最新稳定版本 $tag，正在下载已校验的 Release 包..."
+      msg_info "$(L MSG_MAIN_0010 "$tag")"
       _update_download "$FUSION_REPO/releases/download/$tag/$asset" "$tmpdir/fusionbox.tar.gz" || download_status=1
       if [[ $download_status -eq 0 ]]; then
         _update_download "$FUSION_REPO/releases/download/$tag/SHA256SUMS" "$tmpdir/SHA256SUMS" || download_status=1
@@ -370,7 +386,7 @@ self_update() (
         [[ "$actual" == "$expected" ]] || download_status=1
       fi
       if [[ $download_status -ne 0 ]]; then
-        msg_err "Release 资产下载或 SHA256 校验失败；为避免降级到未校验内容，更新已停止"
+        msg_err "$(L MSG_MAIN_0011)"
         return 1
       fi
     else
@@ -381,15 +397,15 @@ self_update() (
   fi
 
   if [[ $download_status -eq 2 ]]; then
-    msg "${F_YELLOW}[WARN]${F_RESET} GitHub latest Release API 不可用或受限，回退到 main 分支快照。"
-    msg "${F_YELLOW}[WARN]${F_RESET} main 快照没有 Release SHA256SUMS，无法提供发布资产级完整性校验。"
+    msg "$(L MSG_MAIN_0012 "${F_YELLOW}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0013 "${F_YELLOW}" "${F_RESET}")"
     _update_download "$FUSION_REPO/archive/refs/heads/main.tar.gz" "$tmpdir/fusionbox.tar.gz" || return 1
     archive_root="FusionBox-main"
     tag=""
   fi
 
   _update_validate_archive "$tmpdir/fusionbox.tar.gz" "$archive_root" "$tmpdir" || {
-    msg_err "归档结构或路径安全检查失败"
+    msg_err "$(L MSG_MAIN_0014)"
     return 1
   }
   tar xzf "$tmpdir/fusionbox.tar.gz" -C "$tmpdir" || return 1
@@ -398,15 +414,15 @@ self_update() (
   remote_ver="$(tr -d '[:space:]' < "$tmpdir/$archive_root/version.txt")" || return 1
   [[ "$remote_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
   [[ -z "$tag" || "$remote_ver" == "${tag#v}" ]] || {
-    msg_err "Release 版本与归档内容不一致"
+    msg_err "$(L MSG_MAIN_0015)"
     return 1
   }
   if [[ "$remote_ver" == "$FUSION_VER" ]]; then
-    msg_ok "已是最新版本"
+    msg_ok "$(L MSG_MAIN_0008)"
     return 0
   fi
   _version_is_newer "$remote_ver" "$FUSION_VER" || {
-    msg_warn "远端版本 ($remote_ver) 早于当前版本 ($FUSION_VER)，拒绝降级"
+    msg_warn "$(L MSG_MAIN_0016 "$remote_ver" "$FUSION_VER")"
     return 0
   }
   source "$FUSION_BASE/src/lib/deploy.sh" || return 1
@@ -414,7 +430,7 @@ self_update() (
   fusion_deploy "$tmpdir/$archive_root" "$FUSION_BASE" || return 1
   FUSION_VER="$remote_ver"
   _telemetry_event update
-  msg_ok "更新完成，重新运行 fusionbox 生效"
+  msg_ok "$(L MSG_MAIN_0017)"
   _update_show_notes "$tmpdir/$archive_root" "$remote_ver"
 )
 
@@ -422,50 +438,52 @@ self_update() (
 _UPDATE_CRON_FILE="/etc/cron.d/fusionbox-update"
 
 self_update_cron() {
-  [[ $EUID -eq 0 ]] || { echo "需要 root 权限"; return 1; }
+  [[ $EUID -eq 0 ]] || { echo "$(L MSG_MAIN_0001)"; return 1; }
   local action="${1:-status}"
   case "$action" in
     status)
       if [[ -f "$_UPDATE_CRON_FILE" ]]; then
-        msg_ok "自动更新: 已启用（每周日 03:07）"
+        msg_ok "$(L MSG_MAIN_0018)"
         cat "$_UPDATE_CRON_FILE"
       else
-        msg "  自动更新: 未启用（fusionbox update --cron on 开启）"
+        msg "$(L MSG_MAIN_0019)"
       fi
       ;;
     on)
-      [[ -x /usr/local/bin/fusionbox ]] || { msg_err "仅支持已安装到 /usr/local/bin/fusionbox 的部署"; return 1; }
-      if confirm "启用每周自动更新（周日 03:07 自动运行 fusionbox update 并写日志）？"; then
+      [[ -x /usr/local/bin/fusionbox ]] || { msg_err "$(L MSG_MAIN_0020)"; return 1; }
+      if confirm "$(L MSG_MAIN_0113)"; then
         printf '7 3 * * 0 root /usr/local/bin/fusionbox update >> /root/.config/fusionbox/logs/auto-update.log 2>&1\n' > "$_UPDATE_CRON_FILE"
         chmod 600 "$_UPDATE_CRON_FILE"
-        msg_ok "自动更新已启用（cron.d/fusionbox-update）"
-        _log_write "自动更新已启用"
+        msg_ok "$(L MSG_MAIN_0021)"
+        _log_write "$(L MSG_MAIN_0114)"
       fi
       ;;
     off)
       if [[ -f "$_UPDATE_CRON_FILE" ]]; then
         rm -f "$_UPDATE_CRON_FILE"
-        msg_ok "自动更新已关闭"
-        _log_write "自动更新已关闭"
+        msg_ok "$(L MSG_MAIN_0022)"
+        _log_write "$(L MSG_MAIN_0115)"
       else
-        msg_info "本就未启用"
+        msg_info "$(L MSG_MAIN_0023)"
       fi
       ;;
     *)
-      msg_err "未知参数: $action（可用: status/on/off）"; return 2 ;;
+      msg_err "$(L MSG_MAIN_0024 "$action")"; return 2 ;;
   esac
 }
 
 # ---- Self Uninstall ----
 self_uninstall() {
-  msg_warn "将删除 FusionBox 本体：$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "$FUSION_BASE")")、/usr/local/bin/fusionbox、$FUSION_CONFIG_DIR（业务状态、配置与日志保留）"
-  msg_warn "各模块安装的服务（代理、面板、Docker 等）不会被卸载，请先在对应模块内清理"
-  confirm "确认卸载 FusionBox 本体？" || { msg_info "已取消"; return 1; }
-  [[ "$FUSION_BASE" == /etc/fusionbox ]] || { msg_err "仅支持卸载 /etc/fusionbox 中的安装"; return 1; }
+  local _body_dir
+  _body_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "$FUSION_BASE")")"
+  msg_warn "$(L MSG_MAIN_0104 "$_body_dir" "$FUSION_CONFIG_DIR")"
+  msg_warn "$(L MSG_MAIN_0025)"
+  confirm "$(L MSG_MAIN_0107)" || { msg_info "$(L MSG_MAIN_0026)"; return 1; }
+  [[ "$FUSION_BASE" == /etc/fusionbox ]] || { msg_err "$(L MSG_MAIN_0027)"; return 1; }
   rm -rf "$FUSION_BASE/src" "$FUSION_BASE/templates"
   rm -f "$FUSION_BASE/fusion.sh" "$FUSION_BASE/install.sh" "$FUSION_BASE/version.txt"
   rm -f /usr/local/bin/fusionbox
-  msg_info "业务状态、配置与日志已保留: $FUSION_BASE 和 $FUSION_CONFIG_DIR"
+  msg_info "$(L MSG_MAIN_0028 "$FUSION_BASE" "$FUSION_CONFIG_DIR")"
   # 清理 k 命令别名注入
   local rc
   for rc in /root/.bashrc "$HOME/.bashrc"; do
@@ -473,7 +491,7 @@ self_uninstall() {
       sed -i '/fusionbox\/kcmd\/aliases\.sh/d' "$rc"
     fi
   done
-  msg_ok "FusionBox 本体已卸载"
+  msg_ok "$(L MSG_MAIN_0029)"
 }
 
 # ---- Help ----
@@ -481,15 +499,15 @@ self_uninstall() {
 # 只读入口（非 root 也可用），新增模块时在此登记即可被 `fusionbox help <模块>` 命中。
 _help_module_spec() {
   case "${1:-}" in
-    proxy|p)              printf '%s\n' 'proxy proxy_help 代理管理' ;;
-    system|sys|s)         printf '%s\n' 'system system_help 系统管理' ;;
-    network|net|n)        printf '%s\n' 'network network_help 网络工具' ;;
-    web|w|lnmp)           printf '%s\n' 'web web_help 网站部署' ;;
-    panels|panel|tools|t) printf '%s\n' 'panels panels_help 面板与工具' ;;
-    market|m|apps)        printf '%s\n' 'market market_help 应用市场' ;;
-    warp)                 printf '%s\n' 'warp warp_help WARP 管理' ;;
-    workspace|ws)         printf '%s\n' 'workspace workspace_help 后台工作区' ;;
-    cluster|cl)           printf '%s\n' 'cluster cluster_help 集群控制' ;;
+    proxy|p)              printf '%s\n' "proxy proxy_help $(L MOD_PROXY)" ;;
+    system|sys|s)         printf '%s\n' "system system_help $(L MOD_SYSTEM)" ;;
+    network|net|n)        printf '%s\n' "network network_help $(L MOD_NETWORK)" ;;
+    web|w|lnmp)           printf '%s\n' "web web_help $(L MOD_WEB)" ;;
+    panels|panel|tools|t) printf '%s\n' "panels panels_help $(L MOD_PANELS)" ;;
+    market|m|apps)        printf '%s\n' "market market_help $(L MOD_MARKET)" ;;
+    warp)                 printf '%s\n' "warp warp_help $(L MOD_WARP)" ;;
+    workspace|ws)         printf '%s\n' "workspace workspace_help $(L MOD_WORKSPACE)" ;;
+    cluster|cl)           printf '%s\n' "cluster cluster_help $(L MOD_CLUSTER)" ;;
     *) return 1 ;;
   esac
 }
@@ -513,27 +531,27 @@ _help_module_state() {
   case "$1" in
     proxy)
       if _singbox_233_installed 2>/dev/null; then
-        msg_ok "已安装 233boy/sing-box"
+        msg_ok "$(L MSG_MAIN_0030)"
       elif [[ -d /etc/fusionbox/proxy/bin && -n "$(ls -A /etc/fusionbox/proxy/bin 2>/dev/null)" ]]; then
-        msg_ok "已安装 FusionBox 代理核心"
+        msg_ok "$(L MSG_MAIN_0031)"
       else
-        msg_warn "未安装代理核心（fusionbox proxy install）"
+        msg_warn "$(L MSG_MAIN_0032)"
       fi
       ;;
     system)
-      msg_ok "常驻可用（系统自带命令，无需安装）"
+      msg_ok "$(L MSG_MAIN_0033)"
       ;;
     network)
-      msg_ok "常驻可用（系统自带命令，无需安装）"
+      msg_ok "$(L MSG_MAIN_0033)"
       ;;
     web)
       command -v nginx &>/dev/null && present+=("nginx $(_help_probe nginx -v 2>&1 | awk -F/ '{print $2}')")
       command -v php   &>/dev/null && present+=("php $(_help_probe php -r 'echo PHP_VERSION;')")
       command -v mysql &>/dev/null && present+=("mysql")
       if [[ ${#present[@]} -gt 0 ]]; then
-        msg_ok "已安装: ${present[*]}"
+        msg_ok "$(L MSG_MAIN_0034 "${present[*]}")"
       else
-        msg_warn "未检测到 Nginx/PHP/MySQL（fusionbox web lnmp）"
+        msg_warn "$(L MSG_MAIN_0035)"
       fi
       ;;
     panels)
@@ -542,28 +560,28 @@ _help_module_state() {
         # 更不容易因超时出现「同一台机器两次结果不同」。超时只说明守护进程没在
         # 时限内回话，不等于没装，因此文案不替它下结论。
         local dver; dver="$(_help_probe docker version --format '{{.Server.Version}}')"
-        msg_ok "Docker ${dver:-已安装（守护进程未响应）}"
+        msg_ok "$(L MSG_MAIN_0105 "${dver:-$(L MSG_MAIN_0106)}")"
       else
-        msg_warn "未安装 Docker"
+        msg_warn "$(L MSG_MAIN_0036)"
       fi
       ;;
     market)
-      msg_ok "常驻可用（依赖系统包管理器）"
+      msg_ok "$(L MSG_MAIN_0037)"
       ;;
     warp)
       if command -v warp-cli &>/dev/null; then
-        msg_ok "已安装 warp-cli"
+        msg_ok "$(L MSG_MAIN_0038)"
       else
-        msg_warn "未安装 WARP（fusionbox warp install）"
+        msg_warn "$(L MSG_MAIN_0039)"
       fi
       ;;
     workspace)
       command -v screen &>/dev/null && present+=("screen")
       command -v tmux   &>/dev/null && present+=("tmux")
       if [[ ${#present[@]} -gt 0 ]]; then
-        msg_ok "已安装: ${present[*]}"
+        msg_ok "$(L MSG_MAIN_0034 "${present[*]}")"
       else
-        msg_warn "未安装 screen/tmux（可在模块菜单内安装）"
+        msg_warn "$(L MSG_MAIN_0040)"
       fi
       ;;
     cluster)
@@ -571,7 +589,7 @@ _help_module_state() {
       if [[ -f /etc/fusionbox/cluster/nodes.conf ]]; then
         node_count=$(grep -cve '^[[:space:]]*$' /etc/fusionbox/cluster/nodes.conf 2>/dev/null || echo 0)
       fi
-      msg_ok "常驻可用；已登记节点 $node_count 个"
+      msg_ok "$(L MSG_MAIN_0041 "$node_count")"
       ;;
   esac
 }
@@ -585,78 +603,79 @@ show_help() {
   if [[ -n "$mod" && "$mod" != "all" ]]; then
     local spec module helpfn label
     if ! spec="$(_help_module_spec "$mod")"; then
-      msg_err "未知模块: $mod"
+      msg_err "$(L MSG_MAIN_0042 "$mod")"
       msg ""
-      msg "  可用模块: proxy system network web panels market warp workspace cluster"
-      msg "  用法: fusionbox help <模块>     例如 fusionbox help system"
+      msg "$(L MSG_MAIN_0043)"
+      msg "$(L MSG_MAIN_0044)"
       msg ""
       [[ -t 0 ]] && pause    # 非交互下不暂停，保证退出码能传回调用脚本
       return 1
     fi
     read -r module helpfn label <<< "$spec"
     if ! _load_module "$module"; then
-      msg_err "无法加载模块 $module（缺少 src/modules/$module.sh）"
+      msg_err "$(L MSG_MAIN_0045 "$module" "$module")"
       [[ -t 0 ]] && pause
       return 2
     fi
     "$helpfn"
-    msg "  ${F_BOLD}本机状态 (${label}):${F_RESET}"
+    msg "$(L MSG_MAIN_0046 "${F_BOLD}" "${label}" "${F_RESET}")"
     msg "    $(_help_module_state "$module")"
     msg ""
-    msg "  ${F_BOLD}提示:${F_RESET} fusionbox $module <命令>   直接执行，如 fusionbox $module help"
-    msg "  ${F_BOLD}提示:${F_RESET} fusionbox help             查看全部模块"
+    msg "$(L MSG_MAIN_0047 "${F_BOLD}" "${F_RESET}" "$module" "$module")"
+    msg "$(L MSG_MAIN_0048 "${F_BOLD}" "${F_RESET}")"
     msg ""
     pause
     return 0
   fi
 
-  msg_title "FusionBox 帮助"
+  msg_title "$(L MSG_MAIN_0049)"
   msg ""
-  msg "  ${F_BOLD}用法:${F_RESET} fusionbox <命令> [选项]"
+  msg "$(L MSG_MAIN_0050 "${F_BOLD}" "${F_RESET}")"
   msg ""
-  msg "  ${F_BOLD}模块:${F_RESET}"
-  msg "  ${F_GREEN}proxy, p${F_RESET}        代理管理 - 多后端代理管理"
-  msg "  ${F_GREEN}system, sys${F_RESET}      系统管理 - BBR、基准测试、备份、工具"
-  msg "  ${F_GREEN}network, net${F_RESET}     网络工具 - IP、流媒体、测速"
-  msg "  ${F_GREEN}web${F_RESET}              网站部署 - LNMP、网站、SSL、反代"
-  msg "  ${F_GREEN}panels, tools${F_RESET}    面板与工具 - Docker、面板、实用工具"
-  msg "  ${F_GREEN}market${F_RESET}           应用市场 - 一键安装应用"
-  msg "  ${F_GREEN}warp${F_RESET}             WARP 管理 - Cloudflare WARP 解锁"
-  msg "  ${F_GREEN}workspace, ws${F_RESET}    后台工作区 - Screen/Tmux 管理"
-  msg "  ${F_GREEN}cluster, cl${F_RESET}      集群控制 - 多服务器/游戏服务端"
+  msg "$(L MSG_MAIN_0051 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0052 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0053 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0054 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0055 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0056 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0057 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0058 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0059 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0060 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "  ${F_BOLD}命令:${F_RESET}"
-  msg "  ${F_GREEN}status${F_RESET}            系统状态概览"
-  msg "  ${F_GREEN}update${F_RESET}            更新 FusionBox"
-  msg "  ${F_GREEN}uninstall${F_RESET}         卸载 FusionBox 本体"
-  msg "  ${F_GREEN}log${F_RESET}               查看 FusionBox 运行日志"
-  msg "  ${F_GREEN}rescue${F_RESET}            救援指引（恢复命令、备份位置、回滚步骤）"
-  msg "  ${F_GREEN}privacy${F_RESET}           隐私与匿名统计设置"
-  msg "  ${F_GREEN}version${F_RESET}           显示版本"
-  msg "  ${F_GREEN}help${F_RESET}              显示帮助"
+  msg "$(L MSG_MAIN_0061 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0062 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0063 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0064 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0065 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0066 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0067 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0068 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0108 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0069 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "  ${F_BOLD}示例:${F_RESET}"
-  msg "  fusionbox proxy add              # 添加代理配置"
-  msg "  fusionbox system bbr             # BBR 管理"
-  msg "  fusionbox system tools           # 系统工具 (SSH/防火墙/磁盘/...)"
-  msg "  fusionbox network speedtest      # 网速测试"
-  msg "  fusionbox web lnmp               # 安装 LNMP"
-  msg "  fusionbox web deploy             # LDNMP 应用部署"
-  msg "  fusionbox web proxy              # 反向代理"
-  msg "  fusionbox panels docker          # Docker 管理"
-  msg "  fusionbox warp install           # 安装 WARP"
-  msg "  fusionbox cluster game           # 游戏服务端"
-  msg "  fusionbox cluster alias          # 常用命令中文速查表"
-  msg "  fusionbox ws w3                  # 进入 3 号后台槽位"
+  msg "$(L MSG_MAIN_0070 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0071)"
+  msg "$(L MSG_MAIN_0072)"
+  msg "$(L MSG_MAIN_0073)"
+  msg "$(L MSG_MAIN_0074)"
+  msg "$(L MSG_MAIN_0075)"
+  msg "$(L MSG_MAIN_0076)"
+  msg "$(L MSG_MAIN_0077)"
+  msg "$(L MSG_MAIN_0078)"
+  msg "$(L MSG_MAIN_0079)"
+  msg "$(L MSG_MAIN_0080)"
+  msg "$(L MSG_MAIN_0081)"
+  msg "$(L MSG_MAIN_0082)"
   msg ""
-  msg "  ${F_BOLD}依赖:${F_RESET} python3 为必需（备份/用户/SSH/受管市场）；"
-  msg "        docker compose v2 为受管市场与 Compose 备份所需；curl 用于下载。"
-  msg "        运行 fusionbox status 可查看依赖自检。"
+  msg "$(L MSG_MAIN_0083 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0084)"
+  msg "$(L MSG_MAIN_0085)"
   msg ""
-  msg "  ${F_BOLD}模块详细帮助:${F_RESET}"
-  msg "  fusionbox help <模块>           如 fusionbox help system"
-  msg "  fusionbox <模块> help           等价写法，如 fusionbox system help"
-  msg "  模块别名: p/sys/net/w/panels/m/warp/ws/cl 均可使用"
+  msg "$(L MSG_MAIN_0086 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_MAIN_0087)"
+  msg "$(L MSG_MAIN_0088)"
+  msg "$(L MSG_MAIN_0089)"
   msg ""
   pause
 }
@@ -667,25 +686,25 @@ main_menu() {
   while true; do
     _print_banner
 
-    msg_title "主菜单"
+    msg_title "$(L MSG_MAIN_0090)"
     msg ""
     # Dependency self-check first: users must know what is missing before they
     # hit a failure, and before the acknowledgement banner.
     show_dependency_status
     msg ""
-    msg "  ${F_GREEN} 1${F_RESET}) 代理管理"
-    msg "  ${F_GREEN} 2${F_RESET}) 系统管理"
-    msg "  ${F_GREEN} 3${F_RESET}) 网络工具"
-    msg "  ${F_GREEN} 4${F_RESET}) 网站部署"
-    msg "  ${F_GREEN} 5${F_RESET}) 面板与工具"
-    msg "  ${F_GREEN} 6${F_RESET}) 应用市场"
-    msg "  ${F_GREEN} 7${F_RESET}) WARP 管理"
-    msg "  ${F_GREEN} 8${F_RESET}) 后台工作区"
-    msg "  ${F_GREEN} 9${F_RESET}) 集群控制与工具"
-    msg "  ${F_GREEN}10${F_RESET}) 系统状态"
-    msg "  ${F_GREEN}11${F_RESET}) 帮助"
+    msg "$(L MSG_MAIN_0091 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0092 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0093 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0094 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0095 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0096 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0097 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0098 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0099 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0100 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_MAIN_0101 "${F_GREEN}" "${F_RESET}")"
     msg "  ${F_GREEN}12${F_RESET}) $(_tr MSG_PRIVACY_MENU "隐私与匿名统计")"
-    msg "  ${F_GREEN} 0${F_RESET}) 退出"
+    msg "$(L MSG_MAIN_0102 "${F_GREEN}" "${F_RESET}")"
     msg ""
     msg "  $(_tr MSG_ACKNOWLEDGEMENT "棉花云：优质网络提供商 https://www.88sup.com")"
     msg ""
@@ -705,7 +724,7 @@ main_menu() {
       10) show_status ; pause ;;
       11) show_help ;;
       12) privacy_menu ;;
-      0) msg "再见！"; _log_write "FusionBox 会话已结束"; return ;;
+      0) msg "$(L MSG_MAIN_0103)"; _log_write "$(L MSG_MAIN_0109)"; return ;;
       *) ;;
     esac
   done
