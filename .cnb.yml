@@ -71,11 +71,8 @@ main:
             done
             python3 -m py_compile src/lib/*.py scripts/*.py
             python3 src/lib/market_apps.py catalog >/dev/null
+            python3 scripts/i18n_audit.py
             echo "All shipped code checks passed"
-        - name: regression-checks
-          script: |
-            set -e
-            bash tests/run_checks.sh
 
   pull_request:
     - name: ci
@@ -92,8 +89,5 @@ main:
             done
             python3 -m py_compile src/lib/*.py scripts/*.py
             python3 src/lib/market_apps.py catalog >/dev/null
+            python3 scripts/i18n_audit.py
             echo "All shipped code checks passed"
-        - name: regression-checks
-          script: |
-            set -e
-            bash tests/run_checks.sh

@@ -23,11 +23,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Bash syntax check (shipped + test scripts)
+      - name: Bash syntax check (shipped scripts)
         run: |
           set -e
           for f in fusion.sh install.sh src/init.sh src/lib/common.sh src/lib/deploy.sh \
-                   src/modules/*.sh src/i18n/*.sh tests/*.sh; do
+                   src/modules/*.sh src/i18n/*.sh; do
             bash -n "$f"
           done
           echo "所有 shell 脚本语法检查通过"
@@ -35,7 +35,7 @@ jobs:
       - name: Python byte-compile and catalog generation
         run: |
           set -e
-          python3 -m py_compile src/lib/*.py scripts/*.py tests/*.py
+          python3 -m py_compile src/lib/*.py scripts/*.py
           python3 src/lib/market_apps.py catalog >/dev/null
           printf '[]\n' > /tmp/releases.json
           python3 scripts/release_downloads.py --fixture /tmp/releases.json \
@@ -44,11 +44,11 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
-      # 快速回归闸门：无需 root / Docker / 网络，与 CNB 流水线同一份脚本。
-      - name: Regression checks (run_checks.sh)
+
+      - name: i18n audit (bilingual pack contract)
         run: |
           set -e
-          bash tests/run_checks.sh
+          python3 scripts/i18n_audit.py
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
@@ -63,28 +63,10 @@ jobs:
           grep -Fq "v$version" docs/implementation-status.md
           echo "version.txt / init.sh / README / Pages / 实施状态 版本一致: $version"
 
-  # ---------------------------------------------------------------- 完整回归套件
-  tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Environment
-        run: |
-          python3 --version
-          bash --version | head -1
-          id
-
-      # 套件本身是 mock 驱动、不装软件包、不改系统配置、不发起外部下载。
-      # FusionBox 是 root-only 工具，因此在 CI 中以 root 运行，与生产运行时一致。
-      - name: Full regression suite (bash + python)
-        run: sudo -E env "PATH=$PATH" bash tests/comprehensive_test.sh
-
   # ---------------------------------------------------------------- 打标签时发布
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [syntax, tests]
+    needs: [syntax]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -102,7 +84,7 @@ jobs:
           grep -Fqx "export FUSION_VER=\"$version\"" src/init.sh
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      # tests/ 经 .gitattributes 的 export-ignore 排除，发布包不含测试资产。
+      # tests/ 不入库（.gitignore + .gitattributes 的 export-ignore），发布包不含测试资产。
       - name: Package complete distribution
         run: |
           git archive --format=tar.gz --prefix=FusionBox/ -o FusionBox-${{ steps.version.outputs.tag }}.tar.gz HEAD

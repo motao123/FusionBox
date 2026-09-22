@@ -159,7 +159,9 @@ fusionbox panels docker help          # 子分发也能取帮助
 | `netopt_sysctl.sh` | 内核网络参数真实改值 + 快照恢复零漂移 | 11 / 11 |
 | `cloudflare_guard.sh` | CF 负载自适应开盾 + API 封 IP（最小权限 Token） | 21 / 21 |
 
-CI 分两层，两个仓库（GitHub / CNB）共用同一份资产：`syntax`（脚本语法 + `run_checks.sh` 快速闸门 + 五处版本一致性）→ `tests`（完整套件）→ `release`（仅 tag 触发，产出校验过的发布包）。测试资产经 `.gitattributes` 的 `export-ignore` **不进入发布包**。
+> 上表为本地测试资产的验证结论；`tests/` 不入库，完整回归在本地与验证服务器执行。
+
+CI 只做静态检查，两个仓库（GitHub / CNB）同一口径：`syntax`（脚本语法 + Python 产物 + i18n 双语契约审计 + 五处版本一致性）→ `release`（仅 tag 触发，产出校验过的发布包）。**测试资产不入库**：`tests/` 只存本地与验证服务器（`.gitignore` 屏蔽 + `.gitattributes` 的 `export-ignore` 双保险，发布包本就不含测试），完整回归在本地与真机执行。
 
 ---
 
