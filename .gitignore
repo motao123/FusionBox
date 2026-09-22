@@ -6,11 +6,10 @@
 backups/
 fusionbox_backup_*.tar.gz
 __pycache__/
-# v1.36.4 起两个仓库共用同一份测试策略：tests/ 全部随仓库发布并接入 CI，
-# 由 .gitattributes 的 `tests/ export-ignore` 保证不进入发布包。
-# 此前本仓库只跟踪 tests/run_checks.sh、另一条发布线跟踪全部测试，
-# 同一功能因此存在两套验证资产；统一后不再分叉。
+# v1.43.0 起 tests/ 不入库：只存本地与验证服务器，仓库只保留可用成品。
 node_modules/
 telemetry-worker/node_modules/
 telemetry-worker/.wrangler/
 .scratch/
+# 测试资产只存本地与验证服务器，不入库
+tests/
