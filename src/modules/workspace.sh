@@ -20,31 +20,31 @@ workspace_screen() {
   local action="${1:-menu}"
 
   case "$action" in
-    install) _install_pkg screen; msg_ok "$(L MSG_WS_0001)" ;;
+    install) _install_pkg screen; msg_ok "$(L MSG_WS_0093)" ;;
     list)
-      msg_title "$(L MSG_WS_0002)"
-      screen -ls 2>/dev/null || msg "$(L MSG_WS_0003)"
+      msg_title "$(L MSG_WS_0094)"
+      screen -ls 2>/dev/null || msg "$(L MSG_WS_0095)"
       ;;
     create)
-      local session_name; session_name=$(read_input "$(L MSG_WS_0004)" "fusionbox_$(date +%s)")
+      local session_name; session_name=$(read_input "$(L MSG_WS_0096)" "fusionbox_$(date +%s)")
       screen -dmS "$session_name" 2>/dev/null && \
-        msg_ok "$(L MSG_WS_0005 "$session_name")" || \
-        msg_err "$(L MSG_WS_0006)"
-      msg "$(L MSG_WS_0007 "$session_name")"
+        msg_ok "$(L MSG_WS_0097 "$session_name")" || \
+        msg_err "$(L MSG_WS_0098)"
+      msg "$(L MSG_WS_0099 "$session_name")"
       ;;
     attach)
       screen -ls 2>/dev/null
-      read -p "$(L MSG_WS_0008)" session_name
+      read -p "$(L MSG_WS_0100)" session_name
       if [[ -n "$session_name" ]]; then
-        screen -r "$session_name" 2>/dev/null || msg_err "$(L MSG_WS_0009)"
+        screen -r "$session_name" 2>/dev/null || msg_err "$(L MSG_WS_0101)"
       fi
       ;;
     kill)
       screen -ls 2>/dev/null
-      read -p "$(L MSG_WS_0008)" session_name
+      read -p "$(L MSG_WS_0100)" session_name
       if [[ -n "$session_name" ]]; then
-        if confirm "$(L MSG_WS_0010 "$session_name")"; then
-          screen -S "$session_name" -X quit 2>/dev/null && msg_ok "$(L MSG_WS_0011 "$session_name")" || msg_err "$(L MSG_WS_0012)"
+        if confirm "$(L MSG_WS_0102 "$session_name")"; then
+          screen -S "$session_name" -X quit 2>/dev/null && msg_ok "$(L MSG_WS_0103 "$session_name")" || msg_err "$(L MSG_WS_0104)"
         fi
       fi
       ;;
@@ -57,25 +57,25 @@ workspace_screen() {
 workspace_screen_menu() {
   while true; do
     clear
-    msg_title "$(L MSG_WS_0013)"
+    msg_title "$(L MSG_WS_0105)"
     msg ""
     if command -v screen &>/dev/null; then
       msg "  Screen: $(screen -v 2>&1 | head -1)"
       msg ""
       screen -ls 2>/dev/null | while read -r line; do
-        [[ "$line" == *"No Sockets"* ]] && msg "$(L MSG_WS_0014)" || msg "  $line"
+        [[ "$line" == *"No Sockets"* ]] && msg "$(L MSG_WS_0106)" || msg "  $line"
       done
     else
-      msg "$(L MSG_WS_0015)"
+      msg "$(L MSG_WS_0107)"
     fi
     msg ""
-    msg "$(L MSG_WS_0016)"
-    msg "$(L MSG_WS_0017)"
-    msg "$(L MSG_WS_0018)"
-    msg "$(L MSG_WS_0019)"
-    msg "$(L MSG_WS_0020)"
-    msg "$(L MSG_WS_0021)"
-    read -p "$(L MSG_WS_0022)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    msg "$(L MSG_WS_0108)"
+    msg "$(L MSG_WS_0109)"
+    msg "$(L MSG_WS_0110)"
+    msg "$(L MSG_WS_0111)"
+    msg "$(L MSG_WS_0112)"
+    msg "$(L MSG_WS_0113)"
+    read -p "$(L MSG_WS_0114)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) _install_pkg screen; pause ;;
       2) workspace_screen create; pause ;;
@@ -92,31 +92,31 @@ workspace_tmux() {
   local action="${1:-menu}"
 
   case "$action" in
-    install) _install_pkg tmux; msg_ok "$(L MSG_WS_0023)" ;;
+    install) _install_pkg tmux; msg_ok "$(L MSG_WS_0115)" ;;
     list)
-      msg_title "$(L MSG_WS_0024)"
-      tmux ls 2>/dev/null || msg "$(L MSG_WS_0025)"
+      msg_title "$(L MSG_WS_0116)"
+      tmux ls 2>/dev/null || msg "$(L MSG_WS_0117)"
       ;;
     create)
-      local session_name; session_name=$(read_input "$(L MSG_WS_0004)" "fusionbox_$(date +%s)")
+      local session_name; session_name=$(read_input "$(L MSG_WS_0096)" "fusionbox_$(date +%s)")
       tmux new-session -d -s "$session_name" 2>/dev/null && \
-        msg_ok "$(L MSG_WS_0026 "$session_name")" || \
-        msg_err "$(L MSG_WS_0027)"
-      msg "$(L MSG_WS_0028 "$session_name")"
+        msg_ok "$(L MSG_WS_0118 "$session_name")" || \
+        msg_err "$(L MSG_WS_0119)"
+      msg "$(L MSG_WS_0120 "$session_name")"
       ;;
     attach)
       tmux ls 2>/dev/null
-      read -p "$(L MSG_WS_0008)" session_name
+      read -p "$(L MSG_WS_0100)" session_name
       if [[ -n "$session_name" ]]; then
-        tmux attach -t "$session_name" 2>/dev/null || msg_err "$(L MSG_WS_0009)"
+        tmux attach -t "$session_name" 2>/dev/null || msg_err "$(L MSG_WS_0101)"
       fi
       ;;
     kill)
       tmux ls 2>/dev/null
-      read -p "$(L MSG_WS_0008)" session_name
+      read -p "$(L MSG_WS_0100)" session_name
       if [[ -n "$session_name" ]]; then
-        if confirm "$(L MSG_WS_0010 "$session_name")"; then
-          tmux kill-session -t "$session_name" 2>/dev/null && msg_ok "$(L MSG_WS_0011 "$session_name")" || msg_err "$(L MSG_WS_0012)"
+        if confirm "$(L MSG_WS_0102 "$session_name")"; then
+          tmux kill-session -t "$session_name" 2>/dev/null && msg_ok "$(L MSG_WS_0103 "$session_name")" || msg_err "$(L MSG_WS_0104)"
         fi
       fi
       ;;
@@ -129,24 +129,24 @@ workspace_tmux() {
 workspace_tmux_menu() {
   while true; do
     clear
-    msg_title "$(L MSG_WS_0029)"
+    msg_title "$(L MSG_WS_0121)"
     msg ""
     if command -v tmux &>/dev/null; then
       msg "  Tmux: $(tmux -V 2>&1)"
       tmux ls 2>/dev/null | while read -r line; do
         msg "  $line"
-      done || msg "$(L MSG_WS_0014)"
+      done || msg "$(L MSG_WS_0106)"
     else
-      msg "$(L MSG_WS_0030)"
+      msg "$(L MSG_WS_0122)"
     fi
     msg ""
-    msg "$(L MSG_WS_0031)"
-    msg "$(L MSG_WS_0017)"
-    msg "$(L MSG_WS_0018)"
-    msg "$(L MSG_WS_0019)"
-    msg "$(L MSG_WS_0020)"
-    msg "$(L MSG_WS_0021)"
-    read -p "$(L MSG_WS_0022)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    msg "$(L MSG_WS_0123)"
+    msg "$(L MSG_WS_0109)"
+    msg "$(L MSG_WS_0110)"
+    msg "$(L MSG_WS_0111)"
+    msg "$(L MSG_WS_0112)"
+    msg "$(L MSG_WS_0113)"
+    read -p "$(L MSG_WS_0114)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) _install_pkg tmux; pause ;;
       2) workspace_tmux create; pause ;;
@@ -173,7 +173,7 @@ _ws_work_strip() {
 _ws_work_check_n() {
   local n; n=$(_ws_work_strip "$1")
   [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le 10 ] || {
-    msg_err "$(L MSG_WS_0032 "$1")"
+    msg_err "$(L MSG_WS_0124 "$1")"
     return 1
   }
 }
@@ -196,8 +196,8 @@ _ws_work_tool() {
     printf screen
     return 0
   fi
-  msg_err "$(L MSG_WS_0033)"
-  msg_info "$(L MSG_WS_0034 "$(_pkg_install_hint tmux)" "$(_pkg_install_hint screen)")"
+  msg_err "$(L MSG_WS_0125)"
+  msg_info "$(L MSG_WS_0126 "$(_pkg_install_hint tmux)" "$(_pkg_install_hint screen)")"
   return 1
 }
 
@@ -279,8 +279,8 @@ workspace_work() {
   if [[ "$action" =~ ^(w?[0-9]+)$ ]]; then
     local dir_name; dir_name=$(_ws_work_name "$action") || return 1
     if ! _ws_slot_exists "$dir_name"; then
-      msg_info "$(L MSG_WS_0035 "$dir_name")"
-      _ws_slot_create "$dir_name" || { msg_err "$(L MSG_WS_0036 "$dir_name")"; return 1; }
+      msg_info "$(L MSG_WS_0127 "$dir_name")"
+      _ws_slot_create "$dir_name" || { msg_err "$(L MSG_WS_0128 "$dir_name")"; return 1; }
     fi
     _ws_slot_attach "$dir_name"
     return $?
@@ -289,33 +289,33 @@ workspace_work() {
   case "$action" in
     list)
       local i name state
-      msg "$(L MSG_WS_0037 "${F_BOLD}" "$tool" "${F_RESET}")"
+      msg "$(L MSG_WS_0129 "${F_BOLD}" "$tool" "${F_RESET}")"
       for i in 1 2 3 4 5 6 7 8 9 10; do
         name="w$i"
         if _ws_slot_exists "$name"; then
-          state="$(L MSG_WS_0038 "${F_GREEN}" "${F_RESET}")"
+          state="$(L MSG_WS_0130 "${F_GREEN}" "${F_RESET}")"
         else
-          state="$(L MSG_WS_0039)"
+          state="$(L MSG_WS_0131)"
         fi
         msg "    $name: $state"
       done
-      msg "$(L MSG_WS_0040)"
+      msg "$(L MSG_WS_0132)"
       ;;
     new)
       local n="${2:-}" cmd="${3:-}" name
       name=$(_ws_work_name "$n") || return 1
       if _ws_slot_exists "$name"; then
-        msg_err "$(L MSG_WS_0041 "$name")"
+        msg_err "$(L MSG_WS_0133 "$name")"
         return 1
       fi
       if _ws_slot_create "$name" "$cmd"; then
         if [[ -n "$cmd" ]]; then
-          msg_ok "$(L MSG_WS_0042 "$name" "$cmd")"
+          msg_ok "$(L MSG_WS_0134 "$name" "$cmd")"
         else
-          msg_ok "$(L MSG_WS_0043 "$name")"
+          msg_ok "$(L MSG_WS_0135 "$name")"
         fi
       else
-        msg_err "$(L MSG_WS_0036 "$name")"
+        msg_err "$(L MSG_WS_0128 "$name")"
         return 1
       fi
       ;;
@@ -323,7 +323,7 @@ workspace_work() {
       local n="${2:-}" name
       name=$(_ws_work_name "$n") || return 1
       if ! _ws_slot_exists "$name"; then
-        msg_err "$(L MSG_WS_0044 "$name" "$n")"
+        msg_err "$(L MSG_WS_0136 "$name" "$n")"
         return 1
       fi
       _ws_slot_attach "$name"
@@ -331,60 +331,60 @@ workspace_work() {
     send|say)
       local n="${2:-}" cmd="${3:-}" name
       name=$(_ws_work_name "$n") || return 1
-      [[ -n "$cmd" ]] || { msg_err "$(L MSG_WS_0045)"; return 2; }
+      [[ -n "$cmd" ]] || { msg_err "$(L MSG_WS_0137)"; return 2; }
       if ! _ws_slot_exists "$name"; then
-        msg_err "$(L MSG_WS_0046 "$name")"
+        msg_err "$(L MSG_WS_0138 "$name")"
         return 1
       fi
-      _ws_slot_send "$name" "$cmd" && msg_ok "$(L MSG_WS_0047 "$name" "$cmd")"
+      _ws_slot_send "$name" "$cmd" && msg_ok "$(L MSG_WS_0139 "$name" "$cmd")"
       ;;
     capture|peek|log)
       local n="${2:-}" name
       name=$(_ws_work_name "$n") || return 1
       if ! _ws_slot_exists "$name"; then
-        msg_err "$(L MSG_WS_0046 "$name")"
+        msg_err "$(L MSG_WS_0138 "$name")"
         return 1
       fi
       if command -v tmux &>/dev/null; then
         tmux capture-pane -p -t "$name" | tail -n 40
       else
-        msg_warn "$(L MSG_WS_0048 "$name")"
+        msg_warn "$(L MSG_WS_0140 "$name")"
       fi
       ;;
     kill)
       local n="${2:-}" name
       name=$(_ws_work_name "$n") || return 1
-      if confirm "$(L MSG_WS_0049 "$name")"; then
-        _ws_slot_kill "$name" && msg_ok "$(L MSG_WS_0050 "$name")" || msg_err "$(L MSG_WS_0046 "$name")"
+      if confirm "$(L MSG_WS_0141 "$name")"; then
+        _ws_slot_kill "$name" && msg_ok "$(L MSG_WS_0142 "$name")" || msg_err "$(L MSG_WS_0138 "$name")"
       fi
       ;;
     ensure|resume)
       local n="${2:-}" name
       name=$(_ws_work_name "$n") || return 1
-      _ws_slot_ensure "$name" 1 || { msg_err "$(L MSG_WS_0036 "$name")"; return 1; }
-      msg_ok "$(L MSG_WS_0051 "$name" "$name")"
+      _ws_slot_ensure "$name" 1 || { msg_err "$(L MSG_WS_0128 "$name")"; return 1; }
+      msg_ok "$(L MSG_WS_0143 "$name" "$name")"
       _ws_slot_attach "$name"
       ;;
     ssh)
       local n="${2:-}" name
       name=$(_ws_work_name "$n") || return 1
-      _ws_slot_ensure "$name" 1 || { msg_err "$(L MSG_WS_0036 "$name")"; return 1; }
-      msg_title "$(L MSG_WS_0052 "$name")"
-      msg "$(L MSG_WS_0053)"
+      _ws_slot_ensure "$name" 1 || { msg_err "$(L MSG_WS_0128 "$name")"; return 1; }
+      msg_title "$(L MSG_WS_0144 "$name")"
+      msg "$(L MSG_WS_0145)"
       msg "    fusionbox ws $name"
-      msg "$(L MSG_WS_0054)"
+      msg "$(L MSG_WS_0146)"
       if command -v tmux &>/dev/null; then
         msg "    tmux attach -t $name"
       else
         msg "    screen -r $name"
       fi
-      msg "$(L MSG_WS_0055)"
+      msg "$(L MSG_WS_0147)"
       ;;
     menu|"")
       workspace_work_menu
       ;;
     *)
-      msg_err "$(L MSG_WS_0056 "$action")"; return 2 ;;
+      msg_err "$(L MSG_WS_0148 "$action")"; return 2 ;;
   esac
 }
 
@@ -392,26 +392,26 @@ workspace_work_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(L MSG_WS_0057)"
+    msg_title "$(L MSG_WS_0149)"
     msg ""
     workspace_work list
     msg ""
-    msg "$(L MSG_WS_0058)"
-    msg "$(L MSG_WS_0059)"
-    msg "$(L MSG_WS_0060)"
-    msg "$(L MSG_WS_0061)"
-    msg "$(L MSG_WS_0062)"
-    msg "$(L MSG_WS_0063)"
-    msg "$(L MSG_WS_0021)"
-    read -p "$(L MSG_WS_0022)" w_choice || { msg ""; return; }
+    msg "$(L MSG_WS_0150)"
+    msg "$(L MSG_WS_0151)"
+    msg "$(L MSG_WS_0152)"
+    msg "$(L MSG_WS_0153)"
+    msg "$(L MSG_WS_0154)"
+    msg "$(L MSG_WS_0155)"
+    msg "$(L MSG_WS_0113)"
+    read -p "$(L MSG_WS_0114)" w_choice || { msg ""; return; }
     case "$w_choice" in
-      1) read -p "$(L MSG_WS_0064)" w_n; read -p "$(L MSG_WS_0065)" w_c
+      1) read -p "$(L MSG_WS_0156)" w_n; read -p "$(L MSG_WS_0157)" w_c
          if [[ -n "$w_c" ]]; then workspace_work new "$w_n" "$w_c" || true; else workspace_work new "$w_n" || true; fi ;;
-      2) read -p "$(L MSG_WS_0064)" w_n; workspace_work attach "$w_n" ;;
-      3) read -p "$(L MSG_WS_0066)" w_n; read -p "$(L MSG_WS_0067)" w_c; workspace_work send "$w_n" "$w_c" ;;
-      4) read -p "$(L MSG_WS_0066)" w_n; workspace_work capture "$w_n"; pause ;;
-      5) read -p "$(L MSG_WS_0066)" w_n; workspace_work kill "$w_n" ;;
-      6) read -p "$(L MSG_WS_0066)" w_n; workspace_work ssh "$w_n"; pause ;;
+      2) read -p "$(L MSG_WS_0156)" w_n; workspace_work attach "$w_n" ;;
+      3) read -p "$(L MSG_WS_0158)" w_n; read -p "$(L MSG_WS_0159)" w_c; workspace_work send "$w_n" "$w_c" ;;
+      4) read -p "$(L MSG_WS_0158)" w_n; workspace_work capture "$w_n"; pause ;;
+      5) read -p "$(L MSG_WS_0158)" w_n; workspace_work kill "$w_n" ;;
+      6) read -p "$(L MSG_WS_0158)" w_n; workspace_work ssh "$w_n"; pause ;;
       0) return ;;
       *) ;;
     esac
@@ -420,43 +420,43 @@ workspace_work_menu() {
 
 # ---- 列出所有后台会话 ----
 workspace_list() {
-  msg_title "$(L MSG_WS_0068)"
+  msg_title "$(L MSG_WS_0160)"
   msg ""
   if command -v screen &>/dev/null; then
-    msg "$(L MSG_WS_0069 "${F_BOLD}" "${F_RESET}")"
+    msg "$(L MSG_WS_0161 "${F_BOLD}" "${F_RESET}")"
     screen -ls 2>/dev/null | while read -r line; do
-      [[ "$line" == *"No Sockets"* ]] && msg "$(L MSG_WS_0070)" || msg "    $line"
-    done || msg "$(L MSG_WS_0070)"
+      [[ "$line" == *"No Sockets"* ]] && msg "$(L MSG_WS_0162)" || msg "    $line"
+    done || msg "$(L MSG_WS_0162)"
   fi
   msg ""
   if command -v tmux &>/dev/null; then
-    msg "$(L MSG_WS_0071 "${F_BOLD}" "${F_RESET}")"
+    msg "$(L MSG_WS_0163 "${F_BOLD}" "${F_RESET}")"
     tmux ls 2>/dev/null | while read -r line; do
       msg "    $line"
-    done || msg "$(L MSG_WS_0070)"
+    done || msg "$(L MSG_WS_0162)"
   fi
   pause
 }
 
 # ---- Help ----
 workspace_help() {
-  msg_title "$(L MSG_WS_0072)"
+  msg_title "$(L MSG_WS_0164)"
   msg ""
-  msg "$(L MSG_WS_0073)"
-  msg "$(L MSG_WS_0074)"
-  msg "$(L MSG_WS_0075)"
-  msg "$(L MSG_WS_0076)"
-  msg "$(L MSG_WS_0077)"
-  msg "$(L MSG_WS_0078)"
-  msg "$(L MSG_WS_0079)"
-  msg "$(L MSG_WS_0080)"
-  msg "$(L MSG_WS_0081)"
+  msg "$(L MSG_WS_0165)"
+  msg "$(L MSG_WS_0166)"
+  msg "$(L MSG_WS_0167)"
+  msg "$(L MSG_WS_0168)"
+  msg "$(L MSG_WS_0169)"
+  msg "$(L MSG_WS_0170)"
+  msg "$(L MSG_WS_0171)"
+  msg "$(L MSG_WS_0172)"
+  msg "$(L MSG_WS_0173)"
   msg ""
-  msg "$(L MSG_WS_0082 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_WS_0083)"
-  msg "$(L MSG_WS_0084)"
-  msg "$(L MSG_WS_0085)"
-  msg "$(L MSG_WS_0086)"
+  msg "$(L MSG_WS_0174 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_WS_0175)"
+  msg "$(L MSG_WS_0176)"
+  msg "$(L MSG_WS_0177)"
+  msg "$(L MSG_WS_0178)"
   msg ""
 }
 
@@ -465,15 +465,15 @@ workspace_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(L MSG_WS_0068)"
+    msg_title "$(L MSG_WS_0160)"
     msg ""
-    msg "$(L MSG_WS_0087 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WS_0088 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WS_0089 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WS_0090 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WS_0091 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WS_0179 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WS_0180 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WS_0181 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WS_0182 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WS_0183 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "$(L MSG_WS_0092)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_WS_0184)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) workspace_screen_menu ;;
       2) workspace_tmux_menu ;;

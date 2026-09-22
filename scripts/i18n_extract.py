@@ -275,6 +275,8 @@ class Extractor:
 
     def _apply_aux(self, lineno, orig, out):
         """辅助函数参数：read -p / confirm / _log_write / _require_* 等。"""
+        if out.lstrip()[:1] in ('"', "'"):
+            return out, False          # 整行是数据条目，交给 _apply_data_row
         changed = False
         pos = 0
         while True:
@@ -314,6 +316,8 @@ class Extractor:
 
     def _apply_msg(self, lineno, orig, out):
         """msg/msg_* / echo / printf 的字符串参数。"""
+        if out.lstrip()[:1] in ('"', "'"):
+            return out, False          # 整行是数据条目，交给 _apply_data_row
         changed = False
         pos = 0
         while True:
@@ -360,6 +364,10 @@ class Extractor:
             if q_end is None:
                 pos = m.end()
                 continue
+            rest = out[q_end:]
+            if '"' in rest or "'" in rest:
+                pos = q_end           # 行内还有引号：多串/嵌套，交人工
+                continue
             raw = out[q_start + 1:q_end - 1]
             if not CJK_RE.search(raw):
                 pos = q_end
@@ -383,6 +391,9 @@ class Extractor:
         q_end = _skip_quoted(out, q_start)
         if q_end is None:
             return out, False
+        rest = out[q_end:]
+        if '"' in rest or "'" in rest:
+            return out, False          # 行内还有引号：多串/嵌套，交人工
         raw = out[q_start + 1:q_end - 1]
         if not CJK_RE.search(raw):
             return out, False
@@ -398,9 +409,11 @@ class Extractor:
             return line
         out = line
         changed = False
-        # 顺序：辅助函数参数 → msg/echo/printf → 赋值/数据行
-        # （先处理内层调用，外层整串就不含中文，不会被重复抽键）
-        for fn in (self._apply_aux, self._apply_msg, self._apply_assign, self._apply_data_row):
+        # 顺序很关键：**先整行（数据行 / 赋值），再内层调用**。
+        # 反过来的话，像 "a 'b' c" 这种「单行数据里嵌了引号串」的条目会被内层先改坏
+        # 引号配对（单引号串被换成双引号），整串随即被当成半截串抽走——
+        # v1.43.0 修复（CLUSTER_TASKS 的 swap1g 条目曾因此被拆坏）。
+        for fn in (self._apply_data_row, self._apply_assign, self._apply_aux, self._apply_msg):
             out, c = fn(lineno, line, out)
             changed = changed or c
         if changed:

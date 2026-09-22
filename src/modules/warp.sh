@@ -22,16 +22,16 @@ warp_main() {
 # ---- 安装 WARP ----
 warp_install() {
   _require_root
-  msg_title "$(L MSG_WARP_0001)"
+  msg_title "$(L MSG_WARP_0083)"
   msg ""
 
   if systemctl is-active warp-svc &>/dev/null; then
-    msg_ok "$(L MSG_WARP_0002)"
+    msg_ok "$(L MSG_WARP_0084)"
     warp_status
     pause; return
   fi
 
-  msg_info "$(L MSG_WARP_0003)"
+  msg_info "$(L MSG_WARP_0085)"
 
   # Detect package manager and add repo
   case "$F_PKG_MGR" in
@@ -48,19 +48,19 @@ warp_install() {
       _install_pkg cloudflare-warp
       ;;
     *)
-      msg_err "$(L MSG_WARP_0004)"
-      msg_info "$(L MSG_WARP_0005)"
+      msg_err "$(L MSG_WARP_0086)"
+      msg_info "$(L MSG_WARP_0087)"
       pause; return
       ;;
   esac
 
   if command -v warp-cli &>/dev/null || systemctl is-active warp-svc &>/dev/null; then
-    msg_ok "$(L MSG_WARP_0006)"
+    msg_ok "$(L MSG_WARP_0088)"
 
-    msg_info "$(L MSG_WARP_0007)"
+    msg_info "$(L MSG_WARP_0089)"
     if ! warp-cli --accept-tos registration new 2>/dev/null; then
       # warp-cli 注册失败不再静默（旧版误报"安装完成"）
-      msg_warn "$(L MSG_WARP_0008)"
+      msg_warn "$(L MSG_WARP_0090)"
     fi
 
     # Set default mode to proxy
@@ -74,13 +74,13 @@ warp_install() {
     # 禁止开机自启
     systemctl disable warp-svc 2>/dev/null
 
-    msg_ok "$(L MSG_WARP_0009)"
+    msg_ok "$(L MSG_WARP_0091)"
     msg ""
-    msg "$(L MSG_WARP_0010 "${F_BOLD}" "${F_RESET}")"
-    msg "$(L MSG_WARP_0011 "${F_BOLD}" "${F_RESET}")"
-    _log_write "$(L MSG_WARP_0012)"
+    msg "$(L MSG_WARP_0092 "${F_BOLD}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0093 "${F_BOLD}" "${F_RESET}")"
+    _log_write "$(L MSG_WARP_0094)"
   else
-    msg_err "$(L MSG_WARP_0013)"
+    msg_err "$(L MSG_WARP_0095)"
   fi
   pause
 }
@@ -89,19 +89,19 @@ warp_install() {
 warp_uninstall() {
   _require_root
   if ! command -v warp-cli &>/dev/null && ! systemctl is-active warp-svc &>/dev/null; then
-    msg_warn "$(L MSG_WARP_0014)"
+    msg_warn "$(L MSG_WARP_0096)"
     pause; return
   fi
 
-  if confirm "$(L MSG_WARP_0015)"; then
+  if confirm "$(L MSG_WARP_0097)"; then
     warp-cli --accept-tos disconnect 2>/dev/null
     warp-cli --accept-tos registration delete 2>/dev/null
     case "$F_PKG_MGR" in
       apt) apt-get remove -y cloudflare-warp 2>/dev/null ;;
       yum) yum remove -y cloudflare-warp 2>/dev/null ;;
     esac
-    msg_ok "$(L MSG_WARP_0016)"
-    _log_write "$(L MSG_WARP_0016)"
+    msg_ok "$(L MSG_WARP_0098)"
+    _log_write "$(L MSG_WARP_0098)"
   fi
   pause
 }
@@ -110,15 +110,15 @@ warp_uninstall() {
 warp_status() {
   msg ""
   if command -v warp-cli &>/dev/null; then
-    msg "$(L MSG_WARP_0017 "${F_BOLD}" "${F_RESET}" "$(warp-cli --accept-tos --version 2>/dev/null)")"
+    msg "$(L MSG_WARP_0099 "${F_BOLD}" "${F_RESET}" "$(warp-cli --accept-tos --version 2>/dev/null)")"
     local reg_status=$(warp-cli --accept-tos registration show 2>/dev/null | head -1)
-    msg "$(L MSG_WARP_0018 "${F_BOLD}" "${F_RESET}" "${reg_status:-未注册}")"
+    msg "$(L MSG_WARP_0100 "${F_BOLD}" "${F_RESET}" "${reg_status:-未注册}")"
     local conn_status=$(warp-cli --accept-tos status 2>/dev/null | head -1)
-    msg "$(L MSG_WARP_0019 "${F_BOLD}" "${F_RESET}" "${conn_status:-未连接}")"
+    msg "$(L MSG_WARP_0101 "${F_BOLD}" "${F_RESET}" "${conn_status:-未连接}")"
     local warp_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
-    msg "$(L MSG_WARP_0020 "${F_BOLD}" "${F_RESET}" "${warp_mode:-未知}")"
+    msg "$(L MSG_WARP_0102 "${F_BOLD}" "${F_RESET}" "${warp_mode:-未知}")"
   else
-    msg "$(L MSG_WARP_0021)"
+    msg "$(L MSG_WARP_0103)"
   fi
 }
 
@@ -126,7 +126,7 @@ warp_status() {
 warp_on() {
   _require_root
   if ! command -v warp-cli &>/dev/null; then
-    msg_err "$(L MSG_WARP_0022)"
+    msg_err "$(L MSG_WARP_0104)"
     pause; return
   fi
 
@@ -149,15 +149,15 @@ warp_on() {
   sleep 3
   local status=$(warp-cli --accept-tos status 2>/dev/null | head -1)
   if echo "$status" | grep -qi "connected"; then
-    msg_ok "$(L MSG_WARP_0023)"
-    msg "$(L MSG_WARP_0010 "${F_BOLD}" "${F_RESET}")"
+    msg_ok "$(L MSG_WARP_0105)"
+    msg "$(L MSG_WARP_0092 "${F_BOLD}" "${F_RESET}")"
 
     # Test IP
     warp_ip
   else
-    msg_warn "$(L MSG_WARP_0024 "$status")"
+    msg_warn "$(L MSG_WARP_0106 "$status")"
   fi
-  _log_write "$(L MSG_WARP_0025)"
+  _log_write "$(L MSG_WARP_0107)"
   pause
 }
 
@@ -165,8 +165,8 @@ warp_on() {
 warp_off() {
   _require_root
   warp-cli --accept-tos disconnect 2>/dev/null
-  msg_ok "$(L MSG_WARP_0026)"
-  _log_write "$(L MSG_WARP_0026)"
+  msg_ok "$(L MSG_WARP_0108)"
+  _log_write "$(L MSG_WARP_0108)"
   pause
 }
 
@@ -174,52 +174,52 @@ warp_off() {
 warp_mode() {
   _require_root
   if ! command -v warp-cli &>/dev/null; then
-    msg_err "$(L MSG_WARP_0014)"
+    msg_err "$(L MSG_WARP_0096)"
     pause; return
   fi
 
-  msg_title "$(L MSG_WARP_0027)"
+  msg_title "$(L MSG_WARP_0109)"
   msg ""
   local current_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
-  msg "$(L MSG_WARP_0020 "${F_BOLD}" "${F_RESET}" "${current_mode:-未知}")"
+  msg "$(L MSG_WARP_0102 "${F_BOLD}" "${F_RESET}" "${current_mode:-未知}")"
   msg ""
-  msg "$(L MSG_WARP_0028 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_WARP_0029 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_WARP_0030 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_WARP_0031 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0110 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0111 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0112 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0113 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  read -p "$(L MSG_WARP_0032)" mode_choice
+  read -p "$(L MSG_WARP_0114)" mode_choice
 
   case "$mode_choice" in
     1)
-      msg_warn "$(L MSG_WARP_0033)"
-      if confirm "$(L MSG_WARP_0034)"; then
+      msg_warn "$(L MSG_WARP_0115)"
+      if confirm "$(L MSG_WARP_0116)"; then
         warp-cli --accept-tos mode warp 2>/dev/null
-        msg_ok "$(L MSG_WARP_0035)"
-        _log_write "$(L MSG_WARP_0036)"
+        msg_ok "$(L MSG_WARP_0117)"
+        _log_write "$(L MSG_WARP_0118)"
       else
-        msg_info "$(L MSG_WARP_0037)"
+        msg_info "$(L MSG_WARP_0119)"
       fi
       ;;
     2)
       warp-cli --accept-tos mode proxy 2>/dev/null
-      msg_ok "$(L MSG_WARP_0038)"
-      msg "$(L MSG_WARP_0039)"
+      msg_ok "$(L MSG_WARP_0120)"
+      msg "$(L MSG_WARP_0121)"
       ;;
     3)
       warp-cli --accept-tos mode doh 2>/dev/null
-      msg_ok "$(L MSG_WARP_0040)"
+      msg_ok "$(L MSG_WARP_0122)"
       ;;
     0) return ;;
   esac
-  _log_write "$(L MSG_WARP_0041 "$mode_choice")"
+  _log_write "$(L MSG_WARP_0123 "$mode_choice")"
   pause
 }
 
 # ---- 查看 IP ----
 warp_ip() {
   msg ""
-  msg_info "$(L MSG_WARP_0042)"
+  msg_info "$(L MSG_WARP_0124)"
   local real_ip=$(curl -s4 --connect-timeout 5 https://api.ipify.org 2>/dev/null)
   local warp_ip_check=""
 
@@ -233,54 +233,54 @@ warp_ip() {
     fi
   fi
 
-  msg "$(L MSG_WARP_0043 "${F_BOLD}" "${F_RESET}" "${real_ip:-未知}")"
+  msg "$(L MSG_WARP_0125 "${F_BOLD}" "${F_RESET}" "${real_ip:-未知}")"
   if [[ -n "$warp_ip_check" ]]; then
-    msg "$(L MSG_WARP_0044 "${F_BOLD}" "${F_RESET}" "${warp_ip_check:-未知}")"
+    msg "$(L MSG_WARP_0126 "${F_BOLD}" "${F_RESET}" "${warp_ip_check:-未知}")"
     if [[ "$real_ip" != "$warp_ip_check" && -n "$warp_ip_check" ]]; then
-      msg "$(L MSG_WARP_0045 "${F_GREEN}" "${F_RESET}")"
+      msg "$(L MSG_WARP_0127 "${F_GREEN}" "${F_RESET}")"
     fi
   fi
 
   # Check streaming unlock
   msg ""
-  msg_info "$(L MSG_WARP_0046)"
+  msg_info "$(L MSG_WARP_0128)"
   local cf_trace=$(curl -s4 --connect-timeout 5 "https://www.cloudflare.com/cdn-cgi/trace" 2>/dev/null)
   local warp_status=$(echo "$cf_trace" | grep "warp=" | cut -d= -f2)
-  msg "$(L MSG_WARP_0047 "${warp_status:-N/A}")"
+  msg "$(L MSG_WARP_0129 "${warp_status:-N/A}")"
 }
 
 # ---- WARP 代理配置 ----
 warp_proxy() {
   _require_root
-  msg_title "$(L MSG_WARP_0048)"
+  msg_title "$(L MSG_WARP_0130)"
   msg ""
 
   if ! warp-cli --accept-tos status 2>/dev/null | grep -qi "connected"; then
-    msg_warn "$(L MSG_WARP_0049)"
-    if confirm "$(L MSG_WARP_0050)"; then
+    msg_warn "$(L MSG_WARP_0131)"
+    if confirm "$(L MSG_WARP_0132)"; then
       warp-cli --accept-tos connect 2>/dev/null
       sleep 2
     fi
   fi
 
-  msg "$(L MSG_WARP_0051 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_WARP_0052)"
-  msg "$(L MSG_WARP_0053)"
+  msg "$(L MSG_WARP_0133 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0134)"
+  msg "$(L MSG_WARP_0135)"
   msg ""
-  msg "$(L MSG_WARP_0054 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_WARP_0055)"
-  msg "$(L MSG_WARP_0056)"
+  msg "$(L MSG_WARP_0136 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0137)"
+  msg "$(L MSG_WARP_0138)"
   msg "  3. curl --socks5 127.0.0.1:40000 https://example.com"
   msg ""
-  msg "$(L MSG_WARP_0057 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0139 "${F_BOLD}" "${F_RESET}")"
   msg ""
-  msg "$(L MSG_WARP_0058 "${F_CYAN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0140 "${F_CYAN}" "${F_RESET}")"
   msg '  {'
   msg '    "protocol": "socks",'
   msg '    "settings": {"servers": [{"address": "127.0.0.1", "port": 40000}]}'
   msg '  }'
   msg ""
-  msg "$(L MSG_WARP_0059 "${F_CYAN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0141 "${F_CYAN}" "${F_RESET}")"
   msg '  {'
   msg '    "type": "socks",'
   msg '    "server": "127.0.0.1",'
@@ -292,21 +292,21 @@ warp_proxy() {
 
 # ---- Help ----
 warp_help() {
-  msg_title "$(L MSG_WARP_0060)"
+  msg_title "$(L MSG_WARP_0142)"
   msg ""
-  msg "$(L MSG_WARP_0061)"
-  msg "$(L MSG_WARP_0062)"
-  msg "$(L MSG_WARP_0063)"
-  msg "$(L MSG_WARP_0064)"
-  msg "$(L MSG_WARP_0065)"
-  msg "$(L MSG_WARP_0066)"
-  msg "$(L MSG_WARP_0067)"
-  msg "$(L MSG_WARP_0068)"
+  msg "$(L MSG_WARP_0143)"
+  msg "$(L MSG_WARP_0144)"
+  msg "$(L MSG_WARP_0145)"
+  msg "$(L MSG_WARP_0146)"
+  msg "$(L MSG_WARP_0147)"
+  msg "$(L MSG_WARP_0148)"
+  msg "$(L MSG_WARP_0149)"
+  msg "$(L MSG_WARP_0150)"
   msg ""
-  msg "$(L MSG_WARP_0069 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_WARP_0070)"
-  msg "$(L MSG_WARP_0071)"
-  msg "$(L MSG_WARP_0072)"
+  msg "$(L MSG_WARP_0151 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0152)"
+  msg "$(L MSG_WARP_0153)"
+  msg "$(L MSG_WARP_0154)"
   msg ""
 }
 
@@ -315,20 +315,20 @@ warp_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(L MSG_WARP_0073)"
+    msg_title "$(L MSG_WARP_0155)"
     msg ""
     warp_status
     msg ""
-    msg "$(L MSG_WARP_0074 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WARP_0075 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WARP_0076 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WARP_0077 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WARP_0078 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WARP_0079 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WARP_0080 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_WARP_0081 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0156 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0157 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0158 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0159 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0160 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0161 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0162 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0163 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "$(L MSG_WARP_0082)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_WARP_0164)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) warp_install ;;
       2) warp_uninstall ;;

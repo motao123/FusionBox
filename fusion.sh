@@ -709,7 +709,7 @@ main_menu() {
     msg "  $(_tr MSG_ACKNOWLEDGEMENT "棉花云：优质网络提供商 https://www.88sup.com")"
     msg ""
 
-    read -p "$(L MSG_MAIN_0116)" main_choice || { msg ""; return; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_MAIN_0118)" main_choice || { msg ""; return; }   # stdin 关闭时退出，防死循环
 
     case "$main_choice" in
       1) route proxy ;;
@@ -743,7 +743,7 @@ privacy_menu() {
     msg "  ${F_GREEN}0${F_RESET}) Back"
     msg ""
     local choice
-    read -p "$(L MSG_MAIN_0117)" choice || return
+    read -p "$(L MSG_MAIN_0119)" choice || return
     case "$choice" in
       1) privacy_command on; pause ;;
       2) privacy_command off; pause ;;

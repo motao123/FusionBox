@@ -67,40 +67,40 @@ _singbox_233_install() {
   for path in "$SB_SH_BIN" "$(dirname "$SB_SH_BIN")/sb" "$SB_CORE_DIR" \
     "$P_SERVICE_DIR/sing-box.service" /var/log/sing-box; do
     if [[ -e "$path" || -L "$path" ]]; then
-      msg_err "$(L MSG_PROXY_0001 "$path")"
+      msg_err "$(L MSG_PROXY_0104 "$path")"
       return 1
     fi
   done
-  msg_info "$(L MSG_PROXY_0002)"
+  msg_info "$(L MSG_PROXY_0105)"
   local tmpf
   tmpf=$(mktemp) || return $?
   local rc=0
   _download "https://raw.githubusercontent.com/233boy/sing-box/main/install.sh" "$tmpf" || rc=$?
   if [[ $rc -ne 0 ]]; then
-    msg_err "$(L MSG_PROXY_0003)"
+    msg_err "$(L MSG_PROXY_0106)"
     rm -f "$tmpf"
     return "$rc"
   fi
   bash "$tmpf" || rc=$?
   rm -f "$tmpf"
   if [[ $rc -ne 0 ]]; then
-    msg_err "$(L MSG_PROXY_0004 "$rc")"
+    msg_err "$(L MSG_PROXY_0107 "$rc")"
     return "$rc"
   fi
   if ! _singbox_233_installed; then
-    msg_err "$(L MSG_PROXY_0005)"
+    msg_err "$(L MSG_PROXY_0108)"
     return 1
   fi
-  msg_ok "$(L MSG_PROXY_0006)"
-  msg_info "$(L MSG_PROXY_0007)"
-  _log_write "$(L MSG_PROXY_0008)"
+  msg_ok "$(L MSG_PROXY_0109)"
+  msg_info "$(L MSG_PROXY_0110)"
+  _log_write "$(L MSG_PROXY_0111)"
 }
 
 # 入口: fusionbox proxy sb [参数] —— 无参数进 233boy 交互主菜单，带参数原样透传
 proxy_sb() {
   _require_root || return $?
   if ! _singbox_233_installed; then
-    confirm "$(L MSG_PROXY_0009)" || return 1
+    confirm "$(L MSG_PROXY_0112)" || return 1
     _singbox_233_install || return $?
     return
   fi
@@ -139,26 +139,26 @@ proxy_main() {
 # ---- 安装代理核心 ----
 proxy_install() {
   _require_root || return $?
-  msg_title "$(L MSG_PROXY_0010)"
+  msg_title "$(L MSG_PROXY_0113)"
   msg ""
 
   # 选择后端
-  msg "$(L MSG_PROXY_0011)"
+  msg "$(L MSG_PROXY_0114)"
   local i=1
   for be in "${P_BACKENDS[@]}"; do
     local name="${be%%:*}"; local rest="${be#*:}"; local label="${rest%%:*}"
     local installed=""
-    [[ -f "$P_BIN_DIR/$name" ]] && installed="$(L MSG_PROXY_0012 "${F_GREEN}" "${F_RESET}")"
+    [[ -f "$P_BIN_DIR/$name" ]] && installed="$(L MSG_PROXY_0115 "${F_GREEN}" "${F_RESET}")"
     msg "  ${F_GREEN}$i${F_RESET}) $label$installed"
     i=$((i+1))
   done
   msg ""
-  read -p "$(L MSG_PROXY_0013 "${#P_BACKENDS[@]}")" be_choice
-  [[ "$be_choice" =~ ^[0-9]+$ ]] || { msg_err "$(L MSG_PROXY_0014)"; return 1; }
+  read -p "$(L MSG_PROXY_0116 "${#P_BACKENDS[@]}")" be_choice
+  [[ "$be_choice" =~ ^[0-9]+$ ]] || { msg_err "$(L MSG_PROXY_0117)"; return 1; }
   be_choice=$((be_choice - 1))
 
   if [[ $be_choice -lt 0 || $be_choice -ge ${#P_BACKENDS[@]} ]]; then
-    msg_err "$(L MSG_PROXY_0014)"
+    msg_err "$(L MSG_PROXY_0117)"
     return 1
   fi
 
@@ -171,11 +171,11 @@ proxy_install() {
   # sing-box 后端交由 233boy 脚本接管（社区最佳实践，自动 REALITY + 全协议管理）
   if [[ "$be_name" == "sing-box" ]]; then
     if _singbox_233_installed; then
-      msg_ok "$(L MSG_PROXY_0008)"
+      msg_ok "$(L MSG_PROXY_0111)"
       proxy_sb
       return
     fi
-    confirm "$(L MSG_PROXY_0015)" || return
+    confirm "$(L MSG_PROXY_0118)" || return
     _singbox_233_install
     return
   fi
@@ -183,14 +183,14 @@ proxy_install() {
   local command_path="/usr/local/bin/$be_name"
   if [[ -e "$command_path" || -L "$command_path" ]] && \
     ! _proxy_link_points_to "$command_path" "$P_BIN_DIR/$be_name"; then
-    msg_err "$(L MSG_PROXY_0016 "$command_path")"
+    msg_err "$(L MSG_PROXY_0119 "$command_path")"
     return 1
   fi
 
   # 检查是否已安装
   if [[ -f "$P_BIN_DIR/$be_name" ]]; then
-    msg_warn "$(L MSG_PROXY_0017 "$be_label")"
-    confirm "$(L MSG_PROXY_0018)" || return
+    msg_warn "$(L MSG_PROXY_0120 "$be_label")"
+    confirm "$(L MSG_PROXY_0121)" || return
   fi
 
   # 创建目录（配置目录存放密钥，权限收紧）
@@ -214,7 +214,7 @@ proxy_install() {
   esac
 
   if [[ ! -f "$tmpdir/$be_name" ]]; then
-    msg_err "$(L MSG_PROXY_0019)"
+    msg_err "$(L MSG_PROXY_0122)"
     rm -rf "$tmpdir"
     progress_end
     return 1
@@ -236,8 +236,8 @@ proxy_install() {
   progress_step "$(_tr MSG_PROXY_STAGES_4)"
   local ver=$($P_BIN_DIR/$be_name version 2>/dev/null | head -1)
   progress_end
-  msg_ok "$(L MSG_PROXY_0020 "$be_label" "$ver")"
-  _log_write "$(L MSG_PROXY_0021 "$be_label" "$ver")"
+  msg_ok "$(L MSG_PROXY_0123 "$be_label" "$ver")"
+  _log_write "$(L MSG_PROXY_0124 "$be_label" "$ver")"
   pause
 }
 
@@ -386,7 +386,7 @@ SEOF
 # ---- 卸载 ----
 proxy_uninstall() {
   _require_root || return $?
-  msg_title "$(L MSG_PROXY_0022)"
+  msg_title "$(L MSG_PROXY_0125)"
 
   # Snapshot both owners before native removal can break the legacy shared link.
   local native=0 upstream=0 path be rc=0
@@ -398,11 +398,11 @@ proxy_uninstall() {
     _proxy_link_points_to "$path" "$P_BIN_DIR/$be" && native_links+=("$path")
   done
   if [[ $native -eq 0 && $upstream -eq 0 ]]; then
-    msg_warn "$(L MSG_PROXY_0023)"
+    msg_warn "$(L MSG_PROXY_0126)"
     return 0
   fi
 
-  if [[ $native -eq 1 ]] && confirm "$(L MSG_PROXY_0024)"; then
+  if [[ $native -eq 1 ]] && confirm "$(L MSG_PROXY_0127)"; then
     local unit="$P_SERVICE_DIR/fusionbox-proxy.service" owned_unit=0
     for be in xray v2ray sing-box clash-meta; do
       if [[ ! -L "$unit" ]] && grep -Fxq "ExecStart=$P_BIN_DIR/$be run -c $P_CONF_DIR/config.json" "$unit" 2>/dev/null; then
@@ -419,19 +419,19 @@ proxy_uninstall() {
       rm -f "$path" || return $?
     done
     rm -rf "$P_BASE_DIR" "$P_LOG_DIR" || return $?
-    msg_ok "$(L MSG_PROXY_0025)"
-    _log_write "$(L MSG_PROXY_0025)"
+    msg_ok "$(L MSG_PROXY_0128)"
+    _log_write "$(L MSG_PROXY_0128)"
   fi
 
-  if [[ $upstream -eq 1 ]] && confirm "$(L MSG_PROXY_0026)"; then
+  if [[ $upstream -eq 1 ]] && confirm "$(L MSG_PROXY_0129)"; then
     _singbox_233_installed || return 1
     "$SB_SH_BIN" uninstall || rc=$?
     if [[ $rc -ne 0 ]]; then
-      msg_err "$(L MSG_PROXY_0027 "$rc")"
+      msg_err "$(L MSG_PROXY_0130 "$rc")"
       return "$rc"
     fi
-    msg_ok "$(L MSG_PROXY_0028)"
-    _log_write "$(L MSG_PROXY_0028)"
+    msg_ok "$(L MSG_PROXY_0131)"
+    _log_write "$(L MSG_PROXY_0131)"
   fi
   pause
   return 0
@@ -459,34 +459,34 @@ proxy_add() {
   _require_root
   # 只装了 233boy sing-box 时（自有目录不存在）也要正确引导
   if [[ ! -d "$P_BASE_DIR" ]] && _singbox_233_installed; then
-    msg_info "$(L MSG_PROXY_0029)"
-    msg_info "$(L MSG_PROXY_0030)"
+    msg_info "$(L MSG_PROXY_0132)"
+    msg_info "$(L MSG_PROXY_0133)"
     return 1
   fi
   if [[ ! -d "$P_BASE_DIR" ]]; then
-    msg_err "$(L MSG_PROXY_0031)"
+    msg_err "$(L MSG_PROXY_0134)"
     return 1
   fi
 
   local backend=$(cat "$P_BASE_DIR/current_backend" 2>/dev/null)
   if [[ -z "$backend" ]]; then
     if _singbox_233_installed; then
-      msg_info "$(L MSG_PROXY_0029)"
-      msg_info "$(L MSG_PROXY_0030)"
+      msg_info "$(L MSG_PROXY_0132)"
+      msg_info "$(L MSG_PROXY_0133)"
       return 1
     fi
-    msg_err "$(L MSG_PROXY_0032)"
+    msg_err "$(L MSG_PROXY_0135)"
     return 1
   fi
 
   # 选择协议
-  msg_title "$(L MSG_PROXY_0033)"
+  msg_title "$(L MSG_PROXY_0136)"
   msg ""
-  msg "$(L MSG_PROXY_0034 "${F_CYAN}" "$backend" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0137 "${F_CYAN}" "$backend" "${F_RESET}")"
   msg ""
   _proxy_show_protocols
-  read -p "$(L MSG_PROXY_0035 "${#P_PROTOCOLS[@]}")" proto_idx
-  [[ "$proto_idx" =~ ^[0-9]+$ ]] || { msg_err "$(L MSG_PROXY_0014)"; return 1; }
+  read -p "$(L MSG_PROXY_0138 "${#P_PROTOCOLS[@]}")" proto_idx
+  [[ "$proto_idx" =~ ^[0-9]+$ ]] || { msg_err "$(L MSG_PROXY_0117)"; return 1; }
   proto_idx=$((proto_idx - 1))
 
   local p_name="${P_PROTOCOLS[$((proto_idx * 3))]}"
@@ -494,16 +494,16 @@ proxy_add() {
   local p_transport="${P_PROTOCOLS[$((proto_idx * 3 + 2))]}"
 
   if [[ -z "$p_name" ]]; then
-    msg_err "$(L MSG_PROXY_0036)"
+    msg_err "$(L MSG_PROXY_0139)"
     return 1
   fi
 
   if ! _proxy_proto_supported "$backend" "$p_type"; then
-    msg_err "$(L MSG_PROXY_0037 "$backend" "$p_name")"
+    msg_err "$(L MSG_PROXY_0140 "$backend" "$p_name")"
     return 1
   fi
 
-  msg_info "$(L MSG_PROXY_0038 "$p_name")"
+  msg_info "$(L MSG_PROXY_0141 "$p_name")"
 
   # 生成 UUID 和端口
   local uuid
@@ -521,20 +521,20 @@ proxy_add() {
   _proxy_generate_config "$p_name" "$p_type" "$p_transport" "$uuid" "$port" "$conf_file"
 
   if [[ -f "$conf_file" ]]; then
-    msg_ok "$(L MSG_PROXY_0039 "$p_name" "$conf_file")"
-    msg_info "$(L MSG_PROXY_0040 "$port" "$uuid")"
+    msg_ok "$(L MSG_PROXY_0142 "$p_name" "$conf_file")"
+    msg_info "$(L MSG_PROXY_0143 "$port" "$uuid")"
     _proxy_rebuild_config
     proxy_service "restart" 2>/dev/null
-    _log_write "$(L MSG_PROXY_0041 "$p_name" "$port")"
+    _log_write "$(L MSG_PROXY_0144 "$p_name" "$port")"
   else
-    msg_err "$(L MSG_PROXY_0042)"
+    msg_err "$(L MSG_PROXY_0145)"
     return 1
   fi
   pause
 }
 
 _proxy_show_protocols() {
-  msg "$(L MSG_PROXY_0043)"
+  msg "$(L MSG_PROXY_0146)"
   local i=1; local idx=0
   while [[ $idx -lt ${#P_PROTOCOLS[@]} ]]; do
     msg "  ${F_GREEN}$i${F_RESET}) ${P_PROTOCOLS[$idx]}"
@@ -670,7 +670,7 @@ JEOF
 # ---- 列出配置 ----
 proxy_list() {
   if [[ ! -d "$P_CONF_DIR" ]]; then
-    msg_info "$(L MSG_PROXY_0044)"
+    msg_info "$(L MSG_PROXY_0147)"
     return
   fi
 
@@ -680,11 +680,11 @@ proxy_list() {
   done
 
   if [[ ${#configs[@]} -eq 0 ]]; then
-    msg_info "$(L MSG_PROXY_0044)"
+    msg_info "$(L MSG_PROXY_0147)"
     return
   fi
 
-  msg_title "$(L MSG_PROXY_0045)"
+  msg_title "$(L MSG_PROXY_0148)"
   local i=1
   for f in "${configs[@]}"; do
     local name=$(basename "$f" .json)
@@ -701,18 +701,18 @@ proxy_info() {
   local name="$1"
   if [[ -z "$name" ]]; then
     proxy_list
-    read -p "$(L MSG_PROXY_0046)" name
+    read -p "$(L MSG_PROXY_0149)" name
   fi
 
   local conf_file="$P_CONF_DIR/$name.json"
   [[ ! -f "$conf_file" ]] && conf_file=$(find "$P_CONF_DIR" -name "*$name*.json" 2>/dev/null | head -1)
 
   if [[ ! -f "$conf_file" ]]; then
-    msg_err "$(L MSG_PROXY_0047 "$name")"
+    msg_err "$(L MSG_PROXY_0150 "$name")"
     return 1
   fi
 
-  msg_title "$(L MSG_PROXY_0048 "$(basename "$conf_file" .json)")"
+  msg_title "$(L MSG_PROXY_0151 "$(basename "$conf_file" .json)")"
   if command -v jq &>/dev/null; then
     jq . "$conf_file"
   else
@@ -727,29 +727,29 @@ proxy_del() {
   local name="$1"
   if [[ -z "$name" ]]; then
     proxy_list
-    read -p "$(L MSG_PROXY_0049)" name
+    read -p "$(L MSG_PROXY_0152)" name
   fi
 
   local conf_file="$P_CONF_DIR/$name.json"
   [[ ! -f "$conf_file" ]] && conf_file=$(find "$P_CONF_DIR" -name "*$name*.json" 2>/dev/null | head -1)
 
   if [[ ! -f "$conf_file" ]]; then
-    msg_err "$(L MSG_PROXY_0047 "$name")"
+    msg_err "$(L MSG_PROXY_0150 "$name")"
     return 1
   fi
 
-  confirm "$(L MSG_PROXY_0050 "$(basename "$conf_file")")" || return
+  confirm "$(L MSG_PROXY_0153 "$(basename "$conf_file")")" || return
   rm -f "$conf_file"
   _proxy_rebuild_config
-  msg_ok "$(L MSG_PROXY_0051)"
+  msg_ok "$(L MSG_PROXY_0154)"
   proxy_service "restart" 2>/dev/null
-  _log_write "$(L MSG_PROXY_0052 "$(basename "$conf_file")")"
+  _log_write "$(L MSG_PROXY_0155 "$(basename "$conf_file")")"
 }
 
 # ---- 服务管理 ----
 proxy_service_menu() {
-  msg "$(L MSG_PROXY_0053)"
-  read -p "$(L MSG_PROXY_0054)" act
+  msg "$(L MSG_PROXY_0156)"
+  read -p "$(L MSG_PROXY_0157)" act
   case "$act" in 1) proxy_service "start" ;; 2) proxy_service "stop" ;; 3) proxy_service "restart" ;; esac
   pause
 }
@@ -761,23 +761,23 @@ proxy_service() {
       systemctl reset-failed fusionbox-proxy 2>/dev/null
       systemctl start fusionbox-proxy 2>/dev/null
       if systemctl is-active fusionbox-proxy &>/dev/null; then
-        msg_ok "$(L MSG_PROXY_0055)"
+        msg_ok "$(L MSG_PROXY_0158)"
       else
-        msg_err "$(L MSG_PROXY_0056)"
+        msg_err "$(L MSG_PROXY_0159)"
       fi
       ;;
     stop)
       systemctl stop fusionbox-proxy 2>/dev/null
-      msg_info "$(L MSG_PROXY_0057)"
+      msg_info "$(L MSG_PROXY_0160)"
       ;;
     restart)
       systemctl reset-failed fusionbox-proxy 2>/dev/null
       systemctl restart fusionbox-proxy 2>/dev/null
       sleep 1
       if systemctl is-active fusionbox-proxy &>/dev/null; then
-        msg_ok "$(L MSG_PROXY_0058)"
+        msg_ok "$(L MSG_PROXY_0161)"
       else
-        msg_err "$(L MSG_PROXY_0059)"
+        msg_err "$(L MSG_PROXY_0162)"
       fi
       ;;
   esac
@@ -785,45 +785,45 @@ proxy_service() {
 
 # ---- 状态 ----
 proxy_status() {
-  msg_title "$(L MSG_PROXY_0060)"
+  msg_title "$(L MSG_PROXY_0163)"
 
   local backend=""
   [[ -f "$P_BASE_DIR/current_backend" ]] && backend=$(cat "$P_BASE_DIR/current_backend")
 
   # 无自有后端且无 233boy 实例才是真正的"未安装"
   if [[ -z "$backend" ]] && ! _singbox_233_installed; then
-    msg "$(L MSG_PROXY_0061 "${F_BOLD}" "${F_RESET}" "${F_RED}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0164 "${F_BOLD}" "${F_RESET}" "${F_RED}" "${F_RESET}")"
     msg ""
     return
   fi
 
   if [[ -n "$backend" ]]; then
     local ver=$($P_BIN_DIR/$backend version 2>/dev/null | head -1)
-    msg "$(L MSG_PROXY_0062 "${F_BOLD}" "${F_RESET}" "$backend" "$ver")"
+    msg "$(L MSG_PROXY_0165 "${F_BOLD}" "${F_RESET}" "$backend" "$ver")"
 
     if systemctl is-active fusionbox-proxy &>/dev/null; then
-      msg "$(L MSG_PROXY_0063 "${F_BOLD}" "${F_RESET}" "${F_GREEN}" "${F_RESET}")"
+      msg "$(L MSG_PROXY_0166 "${F_BOLD}" "${F_RESET}" "${F_GREEN}" "${F_RESET}")"
       local pid=$(systemctl show fusionbox-proxy --property=MainPID --value 2>/dev/null)
       msg "  ${F_BOLD}PID:${F_RESET} $pid"
     else
-      msg "$(L MSG_PROXY_0064 "${F_BOLD}" "${F_RESET}" "${F_YELLOW}" "${F_RESET}")"
+      msg "$(L MSG_PROXY_0167 "${F_BOLD}" "${F_RESET}" "${F_YELLOW}" "${F_RESET}")"
     fi
 
     local count=$(find "$P_CONF_DIR" -name "*.json" 2>/dev/null | wc -l)
-    msg "$(L MSG_PROXY_0065 "${F_BOLD}" "${F_RESET}" "$count")"
+    msg "$(L MSG_PROXY_0168 "${F_BOLD}" "${F_RESET}" "$count")"
   fi
 
   # 233boy/sing-box 实例（独立于 FusionBox 自有后端）
   if _singbox_233_installed; then
     local sb_status
     if systemctl is-active sing-box &>/dev/null; then
-      sb_status="$(L MSG_PROXY_0066 "${F_GREEN}" "${F_RESET}")"
+      sb_status="$(L MSG_PROXY_0169 "${F_GREEN}" "${F_RESET}")"
     else
-      sb_status="$(L MSG_PROXY_0067 "${F_YELLOW}" "${F_RESET}")"
+      sb_status="$(L MSG_PROXY_0170 "${F_YELLOW}" "${F_RESET}")"
     fi
     local sb_count
     sb_count=$(find "$SB_CORE_DIR/conf" -name "*.json" 2>/dev/null | wc -l)
-    msg "$(L MSG_PROXY_0068 "${F_BOLD}" "${F_RESET}" "$sb_status" "$sb_count")"
+    msg "$(L MSG_PROXY_0171 "${F_BOLD}" "${F_RESET}" "$sb_status" "$sb_count")"
   fi
   msg ""
 }
@@ -832,10 +832,10 @@ proxy_status() {
 proxy_log() {
   local log_file="$P_LOG_DIR/access.log"
   if [[ -f "$log_file" ]]; then
-    msg_info "$(L MSG_PROXY_0069)"
+    msg_info "$(L MSG_PROXY_0172)"
     tail -f "$log_file" 2>/dev/null
   else
-    journalctl -u fusionbox-proxy --no-pager -n 50 2>/dev/null || msg_info "$(L MSG_PROXY_0070)"
+    journalctl -u fusionbox-proxy --no-pager -n 50 2>/dev/null || msg_info "$(L MSG_PROXY_0173)"
   fi
 }
 
@@ -844,14 +844,14 @@ proxy_bbr() {
   _require_root
   local cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
   if [[ "$cc" == "bbr" ]]; then
-    msg_ok "$(L MSG_PROXY_0071)"
+    msg_ok "$(L MSG_PROXY_0174)"
     return
   fi
 
   local kmaj=$(uname -r | cut -d. -f1)
   local kmin=$(uname -r | cut -d. -f2)
   if [[ $kmaj -lt 4 ]] || [[ $kmaj -eq 4 && $kmin -lt 9 ]]; then
-    msg_err "$(L MSG_PROXY_0072 "$(uname -r)")"
+    msg_err "$(L MSG_PROXY_0175 "$(uname -r)")"
     return 1
   fi
 
@@ -867,8 +867,8 @@ proxy_bbr() {
     echo 'net.core.default_qdisc = fq' >> /etc/sysctl.conf
   fi
   sysctl -p 2>/dev/null
-  msg_ok "$(L MSG_PROXY_0071)"
-  _log_write "$(L MSG_PROXY_0071)"
+  msg_ok "$(L MSG_PROXY_0174)"
+  _log_write "$(L MSG_PROXY_0174)"
 }
 
 # ---- 分享链接 ----
@@ -876,14 +876,14 @@ proxy_url() {
   local name="$1"
   if [[ -z "$name" ]]; then
     proxy_list
-    read -p "$(L MSG_PROXY_0046)" name
+    read -p "$(L MSG_PROXY_0149)" name
   fi
 
   local conf_file="$P_CONF_DIR/$name.json"
   [[ ! -f "$conf_file" ]] && conf_file=$(find "$P_CONF_DIR" -name "*$name*.json" 2>/dev/null | head -1)
 
   if [[ ! -f "$conf_file" ]]; then
-    msg_err "$(L MSG_PROXY_0047 "$name")"
+    msg_err "$(L MSG_PROXY_0150 "$name")"
     return 1
   fi
 
@@ -893,7 +893,7 @@ proxy_url() {
   local pass=$(grep -o '"password": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local ip="${F_IP:-$(curl -s4 --connect-timeout 5 ip.sb 2>/dev/null || echo "YOUR_IP")}"
 
-  msg_title "$(L MSG_PROXY_0073)"
+  msg_title "$(L MSG_PROXY_0176)"
   case "$proto" in
     vless)   msg_tip "vless://$uuid@$ip:$port?type=tcp" ;;
     vmess)   msg_tip "vmess://$(echo -n "{\"v\":\"2\",\"add\":\"$ip\",\"port\":\"$port\",\"id\":\"$uuid\"}" | base64 -w0 2>/dev/null)" ;;
@@ -901,32 +901,32 @@ proxy_url() {
     hysteria2) msg_tip "hysteria2://$pass@$ip:$port" ;;
     tuic)    msg_tip "tuic://$uuid:$pass@$ip:$port" ;;
     shadowsocks) msg_tip "ss://$(echo -n "aes-256-gcm:$pass" | base64 -w0 2>/dev/null)@$ip:$port" ;;
-    *)       msg_info "$(L MSG_PROXY_0074 "$ip" "$port")" ;;
+    *)       msg_info "$(L MSG_PROXY_0177 "$ip" "$port")" ;;
   esac
   msg ""
 }
 
 # ---- 帮助 ----
 proxy_help() {
-  msg_title "$(L MSG_PROXY_0075)"
+  msg_title "$(L MSG_PROXY_0178)"
   msg ""
-  msg "$(L MSG_PROXY_0076 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0077 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0078 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0079 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0080 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0081 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0082 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0083 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0084 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0085 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0086 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0087 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0088 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0179 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0180 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0181 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0182 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0183 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0184 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0185 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0186 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0187 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0188 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0189 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0190 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0191 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "$(L MSG_PROXY_0089 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0090 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_PROXY_0091 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0192 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0193 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0194 "${F_BOLD}" "${F_RESET}")"
   msg ""
 }
 
@@ -935,21 +935,21 @@ proxy_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(L MSG_PROXY_0092)"
+    msg_title "$(L MSG_PROXY_0195)"
     msg ""
     proxy_status
-    msg "$(L MSG_PROXY_0093 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0094 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0095 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0096 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0097 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0098 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0099 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0100 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0101 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_PROXY_0102 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0196 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0197 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0198 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0199 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0200 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0201 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0202 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0203 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0204 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0205 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "$(L MSG_PROXY_0103)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_PROXY_0206)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) proxy_install ;;
       2) proxy_add ;;

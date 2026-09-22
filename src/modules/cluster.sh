@@ -59,12 +59,12 @@ cluster_session() {
 cluster_add() {
   _require_root
   local node_name ssh_addr ssh_port
-  read -r -p "$(L MSG_CL_0001)" node_name || return 1
-  read -r -p "$(L MSG_CL_0002)" ssh_addr || return 1
-  read -r -p "$(L MSG_CL_0003)" ssh_port || return 1
-  [[ "$ssh_addr" == *@* ]] || { msg_err "$(L MSG_CL_0004)"; return 1; }
+  read -r -p "$(L MSG_CL_0269)" node_name || return 1
+  read -r -p "$(L MSG_CL_0270)" ssh_addr || return 1
+  read -r -p "$(L MSG_CL_0271)" ssh_port || return 1
+  [[ "$ssh_addr" == *@* ]] || { msg_err "$(L MSG_CL_0272)"; return 1; }
   _cluster_nodes add "$node_name" "${ssh_addr%%@*}" "${ssh_addr#*@}" "${ssh_port:-22}" || return 1
-  msg_ok "$(L MSG_CL_0005)"
+  msg_ok "$(L MSG_CL_0273)"
   pause
 }
 
@@ -72,31 +72,31 @@ cluster_remove() {
   _require_root
   local node_name
   _cluster_nodes list || return 1
-  read -r -p "$(L MSG_CL_0006)" node_name || return 1
-  confirm "$(L MSG_CL_0007 "$node_name")" || return 1
+  read -r -p "$(L MSG_CL_0274)" node_name || return 1
+  confirm "$(L MSG_CL_0275 "$node_name")" || return 1
   _cluster_nodes remove "$node_name" || return 1
-  msg_ok "$(L MSG_CL_0008)"
+  msg_ok "$(L MSG_CL_0276)"
   pause
 }
 
 cluster_list() {
   _require_root
   _cluster_init || return 1
-  msg_title "$(L MSG_CL_0009)"
+  msg_title "$(L MSG_CL_0277)"
   msg ""
   if [[ -n "$CLUSTER_SNAPSHOT" ]]; then
     local i=1
     while IFS='|' read -r name addr port; do
     [[ -n "$name" ]] || continue
-      local status="$(L MSG_CL_0010 "${F_RED}" "${F_RESET}")"
+      local status="$(L MSG_CL_0278 "${F_RED}" "${F_RESET}")"
       if ssh -n -F /dev/null -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$CLUSTER_DIR/known_hosts" -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no -o ConnectTimeout=3 -p "$port" "$addr" "echo ok" &>/dev/null; then
-        status="$(L MSG_CL_0011 "${F_GREEN}" "${F_RESET}")"
+        status="$(L MSG_CL_0279 "${F_GREEN}" "${F_RESET}")"
       fi
       msg "  $i) $name ($addr:$port) - $status"
       i=$((i+1))
     done <<< "$CLUSTER_SNAPSHOT"
   else
-    msg "$(L MSG_CL_0012)"
+    msg "$(L MSG_CL_0280)"
   fi
   pause
 }
@@ -104,31 +104,31 @@ cluster_list() {
 cluster_exec() {
   _require_root
   _cluster_init || return 1
-  msg_title "$(L MSG_CL_0013)"
+  msg_title "$(L MSG_CL_0281)"
   msg ""
 
   if [[ -z "$CLUSTER_SNAPSHOT" ]]; then
-    msg_warn "$(L MSG_CL_0014)"
+    msg_warn "$(L MSG_CL_0282)"
     pause; return
   fi
 
-  msg "$(L MSG_CL_0015)"
+  msg "$(L MSG_CL_0283)"
   while IFS='|' read -r name addr port; do
     [[ -n "$name" ]] || continue
     msg "    $name ($addr:$port)"
   done <<< "$CLUSTER_SNAPSHOT"
 
   msg ""
-  read -p "$(L MSG_CL_0016)" cmd_to_run
+  read -p "$(L MSG_CL_0284)" cmd_to_run
   if [[ -z "$cmd_to_run" ]]; then
     pause; return
   fi
 
-  confirm "$(L MSG_CL_0017)" || { pause; return; }
+  confirm "$(L MSG_CL_0285)" || { pause; return; }
 
   msg ""
-  msg_info "$(L MSG_CL_0018 "$cmd_to_run")"
-  msg "$(L MSG_CL_0019)"
+  msg_info "$(L MSG_CL_0286 "$cmd_to_run")"
+  msg "$(L MSG_CL_0287)"
   while IFS='|' read -r name addr port; do
     [[ -n "$name" ]] || continue
     msg "  ${F_CYAN}[$name]${F_RESET}"
@@ -140,43 +140,43 @@ cluster_exec() {
         msg "    $line"
       done
     else
-      msg "$(L MSG_CL_0020 "${F_RED}" "${F_RESET}")"
+      msg "$(L MSG_CL_0288 "${F_RED}" "${F_RESET}")"
     fi
   done <<< "$CLUSTER_SNAPSHOT"
-  msg "$(L MSG_CL_0019)"
-  _log_write "$(L MSG_CL_0021 "$cmd_to_run")"
+  msg "$(L MSG_CL_0287)"
+  _log_write "$(L MSG_CL_0289 "$cmd_to_run")"
   pause
 }
 
 cluster_sync() {
   _require_root
   _cluster_init || return 1
-  msg_title "$(L MSG_CL_0022)"
+  msg_title "$(L MSG_CL_0290)"
   msg ""
 
   if [[ -z "$CLUSTER_SNAPSHOT" ]]; then
-    msg_warn "$(L MSG_CL_0023)"
+    msg_warn "$(L MSG_CL_0291)"
     pause; return
   fi
 
-  read -p "$(L MSG_CL_0024)" local_path
-  read -p "$(L MSG_CL_0025)" remote_path
+  read -p "$(L MSG_CL_0292)" local_path
+  read -p "$(L MSG_CL_0293)" remote_path
   if [[ ! -e "$local_path" ]]; then
-    msg_err "$(L MSG_CL_0026)"
+    msg_err "$(L MSG_CL_0294)"
     pause; return
   fi
 
   msg ""
   while IFS='|' read -r name addr port; do
     [[ -n "$name" ]] || continue
-    msg_info "$(L MSG_CL_0027 "$name")"
+    msg_info "$(L MSG_CL_0295 "$name")"
     local destination="$addr"
     if [[ "${addr#*@}" == *:* ]]; then destination="${addr%%@*}@[${addr#*@}]"; fi
     scp -F /dev/null -r -P "$port" -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$CLUSTER_DIR/known_hosts" -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=no -o ConnectTimeout=10 -- "$local_path" "$destination:$remote_path" 2>/dev/null && \
-      msg_ok "$(L MSG_CL_0028 "$name")" || \
-      msg_err "$(L MSG_CL_0029 "$name")"
+      msg_ok "$(L MSG_CL_0296 "$name")" || \
+      msg_err "$(L MSG_CL_0297 "$name")"
   done <<< "$CLUSTER_SNAPSHOT"
-  _log_write "$(L MSG_CL_0030 "$local_path" "$remote_path")"
+  _log_write "$(L MSG_CL_0298 "$local_path" "$remote_path")"
   pause
 }
 
@@ -184,25 +184,25 @@ cluster_sync() {
 # 数据表: 名称|说明|远端命令
 # 命令内不包含 $ 与反引号，故可安全存放在双引号数组中；远端由目标机 shell 解析
 CLUSTER_TASKS=(
-  "$(L MSG_CL_0031)"
-  "$(L MSG_CL_0032)"
-  "$(L MSG_CL_0033)"
-  "$(L MSG_CL_0034)"
-  "$(L MSG_CL_0035)"
-  "$(L MSG_CL_0036)"
-  "$(L MSG_CL_0037)"
-  "$(L MSG_CL_0039)"$(L MSG_CL_0038)"; else test ! -e /swapfile && test ! -L /swapfile && fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && (grep -Eq '^[[:space:]]*/swapfile[[:space:]]' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab); fi"
-  "$(L MSG_CL_0040)"
+  "$(L MSG_CL_0299)"
+  "$(L MSG_CL_0300)"
+  "$(L MSG_CL_0301)"
+  "$(L MSG_CL_0302)"
+  "$(L MSG_CL_0303)"
+  "$(L MSG_CL_0304)"
+  "$(L MSG_CL_0305)"
+  "$(L MSG_CL_0306)"
+  "$(L MSG_CL_0307)"
 )
 
 cluster_task() {
   _require_root
   _cluster_init || return 1
-  msg_title "$(L MSG_CL_0041)"
+  msg_title "$(L MSG_CL_0308)"
   msg ""
 
   if [[ -z "$CLUSTER_SNAPSHOT" ]]; then
-    msg_warn "$(L MSG_CL_0042)"
+    msg_warn "$(L MSG_CL_0309)"
     pause; return
   fi
 
@@ -214,19 +214,19 @@ cluster_task() {
     msg "  ${F_GREEN}${i}${F_RESET}) ${F_BOLD}${name}${F_RESET} - ${desc}"
     i=$((i+1))
   done
-  msg "$(L MSG_CL_0043 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0310 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  read -p "$(L MSG_CL_0044)" task_choice
+  read -p "$(L MSG_CL_0311)" task_choice
   [[ -z "$task_choice" ]] && { pause; return; }
 
   # 解析选择（任务序号 / 多选 / c 自定义）
   local -a run_cmds=() run_names=()
   for token in $task_choice; do
     if [[ "$token" =~ ^[Cc]$ ]]; then
-      read -p "$(L MSG_CL_0045)" tcmd
+      read -p "$(L MSG_CL_0312)" tcmd
       if [[ -n "$tcmd" ]]; then
         run_cmds+=("$tcmd")
-        run_names+=("$(L MSG_CL_0046)")
+        run_names+=("$(L MSG_CL_0313)")
       fi
     elif [[ "$token" =~ ^[0-9]+$ ]] && [[ "$token" -ge 1 && "$token" -le "${#CLUSTER_TASKS[@]}" ]]; then
       entry="${CLUSTER_TASKS[$((token-1))]}"
@@ -235,18 +235,18 @@ cluster_task() {
       run_cmds+=("$tcmd")
       run_names+=("$name")
     else
-      msg_warn "$(L MSG_CL_0047 "$token")"
+      msg_warn "$(L MSG_CL_0314 "$token")"
     fi
   done
 
   if [[ ${#run_cmds[@]} -eq 0 ]]; then
-    msg_err "$(L MSG_CL_0048)"
+    msg_err "$(L MSG_CL_0315)"
     pause; return
   fi
 
   # 显示目标节点清单
   msg ""
-  msg "$(L MSG_CL_0049 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0316 "${F_BOLD}" "${F_RESET}")"
   local node_total=0 n a p
   while IFS='|' read -r n a p; do
     [[ -z "$n" ]] && continue
@@ -255,8 +255,8 @@ cluster_task() {
   done <<< "$CLUSTER_SNAPSHOT"
 
   msg ""
-  msg "$(L MSG_CL_0050 "${run_names[*]}")"
-  confirm "$(L MSG_CL_0051 "$node_total")" || { pause; return; }
+  msg "$(L MSG_CL_0317 "${run_names[*]}")"
+  confirm "$(L MSG_CL_0318 "$node_total")" || { pause; return; }
 
   # reboot 属破坏性操作：额外二次确认（输入大写 YES）
   local j need_reboot=0
@@ -264,16 +264,16 @@ cluster_task() {
     [[ "${run_names[$j]}" == "reboot" ]] && need_reboot=1
   done
   if [[ $need_reboot -eq 1 ]]; then
-    msg_warn "$(L MSG_CL_0052)"
-    read -p "$(L MSG_CL_0053)" reboot_yes
-    [[ "$reboot_yes" == "YES" ]] || { msg_info "$(L MSG_CL_0054)"; pause; return; }
-    msg_info "$(L MSG_CL_0055)"
+    msg_warn "$(L MSG_CL_0319)"
+    read -p "$(L MSG_CL_0320)" reboot_yes
+    [[ "$reboot_yes" == "YES" ]] || { msg_info "$(L MSG_CL_0321)"; pause; return; }
+    msg_info "$(L MSG_CL_0322)"
   fi
 
   # 逐节点执行：单个节点内依次跑完所选任务
   local ok=0 fail=0 result rc line node_fail=0
   msg ""
-  msg "$(L MSG_CL_0019)"
+  msg "$(L MSG_CL_0287)"
   while IFS='|' read -r n a p; do
     [[ -z "$n" ]] && continue
     msg "  ${F_CYAN}[$n]${F_RESET} ($a:$p)"
@@ -287,26 +287,26 @@ cluster_task() {
         if [[ -n "$result" ]]; then
           while IFS= read -r line; do msg "      $line"; done <<< "$result"
         else
-          msg "$(L MSG_CL_0056 "${F_GREEN}" "${F_RESET}")"
+          msg "$(L MSG_CL_0323 "${F_GREEN}" "${F_RESET}")"
         fi
       else
-        msg "$(L MSG_CL_0057 "${F_RED}" "${F_RESET}")"
+        msg "$(L MSG_CL_0324 "${F_RED}" "${F_RESET}")"
         [[ -n "$result" ]] && msg "      $result"
         node_fail=1
       fi
     done
     if [[ $node_fail -eq 0 ]]; then
-      msg "$(L MSG_CL_0058 "${F_GREEN}" "$n" "${F_RESET}")"
+      msg "$(L MSG_CL_0325 "${F_GREEN}" "$n" "${F_RESET}")"
       ok=$((ok+1))
     else
-      msg "$(L MSG_CL_0059 "${F_RED}" "$n" "${F_RESET}")"
+      msg "$(L MSG_CL_0326 "${F_RED}" "$n" "${F_RESET}")"
       fail=$((fail+1))
     fi
   done <<< "$CLUSTER_SNAPSHOT"
 
-  msg "$(L MSG_CL_0019)"
-  msg "$(L MSG_CL_0060 "${F_GREEN}" "$ok" "${F_RESET}" "${F_RED}" "$fail" "${F_RESET}" "$node_total")"
-  _log_write "$(L MSG_CL_0061 "${run_names[*]}" "$ok" "$fail")"
+  msg "$(L MSG_CL_0287)"
+  msg "$(L MSG_CL_0327 "${F_GREEN}" "$ok" "${F_RESET}" "${F_RED}" "$fail" "${F_RESET}" "$node_total")"
+  _log_write "$(L MSG_CL_0328 "${run_names[*]}" "$ok" "$fail")"
   pause
   [[ $fail -eq 0 ]]
 }
@@ -314,16 +314,16 @@ cluster_task() {
 # ---- 游戏服务端 ----
 cluster_game() {
   _require_root
-  msg_title "$(L MSG_CL_0062)"
+  msg_title "$(L MSG_CL_0329)"
   msg ""
-  msg "$(L MSG_CL_0063 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0064 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0065 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0066 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0067 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0068 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0330 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0331 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0332 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0333 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0334 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0335 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  read -p "$(L MSG_CL_0069)" game_choice
+  read -p "$(L MSG_CL_0336)" game_choice
 
   case "$game_choice" in
     1) _deploy_minecraft_java ;;
@@ -343,7 +343,7 @@ _deploy_minecraft_java() {
   local rcon_pass
   rcon_pass="$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
-  msg_info "$(L MSG_CL_0070)"
+  msg_info "$(L MSG_CL_0337)"
   cat > "$app_dir/docker-compose.yml" << MCEOF
 version: '3.8'
 services:
@@ -371,13 +371,13 @@ MCEOF
   chmod 600 "$app_dir/docker-compose.yml"   # compose 文件含 RCON 密码
 
   if (cd "$app_dir" && docker compose up -d); then
-    msg_ok "$(L MSG_CL_0071)"
-    msg "$(L MSG_CL_0072)"
-    msg "$(L MSG_CL_0073 "$rcon_pass")"
-    msg "$(L MSG_CL_0074 "$app_dir")"
-    _log_write "$(L MSG_CL_0071)"
+    msg_ok "$(L MSG_CL_0338)"
+    msg "$(L MSG_CL_0339)"
+    msg "$(L MSG_CL_0340 "$rcon_pass")"
+    msg "$(L MSG_CL_0341 "$app_dir")"
+    _log_write "$(L MSG_CL_0338)"
   else
-    msg_err "$(L MSG_CL_0075 "$app_dir")"
+    msg_err "$(L MSG_CL_0342 "$app_dir")"
     pause; return 1
   fi
   pause
@@ -409,11 +409,11 @@ volumes:
 MBEOF
 
   if (cd "$app_dir" && docker compose up -d); then
-    msg_ok "$(L MSG_CL_0076)"
-    msg "$(L MSG_CL_0077)"
-    _log_write "$(L MSG_CL_0076)"
+    msg_ok "$(L MSG_CL_0343)"
+    msg "$(L MSG_CL_0344)"
+    _log_write "$(L MSG_CL_0343)"
   else
-    msg_err "$(L MSG_CL_0075 "$app_dir")"
+    msg_err "$(L MSG_CL_0342 "$app_dir")"
     pause; return 1
   fi
   pause
@@ -444,11 +444,11 @@ volumes:
 TSEOF
 
   if (cd "$app_dir" && docker compose up -d); then
-    msg_ok "$(L MSG_CL_0078)"
-    msg "$(L MSG_CL_0079)"
-    _log_write "$(L MSG_CL_0078)"
+    msg_ok "$(L MSG_CL_0345)"
+    msg "$(L MSG_CL_0346)"
+    _log_write "$(L MSG_CL_0345)"
   else
-    msg_err "$(L MSG_CL_0075 "$app_dir")"
+    msg_err "$(L MSG_CL_0342 "$app_dir")"
     pause; return 1
   fi
   pause
@@ -480,11 +480,11 @@ volumes:
 PWEOF
 
   if (cd "$app_dir" && docker compose up -d); then
-    msg_ok "$(L MSG_CL_0080)"
-    msg "$(L MSG_CL_0081)"
-    _log_write "$(L MSG_CL_0082)"
+    msg_ok "$(L MSG_CL_0347)"
+    msg "$(L MSG_CL_0348)"
+    _log_write "$(L MSG_CL_0349)"
   else
-    msg_err "$(L MSG_CL_0075 "$app_dir")"
+    msg_err "$(L MSG_CL_0342 "$app_dir")"
     pause; return 1
   fi
   pause
@@ -496,17 +496,17 @@ CLUSTER_GAMES=(
   "minecraft-java|Minecraft Java|mc_data|minecraft-java"
   "minecraft-bedrock|Minecraft Bedrock|mcbe_data|minecraft-bedrock"
   "terraria|Terraria|terraria_data|terraria"
-  "$(L MSG_CL_0083)"
+  "$(L MSG_CL_0350)"
 )
 CLUSTER_GAME_BACKUP_DIR="/root/game-backups"
 
 cluster_game_manage() {
   _require_root
-  msg_title "$(L MSG_CL_0084)"
+  msg_title "$(L MSG_CL_0351)"
   msg ""
 
   if ! command -v docker >/dev/null 2>&1; then
-    msg_err "$(L MSG_CL_0085)"
+    msg_err "$(L MSG_CL_0352)"
     pause; return
   fi
 
@@ -524,26 +524,26 @@ cluster_game_manage() {
   done
 
   if [[ ${#d_keys[@]} -eq 0 ]]; then
-    msg_warn "$(L MSG_CL_0086)"
-    msg "$(L MSG_CL_0087)"
+    msg_warn "$(L MSG_CL_0353)"
+    msg "$(L MSG_CL_0354)"
     pause; return
   fi
 
   local st gsel
-  msg "$(L MSG_CL_0088)"
+  msg "$(L MSG_CL_0355)"
   for j in "${!d_keys[@]}"; do
-    st="$(L MSG_CL_0089 "${F_RED}" "${F_RESET}")"
+    st="$(L MSG_CL_0356 "${F_RED}" "${F_RESET}")"
     if [[ -n "$(docker ps --filter "name=${d_conts[$j]}" --format '{{.Names}}' 2>/dev/null)" ]]; then
-      st="$(L MSG_CL_0090 "${F_GREEN}" "${F_RESET}")"
+      st="$(L MSG_CL_0357 "${F_GREEN}" "${F_RESET}")"
     fi
     msg "  ${F_GREEN}$((j+1))${F_RESET}) ${d_names[$j]} - $st  ${F_CYAN}(${d_keys[$j]})${F_RESET}"
   done
-  msg "$(L MSG_CL_0068 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0335 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  read -p "$(L MSG_CL_0091)" gsel || { msg ""; return; }
+  read -p "$(L MSG_CL_0358)" gsel || { msg ""; return; }
   [[ "$gsel" == "0" || -z "$gsel" ]] && return
   if ! [[ "$gsel" =~ ^[0-9]+$ ]] || [[ "$gsel" -lt 1 || "$gsel" -gt ${#d_keys[@]} ]]; then
-    msg_err "$(L MSG_CL_0092)"
+    msg_err "$(L MSG_CL_0359)"
     pause; return
   fi
 
@@ -559,19 +559,19 @@ _game_manage_menu() {
 
   while true; do
     msg ""
-    msg_title "$(L MSG_CL_0093 "$gname")"
-    msg "$(L MSG_CL_0094)"
-    msg "$(L MSG_CL_0095)"
-    msg "$(L MSG_CL_0096)"
-    msg "$(L MSG_CL_0097)"
-    msg "$(L MSG_CL_0098)"
-    msg "$(L MSG_CL_0099)"
-    msg "$(L MSG_CL_0100)"
-    msg "$(L MSG_CL_0101)"
-    msg "$(L MSG_CL_0102)"
-    msg "$(L MSG_CL_0068 "${F_GREEN}" "${F_RESET}")"
+    msg_title "$(L MSG_CL_0360 "$gname")"
+    msg "$(L MSG_CL_0361)"
+    msg "$(L MSG_CL_0362)"
+    msg "$(L MSG_CL_0363)"
+    msg "$(L MSG_CL_0364)"
+    msg "$(L MSG_CL_0365)"
+    msg "$(L MSG_CL_0366)"
+    msg "$(L MSG_CL_0367)"
+    msg "$(L MSG_CL_0368)"
+    msg "$(L MSG_CL_0369)"
+    msg "$(L MSG_CL_0335 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "$(L MSG_CL_0103)" op || { msg ""; return; }
+    read -p "$(L MSG_CL_0370)" op || { msg ""; return; }
 
     case "$op" in
       1)
@@ -580,32 +580,32 @@ _game_manage_menu() {
         if [[ -n "$out" ]]; then
           while IFS= read -r line; do msg "    $line"; done <<< "$out"
         else
-          msg "$(L MSG_CL_0104 "${F_YELLOW}" "${F_RESET}")"
+          msg "$(L MSG_CL_0371 "${F_YELLOW}" "${F_RESET}")"
         fi
         ;;
       2)
         if (cd "$app_dir" && docker compose up -d); then
-          msg_ok "$(L MSG_CL_0105 "$gname")"
-          _log_write "$(L MSG_CL_0106 "$key")"
+          msg_ok "$(L MSG_CL_0372 "$gname")"
+          _log_write "$(L MSG_CL_0373 "$key")"
         else
-          msg_err "$(L MSG_CL_0107 "$app_dir")"
+          msg_err "$(L MSG_CL_0374 "$app_dir")"
         fi
         ;;
       3)
-        confirm "$(L MSG_CL_0108 "$gname")" || { msg_info "$(L MSG_CL_0109)"; continue; }
+        confirm "$(L MSG_CL_0375 "$gname")" || { msg_info "$(L MSG_CL_0376)"; continue; }
         if (cd "$app_dir" && docker compose stop); then
-          msg_ok "$(L MSG_CL_0110 "$gname")"
-          _log_write "$(L MSG_CL_0111 "$key")"
+          msg_ok "$(L MSG_CL_0377 "$gname")"
+          _log_write "$(L MSG_CL_0378 "$key")"
         else
-          msg_err "$(L MSG_CL_0112)"
+          msg_err "$(L MSG_CL_0379)"
         fi
         ;;
       4)
-        confirm "$(L MSG_CL_0113 "$gname")" || { msg_info "$(L MSG_CL_0109)"; continue; }
+        confirm "$(L MSG_CL_0380 "$gname")" || { msg_info "$(L MSG_CL_0376)"; continue; }
         if (cd "$app_dir" && docker compose restart); then
-          msg_ok "$(L MSG_CL_0114 "$gname")"
+          msg_ok "$(L MSG_CL_0381 "$gname")"
         else
-          msg_err "$(L MSG_CL_0115)"
+          msg_err "$(L MSG_CL_0382)"
         fi
         ;;
       5)
@@ -614,7 +614,7 @@ _game_manage_menu() {
         if [[ -n "$out" ]]; then
           while IFS= read -r line; do msg "    $line"; done <<< "$out"
         else
-          msg "$(L MSG_CL_0116)"
+          msg "$(L MSG_CL_0383)"
         fi
         ;;
       6) _game_backup "$key" "$gvol" ;;
@@ -628,12 +628,12 @@ _game_manage_menu() {
 
 _game_ensure_alpine() {
   docker image inspect alpine >/dev/null 2>&1 && return 0
-  msg_info "$(L MSG_CL_0117)"
+  msg_info "$(L MSG_CL_0384)"
   if docker pull alpine >/dev/null 2>&1; then
-    msg_ok "$(L MSG_CL_0118)"
+    msg_ok "$(L MSG_CL_0385)"
     return 0
   fi
-  msg_err "$(L MSG_CL_0119)"
+  msg_err "$(L MSG_CL_0386)"
   return 1
 }
 
@@ -641,10 +641,10 @@ _game_ensure_alpine() {
 _game_resolve_volume() {
   local key="$1" logical="$2" actual config
   [[ "$key" =~ ^[a-zA-Z0-9_-]+$ ]] || return 1
-  command -v python3 >/dev/null || { msg_err "$(L MSG_CL_0120)" >&2; return 1; }
+  command -v python3 >/dev/null || { msg_err "$(L MSG_CL_0387)" >&2; return 1; }
   config=$(cd "/opt/games/$key" && docker compose config --format json) || return 1
   actual=$(printf '%s' "$config" | python3 -c 'import json,sys; c=json.load(sys.stdin); print(c.get("volumes",{}).get(sys.argv[1],{}).get("name", ""))' "$logical") || return 1
-  [[ -n "$actual" ]] || { msg_err "$(L MSG_CL_0121)" >&2; return 1; }
+  [[ -n "$actual" ]] || { msg_err "$(L MSG_CL_0388)" >&2; return 1; }
   docker volume inspect "$actual" >/dev/null 2>&1 || return 1
   printf '%s\n' "$actual"
 }
@@ -655,7 +655,7 @@ _game_backup() {
   local ts file size
 
   if ! mkdir -p "$backup_dir"; then
-    msg_err "$(L MSG_CL_0122 "$backup_dir")"
+    msg_err "$(L MSG_CL_0389 "$backup_dir")"
     return 1
   fi
   gvol=$(_game_resolve_volume "$key" "$gvol") || return 1
@@ -664,13 +664,13 @@ _game_backup() {
   # 先声明再赋值，避免 local 吞掉退出码（SC2155）
   ts=$(date +%Y%m%d-%H%M%S)
   file="$key-$ts.tar.gz"
-  msg_info "$(L MSG_CL_0123 "$gvol" "$backup_dir" "$file")"
+  msg_info "$(L MSG_CL_0390 "$gvol" "$backup_dir" "$file")"
   if docker run --rm -v "$gvol":/data -v "$backup_dir":/backup alpine tar czf "/backup/$file" -C /data .; then
     size=$(du -h "$backup_dir/$file" 2>/dev/null | cut -f1)
-    msg_ok "$(L MSG_CL_0124 "$backup_dir" "$file" "${size:-大小未知}")"
-    _log_write "$(L MSG_CL_0125 "$key" "$file")"
+    msg_ok "$(L MSG_CL_0391 "$backup_dir" "$file" "${size:-大小未知}")"
+    _log_write "$(L MSG_CL_0392 "$key" "$file")"
   else
-    msg_err "$(L MSG_CL_0126)"
+    msg_err "$(L MSG_CL_0393)"
     rm -f "$backup_dir/$file"   # 清理可能残留的半个包
     return 1
   fi
@@ -687,28 +687,28 @@ _game_restore() {
   done < <(ls -1t "$backup_dir/$key"-*.tar.gz 2>/dev/null)
 
   if [[ ${#files[@]} -eq 0 ]]; then
-    msg_warn "$(L MSG_CL_0127 "$backup_dir" "$key")"
+    msg_warn "$(L MSG_CL_0394 "$backup_dir" "$key")"
     return 0
   fi
 
   msg ""
-  msg "$(L MSG_CL_0128)"
+  msg "$(L MSG_CL_0395)"
   for j in "${!files[@]}"; do
     msg "  ${F_GREEN}$((j+1))${F_RESET}) $(basename "${files[$j]}")  ${F_CYAN}($(du -h "${files[$j]}" 2>/dev/null | cut -f1))${F_RESET}"
   done
-  msg "$(L MSG_CL_0068 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0335 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  read -p "$(L MSG_CL_0129)" rsel
+  read -p "$(L MSG_CL_0396)" rsel
   [[ "$rsel" == "0" || -z "$rsel" ]] && return 0
   if ! [[ "$rsel" =~ ^[0-9]+$ ]] || [[ "$rsel" -lt 1 || "$rsel" -gt ${#files[@]} ]]; then
-    msg_err "$(L MSG_CL_0130)"
+    msg_err "$(L MSG_CL_0397)"
     return 0
   fi
 
   f="${files[$((rsel-1))]}"
   base=$(basename "$f")
-  msg_warn "$(L MSG_CL_0131 "$gvol" "$base")"
-  confirm "$(L MSG_CL_0132)" || { msg_info "$(L MSG_CL_0109)"; return 0; }
+  msg_warn "$(L MSG_CL_0398 "$gvol" "$base")"
+  confirm "$(L MSG_CL_0399)" || { msg_info "$(L MSG_CL_0376)"; return 0; }
   _game_ensure_alpine || return 1
 
   gvol=$(_game_resolve_volume "$key" "$gvol") || return 1
@@ -724,25 +724,25 @@ with tarfile.open(sys.argv[1], 'r:gz') as archive:
             with archive.extractfile(member) as stream:
                 while stream.read(1024 * 1024): pass
 PY
-  [[ $? -eq 0 ]] || { msg_err "$(L MSG_CL_0133)"; return 1; }
+  [[ $? -eq 0 ]] || { msg_err "$(L MSG_CL_0400)"; return 1; }
   local app_dir="/opt/games/$key" running safety rc=0
   running=$(cd "$app_dir" && docker compose ps --status running -q) || return 1
   (cd "$app_dir" && docker compose stop) || return 1
   safety="$key-before-restore-$(date +%Y%m%d-%H%M%S)-$$.tar.gz"
   if ! docker run --rm --mount "type=volume,src=$gvol,dst=/data,readonly" -v "$backup_dir":/backup alpine tar czf "/backup/$safety" -C /data .; then
-    msg_err "$(L MSG_CL_0134)"
+    msg_err "$(L MSG_CL_0401)"
     [[ -z "$running" ]] || docker start $running >/dev/null
     return 1
   fi
   if ! docker run --rm --mount "type=volume,src=$gvol,dst=/data" -v "$backup_dir":/backup:ro alpine sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar xzf "/backup/$1" -C /data' sh "$base"; then
     rc=1
-    msg_err "$(L MSG_CL_0135 "$safety")"
+    msg_err "$(L MSG_CL_0402 "$safety")"
     docker run --rm --mount "type=volume,src=$gvol,dst=/data" -v "$backup_dir":/backup:ro alpine sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar xzf "/backup/$1" -C /data' sh "$safety" || {
-      msg_err "$(L MSG_CL_0136 "$safety")"; return 1;
+      msg_err "$(L MSG_CL_0403 "$safety")"; return 1;
     }
   fi
   if [[ -n "$running" ]]; then docker start $running >/dev/null || return 1; fi
-  [[ "$rc" -eq 0 ]] && msg_ok "$(L MSG_CL_0137 "$safety")"
+  [[ "$rc" -eq 0 ]] && msg_ok "$(L MSG_CL_0404 "$safety")"
   return "$rc"
 }
 
@@ -752,7 +752,7 @@ _game_config() {
   local compose="$app_dir/docker-compose.yml"
 
   if [[ ! -f "$compose" ]]; then
-    msg_err "$(L MSG_CL_0138 "$compose")"
+    msg_err "$(L MSG_CL_0405 "$compose")"
     return 1
   fi
 
@@ -762,55 +762,55 @@ _game_config() {
   local line new_mem new_pl changed=0
   case "$key" in
     minecraft-java)
-      msg_info "$(L MSG_CL_0139)"
+      msg_info "$(L MSG_CL_0406)"
       while IFS= read -r line; do msg "    $line"; done < <(grep -E '^[[:space:]]*(MEMORY|MAX_PLAYERS):' "$compose" 2>/dev/null)
-      read -p "$(L MSG_CL_0140)" new_mem
-      read -p "$(L MSG_CL_0141)" new_pl
+      read -p "$(L MSG_CL_0407)" new_mem
+      read -p "$(L MSG_CL_0408)" new_pl
       if [[ -n "$new_mem" ]]; then
         if [[ "$new_mem" =~ ^[0-9]+[GgMm]$ ]]; then
           sed -i -E "s|^([[:space:]]*MEMORY:[[:space:]]*).*|\1\"$new_mem\"|" "$compose"
-          msg_ok "$(L MSG_CL_0142 "$new_mem")"
+          msg_ok "$(L MSG_CL_0409 "$new_mem")"
           changed=1
         else
-          msg_err "$(L MSG_CL_0143)"
+          msg_err "$(L MSG_CL_0410)"
         fi
       fi
       if [[ -n "$new_pl" ]]; then
         if [[ "$new_pl" =~ ^[0-9]+$ ]]; then
           sed -i -E "s|^([[:space:]]*MAX_PLAYERS:[[:space:]]*).*|\1\"$new_pl\"|" "$compose"
-          msg_ok "$(L MSG_CL_0144 "$new_pl")"
+          msg_ok "$(L MSG_CL_0411 "$new_pl")"
           changed=1
         else
-          msg_err "$(L MSG_CL_0145)"
+          msg_err "$(L MSG_CL_0412)"
         fi
       fi
       ;;
     palworld)
-      msg_info "$(L MSG_CL_0139)"
+      msg_info "$(L MSG_CL_0406)"
       while IFS= read -r line; do msg "    $line"; done < <(grep -E '^[[:space:]]*PLAYERS:' "$compose" 2>/dev/null)
-      read -p "$(L MSG_CL_0146)" new_pl
+      read -p "$(L MSG_CL_0413)" new_pl
       if [[ -n "$new_pl" ]]; then
         if [[ "$new_pl" =~ ^[0-9]+$ ]]; then
           sed -i -E "s|^([[:space:]]*PLAYERS:[[:space:]]*).*|\1\"$new_pl\"|" "$compose"
-          msg_ok "$(L MSG_CL_0147 "$new_pl")"
+          msg_ok "$(L MSG_CL_0414 "$new_pl")"
           changed=1
         else
-          msg_err "$(L MSG_CL_0145)"
+          msg_err "$(L MSG_CL_0412)"
         fi
       fi
       ;;
     *)
-      msg_info "$(L MSG_CL_0148 "$compose")"
-      msg "$(L MSG_CL_0149 "$app_dir")"
+      msg_info "$(L MSG_CL_0415 "$compose")"
+      msg "$(L MSG_CL_0416 "$app_dir")"
       return 0
       ;;
   esac
 
   if [[ $changed -eq 1 ]]; then
-    msg_info "$(L MSG_CL_0150 "$app_dir")"
-    _log_write "$(L MSG_CL_0151 "$key")"
+    msg_info "$(L MSG_CL_0417 "$app_dir")"
+    _log_write "$(L MSG_CL_0418 "$key")"
   else
-    msg "$(L MSG_CL_0152)"
+    msg "$(L MSG_CL_0419)"
   fi
 }
 
@@ -819,27 +819,27 @@ _game_uninstall() {
 
   # 目录必须位于 /opt/games 下，避免误删
   if [[ "$app_dir" != /opt/games/* ]]; then
-    msg_err "$(L MSG_CL_0153 "$app_dir")"
+    msg_err "$(L MSG_CL_0420 "$app_dir")"
     return 1
   fi
 
-  msg_warn "$(L MSG_CL_0154 "$gname" "$app_dir")"
-  msg_warn "$(L MSG_CL_0155 "$gvol")"
-  confirm "$(L MSG_CL_0156 "$gname")" || { msg_info "$(L MSG_CL_0109)"; return 1; }
-  read -p "$(L MSG_CL_0157)" uninstall_yes
-  [[ "$uninstall_yes" == "YES" ]] || { msg_info "$(L MSG_CL_0158)"; return 1; }
+  msg_warn "$(L MSG_CL_0421 "$gname" "$app_dir")"
+  msg_warn "$(L MSG_CL_0422 "$gvol")"
+  confirm "$(L MSG_CL_0423 "$gname")" || { msg_info "$(L MSG_CL_0376)"; return 1; }
+  read -p "$(L MSG_CL_0424)" uninstall_yes
+  [[ "$uninstall_yes" == "YES" ]] || { msg_info "$(L MSG_CL_0425)"; return 1; }
 
-  msg_info "$(L MSG_CL_0159)"
+  msg_info "$(L MSG_CL_0426)"
   if (cd "$app_dir" && docker compose down); then
-    msg_ok "$(L MSG_CL_0160)"
+    msg_ok "$(L MSG_CL_0427)"
   else
-    msg_err "$(L MSG_CL_0161)"
+    msg_err "$(L MSG_CL_0428)"
     return 1
   fi
   rm -rf "$app_dir"
-  msg_ok "$(L MSG_CL_0162 "$gname")"
-  msg_info "$(L MSG_CL_0163 "$gvol" "$gvol")"
-  _log_write "$(L MSG_CL_0164 "$key" "$gvol")"
+  msg_ok "$(L MSG_CL_0429 "$gname")"
+  msg_info "$(L MSG_CL_0430 "$gvol" "$gvol")"
+  _log_write "$(L MSG_CL_0431 "$key" "$gvol")"
   return 0
 }
 
@@ -852,33 +852,33 @@ cluster_oracle() {
         return $?
         ;;
       install|enable|disable|uninstall)
-        msg_err "$(L MSG_CL_0165)"
+        msg_err "$(L MSG_CL_0432)"
         return 2
         ;;
       *)
-        msg_err "$(L MSG_CL_0166 "$1")"
-        msg "$(L MSG_CL_0167)"
+        msg_err "$(L MSG_CL_0433 "$1")"
+        msg "$(L MSG_CL_0434)"
         return 2
         ;;
     esac
   fi
 
   _require_root
-  msg_title "$(L MSG_CL_0168)"
+  msg_title "$(L MSG_CL_0435)"
   msg ""
-  msg_warn "$(L MSG_CL_0169)"
+  msg_warn "$(L MSG_CL_0436)"
   msg ""
-  msg "$(L MSG_CL_0170)"
-  msg "$(L MSG_CL_0171)"
-  msg "$(L MSG_CL_0172)"
-  msg "$(L MSG_CL_0173)"
-  read -r -p "$(L MSG_CL_0069)" oc_choice || return
+  msg "$(L MSG_CL_0437)"
+  msg "$(L MSG_CL_0438)"
+  msg "$(L MSG_CL_0439)"
+  msg "$(L MSG_CL_0440)"
+  read -r -p "$(L MSG_CL_0336)" oc_choice || return
   case "$oc_choice" in
     1) python3 -B "$FUSION_SRC/lib/oracle_tools.py" detect ;;
     2) python3 -B "$FUSION_SRC/lib/oracle_tools.py" detect --metadata ;;
     3) python3 -B "$FUSION_SRC/lib/oracle_tools.py" status ;;
     0) return 0 ;;
-    *) msg_err "$(L MSG_CL_0092)"; return 2 ;;
+    *) msg_err "$(L MSG_CL_0359)"; return 2 ;;
   esac
   pause
 
@@ -894,40 +894,40 @@ cluster_sshout() {
 
   case "$action" in
     list)
-      [[ -s "$file" ]] || { msg "$(L MSG_CL_0174)"; return 0; }
-      msg "$(L MSG_CL_0175 "${F_BOLD}" "${F_RESET}")"
+      [[ -s "$file" ]] || { msg "$(L MSG_CL_0441)"; return 0; }
+      msg "$(L MSG_CL_0442 "${F_BOLD}" "${F_RESET}")"
       awk -F'|' '{printf "    %s -> %s:%s\n", $1, $2, $3}' "$file"
       ;;
     add)
       local name="${1:-}" target="${2:-}" port="${3:-22}"
-      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "$(L MSG_CL_0176 "$name")"; return 1; }
-      [[ "$target" =~ ^[a-zA-Z0-9._@-]+$ ]] || { msg_err "$(L MSG_CL_0177 "$target")"; return 1; }
-      [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || { msg_err "$(L MSG_CL_0178 "$port")"; return 1; }
-      grep -q "^$name|" "$file" 2>/dev/null && { msg_err "$(L MSG_CL_0179 "$name")"; return 1; }
+      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "$(L MSG_CL_0443 "$name")"; return 1; }
+      [[ "$target" =~ ^[a-zA-Z0-9._@-]+$ ]] || { msg_err "$(L MSG_CL_0444 "$target")"; return 1; }
+      [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || { msg_err "$(L MSG_CL_0445 "$port")"; return 1; }
+      grep -q "^$name|" "$file" 2>/dev/null && { msg_err "$(L MSG_CL_0446 "$name")"; return 1; }
       mkdir -p "$(dirname "$file")" && touch "$file" && chmod 600 "$file"
       printf '%s|%s|%s
 ' "$name" "$target" "$port" >> "$file"
-      msg_ok "$(L MSG_CL_0180 "$name" "$target" "$port")"
+      msg_ok "$(L MSG_CL_0447 "$name" "$target" "$port")"
       ;;
     rm)
       local name="${1:-}"
-      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "$(L MSG_CL_0181)"; return 1; }
-      [[ -f "$file" ]] && grep -q "^$name|" "$file" || { msg_err "$(L MSG_CL_0182 "$name")"; return 1; }
+      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "$(L MSG_CL_0448)"; return 1; }
+      [[ -f "$file" ]] && grep -q "^$name|" "$file" || { msg_err "$(L MSG_CL_0449 "$name")"; return 1; }
       sed -i "/^$name|/d" "$file"
-      msg_ok "$(L MSG_CL_0183 "$name")"
+      msg_ok "$(L MSG_CL_0450 "$name")"
       ;;
     connect)
       local name="${1:-}"
-      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "$(L MSG_CL_0181)"; return 1; }
+      [[ "$name" =~ ^[a-zA-Z0-9._-]{1,32}$ ]] || { msg_err "$(L MSG_CL_0448)"; return 1; }
       local row; row=$(grep "^$name|" "$file" 2>/dev/null | tail -1)
-      [[ -n "$row" ]] || { msg_err "$(L MSG_CL_0182 "$name")"; return 1; }
+      [[ -n "$row" ]] || { msg_err "$(L MSG_CL_0449 "$name")"; return 1; }
       local target="${row#*|}"; target="${target%%|*}"
       local port="${row##*|}"
-      msg_info "$(L MSG_CL_0184 "$name" "$target" "$port")"
+      msg_info "$(L MSG_CL_0451 "$name" "$target" "$port")"
       ssh -t -p "$port" "$target"
       ;;
     *)
-      msg_err "$(L MSG_CL_0185 "$action")"; return 2 ;;
+      msg_err "$(L MSG_CL_0452 "$action")"; return 2 ;;
   esac
 }
 
@@ -936,41 +936,41 @@ cluster_sshout() {
 # so users do not have to memorise the CLI surface or read the source.
 cluster_k_alias() {
   _require_root
-  msg_title "$(L MSG_CL_0186)"
+  msg_title "$(L MSG_CL_0453)"
   msg ""
-  msg "$(L MSG_CL_0187 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_CL_0188 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0189 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0190 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0191 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0192 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0193 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0194 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0454 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0455 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0456 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0457 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0458 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0459 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0460 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0461 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "$(L MSG_CL_0195 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_CL_0196 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0197 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0198 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0199 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0462 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0463 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0464 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0465 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0466 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "$(L MSG_CL_0200 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_CL_0201 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0202 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0203 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0204 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0205 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0467 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0468 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0469 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0470 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0471 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0472 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "$(L MSG_CL_0206 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_CL_0207 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0208 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0209 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0473 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0474 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0475 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0476 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "$(L MSG_CL_0210 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_CL_0211 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0212 "${F_GREEN}" "${F_RESET}")"
-  msg "$(L MSG_CL_0213 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0477 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0478 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0479 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_CL_0480 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg_info "$(L MSG_CL_0214)"
+  msg_info "$(L MSG_CL_0481)"
   msg ""
 }
 
@@ -980,7 +980,7 @@ cluster_kcmd() {
   mkdir -p "$kcmd_dir"
   local kcmd_file="$kcmd_dir/aliases.sh"
 
-  msg_title "$(L MSG_CL_0215)"
+  msg_title "$(L MSG_CL_0482)"
   msg ""
 
   # Initialize default aliases if not exists
@@ -1007,7 +1007,7 @@ KEOF
     echo "[ -f $kcmd_file ] && source $kcmd_file" >> ~/.bashrc
   fi
 
-  msg "$(L MSG_CL_0216 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0483 "${F_BOLD}" "${F_RESET}")"
   msg ""
   while IFS= read -r line; do
     [[ "$line" == alias* ]] || continue
@@ -1018,38 +1018,38 @@ KEOF
   done < "$kcmd_file"
 
   msg ""
-  msg "$(L MSG_CL_0217)"
-  msg "$(L MSG_CL_0218)"
-  msg "$(L MSG_CL_0219)"
-  msg "$(L MSG_CL_0220)"
-  msg "$(L MSG_CL_0173)"
-  read -p "$(L MSG_CL_0069)" k_choice
+  msg "$(L MSG_CL_0484)"
+  msg "$(L MSG_CL_0485)"
+  msg "$(L MSG_CL_0486)"
+  msg "$(L MSG_CL_0487)"
+  msg "$(L MSG_CL_0440)"
+  read -p "$(L MSG_CL_0336)" k_choice
 
   case "$k_choice" in
     1)
-      read -p "$(L MSG_CL_0221)" alias_name
-      read -p "$(L MSG_CL_0222)" alias_cmd
+      read -p "$(L MSG_CL_0488)" alias_name
+      read -p "$(L MSG_CL_0489)" alias_cmd
       if [[ -n "$alias_name" && -n "$alias_cmd" ]]; then
         # 别名会写入被 source 的 shell 文件，必须校验命名合法性
         if [[ ! "$alias_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-          msg_err "$(L MSG_CL_0223)"
+          msg_err "$(L MSG_CL_0490)"
         else
           echo "alias $alias_name='$alias_cmd'" >> "$kcmd_file"
           source "$kcmd_file" 2>/dev/null
-          msg_ok "$(L MSG_CL_0224 "$alias_name" "$alias_cmd")"
+          msg_ok "$(L MSG_CL_0491 "$alias_name" "$alias_cmd")"
         fi
       fi
       ;;
     2)
       nl -ba "$kcmd_file" | grep "alias"
-      read -p "$(L MSG_CL_0225)" del_line
+      read -p "$(L MSG_CL_0492)" del_line
       if [[ -n "$del_line" ]]; then
         if ! [[ "$del_line" =~ ^[0-9]+$ ]] || [[ "$del_line" -lt 1 || "$del_line" -gt $(wc -l < "$kcmd_file") ]]; then
-          msg_err "$(L MSG_CL_0226 "$(wc -l < "$kcmd_file")")"
-        elif confirm "$(L MSG_CL_0227 "$del_line")"; then
+          msg_err "$(L MSG_CL_0493 "$(wc -l < "$kcmd_file")")"
+        elif confirm "$(L MSG_CL_0494 "$del_line")"; then
           sed -i "${del_line}d" "$kcmd_file"
           source "$kcmd_file" 2>/dev/null
-          msg_ok "$(L MSG_CL_0228)"
+          msg_ok "$(L MSG_CL_0495)"
         fi
       fi
       ;;
@@ -1059,7 +1059,7 @@ KEOF
       ;;
     4)
       source "$kcmd_file" 2>/dev/null
-      msg_ok "$(L MSG_CL_0229)"
+      msg_ok "$(L MSG_CL_0496)"
       ;;
   esac
   pause
@@ -1067,37 +1067,37 @@ KEOF
 
 # ---- Help ----
 cluster_help() {
-  msg_title "$(L MSG_CL_0230)"
+  msg_title "$(L MSG_CL_0497)"
   msg ""
-  msg "$(L MSG_CL_0231 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_CL_0232)"
-  msg "$(L MSG_CL_0233)"
-  msg "$(L MSG_CL_0234)"
-  msg "$(L MSG_CL_0235)"
-  msg "$(L MSG_CL_0236)"
-  msg "$(L MSG_CL_0237)"
-  msg "$(L MSG_CL_0238)"
-  msg "$(L MSG_CL_0239)"
-  msg "$(L MSG_CL_0240)"
-  msg "$(L MSG_CL_0241)"
-  msg "$(L MSG_CL_0242)"
-  msg "$(L MSG_CL_0243)"
-  msg "$(L MSG_CL_0244)"
-  msg "$(L MSG_CL_0245)"
+  msg "$(L MSG_CL_0498 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0499)"
+  msg "$(L MSG_CL_0500)"
+  msg "$(L MSG_CL_0501)"
+  msg "$(L MSG_CL_0502)"
+  msg "$(L MSG_CL_0503)"
+  msg "$(L MSG_CL_0504)"
+  msg "$(L MSG_CL_0505)"
+  msg "$(L MSG_CL_0506)"
+  msg "$(L MSG_CL_0507)"
+  msg "$(L MSG_CL_0508)"
+  msg "$(L MSG_CL_0509)"
+  msg "$(L MSG_CL_0510)"
+  msg "$(L MSG_CL_0511)"
+  msg "$(L MSG_CL_0512)"
   msg ""
-  msg "$(L MSG_CL_0246 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_CL_0247)"
+  msg "$(L MSG_CL_0513 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0514)"
   msg "    - Minecraft Java/Bedrock"
   msg "    - Terraria"
-  msg "$(L MSG_CL_0248)"
-  msg "$(L MSG_CL_0249)"
+  msg "$(L MSG_CL_0515)"
+  msg "$(L MSG_CL_0516)"
   msg ""
   msg "  ${F_BOLD}[Oracle Cloud]${F_RESET}"
-  msg "$(L MSG_CL_0250)"
-  msg "$(L MSG_CL_0251)"
+  msg "$(L MSG_CL_0517)"
+  msg "$(L MSG_CL_0518)"
   msg ""
-  msg "$(L MSG_CL_0252 "${F_BOLD}" "${F_RESET}")"
-  msg "$(L MSG_CL_0253)"
+  msg "$(L MSG_CL_0519 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_CL_0520)"
   msg "    k=fusionbox  ks=system  kb=bbr  kn=network"
   msg "    kw=web  kp=proxy  kd=docker  km=market"
   msg ""
@@ -1108,33 +1108,33 @@ cluster_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "$(L MSG_CL_0254)"
+    msg_title "$(L MSG_CL_0521)"
     msg ""
-    msg "$(L MSG_CL_0255 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0256 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0257 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0258 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0259 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0260 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0261 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0262 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0263 "${F_GREEN}" "${F_RESET}")"
-    msg "$(L MSG_CL_0264 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0522 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0523 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0524 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0525 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0526 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0527 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0528 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0529 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0530 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_CL_0531 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "$(L MSG_CL_0103)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_CL_0370)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1)
-        msg "$(L MSG_CL_0265)"
-        read -p "$(L MSG_CL_0069)" node_choice || { msg ""; break; }
+        msg "$(L MSG_CL_0532)"
+        read -p "$(L MSG_CL_0336)" node_choice || { msg ""; break; }
         case "$node_choice" in
           1) cluster_add ;;
           2) cluster_remove ;;
           3) cluster_list ;;
-          4) read -r -p "$(L MSG_CL_0266)" transfer_file || return 1
+          4) read -r -p "$(L MSG_CL_0533)" transfer_file || return 1
              cluster_transfer export "$transfer_file"; pause ;;
-          5) read -r -p "$(L MSG_CL_0267)" transfer_file || return 1
+          5) read -r -p "$(L MSG_CL_0534)" transfer_file || return 1
              if cluster_transfer import "$transfer_file" --dry-run; then
-               if confirm "$(L MSG_CL_0268)"; then
+               if confirm "$(L MSG_CL_0535)"; then
                  cluster_transfer import "$transfer_file" --confirm
                fi
              fi
