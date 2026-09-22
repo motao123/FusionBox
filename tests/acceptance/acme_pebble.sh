@@ -21,6 +21,7 @@ PEBBLE=fb-acme-pebble
 LE_DIR=/tmp/fb-acme-le
 STATE_DIR=/tmp/fb-acme-state
 CA_BUNDLE=/tmp/fb-pebble-minica.pem
+PEBBLE_CFG=/tmp/fb-pebble-config.json
 SERVER_URL=https://127.0.0.1:14000/dir
 HTTP_PORT=8080
 
@@ -31,9 +32,37 @@ step() { printf '\n== %s ==\n' "$1"; }
 
 cleanup_owned() {
   docker rm -f "$PEBBLE" >/dev/null 2>&1
-  rm -rf "$LE_DIR" "$STATE_DIR" "$CA_BUNDLE" /tmp/fb-acme-fp.*
+  rm -rf "$LE_DIR" "$STATE_DIR" "$CA_BUNDLE" "$PEBBLE_CFG" /tmp/fb-acme-fp.*
 }
 trap cleanup_owned EXIT
+
+# Pebble v2.6+ 用配置文件里的 profile 决定签发证书有效期，内置 default 是 90 天
+# （旧版本硬编码 5 天）。验收要验证「短有效期 CA + renew --days 30 真实触发续期」，
+# 因此显式注入一个 5 天有效期的 default profile，而不依赖镜像默认值。
+write_pebble_config() {
+  cat > "$PEBBLE_CFG" << 'PEOF'
+{
+  "pebble": {
+    "listenAddress": "0.0.0.0:14000",
+    "managementListenAddress": "0.0.0.0:15000",
+    "certificate": "test/certs/localhost/cert.pem",
+    "privateKey": "test/certs/localhost/key.pem",
+    "httpPort": 5002,
+    "tlsPort": 5001,
+    "ocspResponderURL": "",
+    "externalAccountBindingRequired": false,
+    "domainBlocklist": ["blocked-domain.example"],
+    "retryAfter": {"authz": 3, "order": 5},
+    "keyAlgorithm": "ecdsa",
+    "profiles": {
+      "default": {"description": "FusionBox 验收短有效期 profile", "validityPeriod": 432000},
+      "shortlived": {"description": "short-lived", "validityPeriod": 518400}
+    }
+  }
+}
+PEOF
+  [[ -s "$PEBBLE_CFG" ]]
+}
 
 step "0. 前置"
 [[ $EUID -eq 0 ]] || { echo "需要 root"; exit 1; }
@@ -48,8 +77,10 @@ systemctl is-active --quiet nginx || { systemctl start nginx >/dev/null 2>&1; }
 systemctl is-active --quiet nginx; check "nginx 运行中" "$?"
 
 step "1. Pebble + PEBBLE_VA_ALWAYS_VALID（challenge 直接判有效）"
+write_pebble_config; check "Pebble 短有效期配置已生成" "$?"
 docker rm -f "$PEBBLE" >/dev/null 2>&1
 docker run -d --name "$PEBBLE" -e PEBBLE_VA_ALWAYS_VALID=1 \
+  -v "$PEBBLE_CFG":/test/config/pebble-config.json:ro \
   -p 127.0.0.1:14000:14000 ghcr.io/letsencrypt/pebble >/dev/null 2>&1
 check "Pebble 容器启动" "$?"
 ready=0
