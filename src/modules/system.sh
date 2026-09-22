@@ -4233,10 +4233,13 @@ _env_in_allowlist() {
 }
 
 _env_backup() {
-  local f="$1" bdir="${FUSION_CONFIG_DIR:-${HOME:-/root}/.config/fusionbox}/backups/env"
+  local f="$1" bdir="${FUSION_CONFIG_DIR:-${HOME:-/root}/.config/fusionbox}/backups/env" ts
   mkdir -p "$bdir" && chmod 700 "$bdir"
-  cp -a "$f" "$bdir/$(basename "$f").$(date +%Y%m%d-%H%M%S).bak" || return 1
-  printf '%s' "$bdir/$(basename "$f").$(date +%Y%m%d-%H%M%S).bak"
+  # 时间戳只能取一次：两次 date 求值跨秒时，cp 落盘的文件名与返回给调用方的
+  # 文件名会不一致，"编辑失败自动恢复"就会指向不存在的备份并静默失效
+  ts="$(date +%Y%m%d-%H%M%S)"
+  cp -a "$f" "$bdir/$(basename "$f").$ts.bak" || return 1
+  printf '%s' "$bdir/$(basename "$f").$ts.bak"
 }
 
 _env_list() {

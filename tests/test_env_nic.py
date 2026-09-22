@@ -42,6 +42,15 @@ class EnvMenus(Safety):
         self.run_shell('system', body, 1)
         self.assertIn('语法错误', (self.root / 'out').read_text())
 
+    def test_env_backup_returned_path_is_real(self):
+        # 回归（v1.43.0）：修复前 _env_backup 两次调用 date，跨秒时返回的
+        # 备份路径并不存在，"编辑失败自动恢复"会静默失效
+        body = ('date() { if [[ -z "$__d1" ]]; then __d1=1; printf "20260101-000000"; '
+                'else printf "20260101-000001"; fi; }\n'
+                'p=$(_env_backup "$HOME/.bashrc"); [[ -f "$p" ]] && echo real || echo missing')
+        out = self.run_shell('system', body)
+        self.assertIn('real', out)
+
     def test_env_edit_backs_up_and_restores_broken_edit(self):
         editor = self.root / 'editor-broken.sh'
         editor.write_text(f'printf "if {{\\n" >> "{self.posix}/home/.bashrc"\n')
