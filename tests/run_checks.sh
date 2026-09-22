@@ -192,8 +192,10 @@ if grep -q '受管 Nginx / ntfy' "$SRC/modules/market.sh"; then
 else
   ok "菜单文案不再写死 Nginx/ntfy"
 fi
-check_contains "菜单文案改为「受管应用生命周期」" "受管应用生命周期" \
-  grep -F "受管应用生命周期" "$SRC/modules/market.sh"
+check_contains "菜单文案改为「受管应用生命周期」（语言包）" "受管应用生命周期" \
+  grep -F "受管应用生命周期" "$SRC/i18n/zh_CN.sh"
+check_contains "market 菜单文案已走语言包" '$(L MSG_MARKET_' \
+  grep -F '$(L MSG_MARKET_' "$SRC/modules/market.sh"
 
 # ---------------------------------------------------------------------------
 section "7. P3: i18n 英文环境无中文依赖自检"
@@ -346,7 +348,8 @@ check_contains "ws 支持 ensure 动作" "ensure|resume)" \
   grep -F 'ensure|resume)' "$SRC/modules/workspace.sh"
 check_contains "ws 支持 ssh 动作" "ssh)" \
   grep -F '    ssh)' "$SRC/modules/workspace.sh"
-if grep -q '不存在，正在创建' "$SRC/modules/workspace.sh"; then
+if grep -q '不存在，正在创建' "$SRC/i18n/zh_CN.sh" \
+   && grep -qF '_ws_slot_ensure' "$SRC/modules/workspace.sh"; then
   ok "直接 ws w<n> 不存在时自动创建"
 else
   bad "直接 ws w<n> 不存在时自动创建"
