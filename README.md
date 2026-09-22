@@ -161,7 +161,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 > 上表为本地测试资产的验证结论；`tests/` 不入库，完整回归在本地与验证服务器执行。
 
-CI 只做静态检查，两个仓库（GitHub / CNB）同一口径：`syntax`（脚本语法 + Python 产物 + i18n 双语契约审计 + 五处版本一致性）→ `release`（仅 tag 触发，产出校验过的发布包）。**测试资产不入库**：`tests/` 只存本地与验证服务器（`.gitignore` 屏蔽 + `.gitattributes` 的 `export-ignore` 双保险，发布包本就不含测试），完整回归在本地与真机执行。
+CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径：`syntax`（脚本语法 + Python 产物 + i18n 双语契约审计 + 五处版本一致性）→ `release`（仅 tag 触发，产出校验过的发布包）。**测试资产不入库**：`tests/` 只存本地与验证服务器（`.gitignore` 屏蔽 + `.gitattributes` 的 `export-ignore` 双保险，发布包本就不含测试），完整回归在本地与真机执行。
 
 ---
 
@@ -175,6 +175,7 @@ CI 只做静态检查，两个仓库（GitHub / CNB）同一口径：`syntax`（
 - **抽取器覆盖全部文案出口**：除输出函数外，还处理 `read -p`/`confirm`/`select_option` 等交互参数、`_log_write`/`_require_*` 守卫、变量赋值（状态标签）、以及菜单与数据表（应用目录 74 条、评测矩阵 13 条、时区预设 29 条）
 - **全仓未抽取文案归零**：`run_checks.sh` 第 22 节升级为「全仓」强制，新增中文字面量出口会让闸门直接变红
 - **实测口径**：真机（Ubuntu 22.04）闸门 **193/193**（root 与非 root），完整套件 bash **229** 项 + Python **764** 项（34 模块）零失败；中文对照 v1.42.0 一致、英文零中文
+- **仓库只保留可用成品**：`tests/` 不再入库（本地与验证服务器保留完整测试），CI 收敛为静态检查——语法 / Python 产物 / i18n 双语契约审计 / 五处版本一致性；发布包口径不变
 
 
 - **B4 收口（Cloudflare 半边）**：最小权限 API Token 真实凭据验证完成——`fusionbox-cf-guard` 负载自适应开盾真机 8/8（security_level 真实切到 under_attack + 负载回落恢复基线 + 幂等），`fusionbox-cf-ban` 封禁/解封/幂等真机全过；新增真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，任何退出路径恢复 security_level 基线并清理测试规则）
@@ -604,9 +605,11 @@ FusionBox/
 ├── templates/
 │   ├── nginx/
 │   └── docker/
-├── .cnb.yml                   # CNB 流水线：语法/回归检查 + Tag 发布打包
-├── .github/workflows/         # GitHub Actions：发布与统计（install.sh 默认安装源）
-└── tests/                     # 回归检查与行为测试（全部随仓库发布；export-ignore 不进发布包）
+├── .cnb.yml                   # CNB 流水线：语法/静态检查 + Tag 发布打包
+└── .github/workflows/         # GitHub Actions：发布与统计（install.sh 默认安装源）
+
+> 回归检查与行为测试（`tests/`，含 9 个真机验收脚本）**不随仓库发布**：只存本地与验证服务器，
+> 完整回归在本地与真机执行；发布包口径不变（`export-ignore` 不进 tar.gz）。
 ```
 
 </details>
