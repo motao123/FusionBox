@@ -729,18 +729,26 @@ else
   python3 "$REPO_ROOT/scripts/i18n_audit.py" 2>&1 | tail -8 | sed 's/^/       | /'
 fi
 
-# 核心层必须已 100% 抽取（模块层按批次推进，用棘轮防止回退）
+# 全仓（核心层 + 9 个模块）必须已 100% 抽取，防止后续回退
 if REPO_ROOT="$REPO_ROOT" python3 - <<'PYEOF' >/dev/null 2>&1
 import sys, os
 sys.path.insert(0, os.environ['REPO_ROOT'] + '/scripts')
 import i18n_audit
-rows, total = i18n_audit.count_untranslated(i18n_audit.CORE_FILES)
+rows, total = i18n_audit.count_untranslated(i18n_audit.ALL_FILES)
 sys.exit(0 if total == 0 else 1)
 PYEOF
 then
-  ok "核心层（主菜单/全局帮助/通用提示/安装器）已全部走语言包"
+  ok "全仓文案（主菜单/帮助/通用提示/安装器/9 个模块）已全部走语言包"
 else
-  bad "核心层（主菜单/全局帮助/通用提示/安装器）已全部走语言包"
+  bad "全仓文案（主菜单/帮助/通用提示/安装器/9 个模块）已全部走语言包"
+  REPO_ROOT="$REPO_ROOT" python3 - <<'PYEOF' 2>&1 | head -12 | sed 's/^/       | /'
+import sys, os
+sys.path.insert(0, os.environ['REPO_ROOT'] + '/scripts')
+import i18n_audit
+for rel, n in i18n_audit.count_untranslated(i18n_audit.ALL_FILES)[0]:
+    if n:
+        print('%s: 未抽取 %d 处' % (rel, n))
+PYEOF
 fi
 
 check_contains "i18n 核心独立成文件（门禁提示可提前本地化）" \

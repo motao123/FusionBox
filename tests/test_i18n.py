@@ -112,14 +112,25 @@ class LookupBehaviour(unittest.TestCase):
         self.assertTrue(out.rstrip().endswith('zh_CN'), out)
 
     def test_no_key_is_unresolvable(self):
-        # 英文模式下把所有键过一遍：不允许出现「返回值等于键名」（即查不到）
+        # 英文模式下把所有键过一遍：不允许出现「返回值等于键名」（即查不到）。
+        # 键列表经文件传入（3250 个键拼进命令行会超 Windows/部分系统的参数长度上限）；
+        # 取值走 _i18n_get + $_I18N_VALUE 而不是命令替换，缺失登记才不会被子 shell 吞掉。
         keys = sorted(pack('en'))
-        listing = ' '.join(keys)
         q = os.path.join(ROOT, 'src', 'lib', 'i18n.sh')
-        script = ('FUSION_SRC="%s" . "%s"; _i18n_init; bad=0; '
-                  'for k in %s; do v="$(L "$k")"; [[ "$v" == "$k" ]] && { echo "unresolved=$k"; bad=1; }; done; '
-                  'echo "misses=${#_I18N_MISSES[@]} bad=$bad"' % (os.path.join(ROOT, 'src'), q, listing))
-        rc, out, _ = run_bash(script, env={'LANG': 'en_US.UTF-8'}, timeout=60)
+        with tempfile.NamedTemporaryFile('w', suffix='.keys', delete=False,
+                                         encoding='utf-8', newline='\n') as fh:
+            fh.write('\n'.join(keys) + '\n')
+            key_file = fh.name
+        try:
+            script = ('FUSION_SRC="%s" . "%s"; _i18n_init; bad=0; '
+                      'while IFS= read -r k; do [ -n "$k" ] || continue; '
+                      '_i18n_get "$k"; [[ "$_I18N_VALUE" == "$k" ]] && { echo "unresolved=$k"; bad=1; }; '
+                      'done < "%s"; '
+                      'echo "misses=${#_I18N_MISSES[@]} bad=$bad"'
+                      % (os.path.join(ROOT, 'src'), q, key_file))
+            rc, out, _ = run_bash(script, env={'LANG': 'en_US.UTF-8'}, timeout=300)
+        finally:
+            os.unlink(key_file)
         self.assertIn('bad=0', out)
         self.assertIn('misses=0', out)
 
@@ -145,6 +156,10 @@ class CoverageAndWiring(unittest.TestCase):
     def test_core_layer_fully_extracted(self):
         rows, total = i18n_audit.count_untranslated(i18n_audit.CORE_FILES)
         self.assertEqual(total, 0, '核心层仍有未抽取文案: %s' % [r for r in rows if r[1]])
+
+    def test_module_layer_fully_extracted(self):
+        rows, total = i18n_audit.count_untranslated(i18n_audit.ALL_FILES)
+        self.assertEqual(total, 0, '全仓仍有未抽取文案: %s' % [r for r in rows if r[1]])
 
     def test_install_embedded_table_matches_packs(self):
         problems = []

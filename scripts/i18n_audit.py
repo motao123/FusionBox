@@ -23,10 +23,15 @@ SPEC_RE = re.compile(r'%(?:s|d|i|f|x|X|o|e|g|u|c)')
 # 英文包里允许保留的中文（仅有「语言自称」这类必须写原名的场景）
 EN_CJK_ALLOW = set()
 
-# 已抽取完成的文件（核心层）；其余为待推进的模块层
+# 已抽取完成的文件（核心层）；模块层见 ALL_FILES
 CORE_FILES = ['fusion.sh', 'install.sh', 'src/init.sh', 'src/lib/common.sh']
 
-# 提取器使用的消息调用形态（与 scripts/i18n_extract.py 保持一致）
+# 全仓需要抽取的脚本（v1.43.0 起模块层也已收口，未抽取数必须为 0）
+ALL_FILES = CORE_FILES + ['src/modules/%s.sh' % m for m in
+                          ('system', 'web', 'panels', 'cluster', 'network',
+                           'market', 'workspace', 'proxy', 'warp')]
+
+# 提取器使用的消息调用形态（保留供参考；实际计数走 i18n_extract.Extractor）
 CALL_RE = re.compile(
     r'(?:msg(?:_ok|_err|_warn|_info|_tip|_title)?|echo|printf)\s+(?:-e\s+|-n\s+)?'
     r'(?:"([^"]*)"|\'([^\']*)\')')
@@ -78,22 +83,25 @@ def check_install_table(zh, en, problems):
 
 
 def count_untranslated(files):
+    """统计仍未抽取的文案行数（复用 i18n_extract 的抽取器，覆盖全部出口形态）。"""
+    sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+    import i18n_extract as ie
     total = 0
     rows = []
     for rel in files:
         p = os.path.join(ROOT, rel.replace('/', os.sep))
         if not os.path.isfile(p):
             continue
-        n = 0
-        for line in io.open(p, encoding='utf-8').read().split('\n'):
-            if line.lstrip().startswith('#'):
-                continue
-            for m in CALL_RE.finditer(line):
-                txt = m.group(1) or m.group(2) or ''
-                if CJK_RE.search(txt):
-                    n += 1
-        rows.append((rel, n))
-        total += n
+        lines = io.open(p, encoding='utf-8').read().split('\n')
+        ex = ie.Extractor(rel, True)
+        seen = set()
+        for i, line in enumerate(lines, 1):
+            before = len(ex.rewritten)
+            ex.process_line(i, line)
+            if len(ex.rewritten) > before:
+                seen.add(i)
+        rows.append((rel, len(seen)))
+        total += len(seen)
     return rows, total
 
 
@@ -114,18 +122,15 @@ def main():
     check_install_table(zh, en, problems)
 
     if args.coverage:
-        # 全仓覆盖进度（信息性）
-        mods = ['src/modules/%s.sh' % m for m in
-                ('proxy', 'system', 'network', 'web', 'panels', 'market', 'warp', 'workspace', 'cluster')]
-        rows, total = count_untranslated(CORE_FILES + mods)
+        # 全仓覆盖进度
+        rows, total = count_untranslated(ALL_FILES)
         print('%-34s %8s' % ('文件', '未抽取'))
         for rel, n in rows:
             mark = '✓' if n == 0 else ' '
             print('%-34s %8d %s' % (rel, n, mark))
         print('%-34s %8d' % ('合计', total))
-        core_rows, core_total = count_untranslated(CORE_FILES)
-        if core_total:
-            problems.append('核心层仍有 %d 处未抽取文案' % core_total)
+        if total:
+            problems.append('仍有 %d 处未抽取文案' % total)
         if args.max_untranslated is not None and total > args.max_untranslated:
             problems.append('未抽取文案 %d > 棘轮上限 %d' % (total, args.max_untranslated))
 

@@ -7,22 +7,22 @@
 # 表中 URL 均已逐个验证可访问（200/302），失效项已剔除
 NETWORK_BENCH_ITEMS=(
   # ---- 综合评测 ----
-  "YABS|综合评测|磁盘 IO、网络带宽与计算性能一条龙测试，含 fio 与 iperf3 数据|https://yabs.sh|intensive"
-  "Bench|综合评测|经典轻量跑分脚本，输出 CPU、内存、磁盘与三网测速结果|https://bench.sh|intensive"
-  "Geekbench 5|综合评测|调用 Geekbench 5 做 CPU 单核/多核基准，便于与公开成绩对比|https://raw.githubusercontent.com/i-abc/GB5/main/gb5-test.sh|intensive"
-  "融合怪|综合评测|覆盖系统信息、硬件参数、线路质量与解锁情况的全能体检|https://github.com/spiritLHLS/ecs/raw/main/ecs.sh|intensive"
-  "NodeQuality|综合评测|生成可在线分享的节点质量报告，含基础性能与网络概览|https://run.NodeQuality.com|normal"
+  "$(L MSG_NET_0001)"
+  "$(L MSG_NET_0002)"
+  "$(L MSG_NET_0003)"
+  "$(L MSG_NET_0004)"
+  "$(L MSG_NET_0005)"
   # ---- 网络测试 ----
-  "NextTrace 快速回程|网络测试|列出到国内三网的回程线路走向，快速判断是否绕路|https://nxtrace.org/nt|normal"
-  "多节点测速|网络测试|从多个国内节点并发测速，反映真实下载带宽|https://github.com/i-abc/Speedtest/raw/main/speedtest.sh|normal"
-  "网络质量体检|网络测试|对 IPv4/IPv6 做连通性、延迟、丢包与路由的综合诊断|https://Net.Check.Place|intensive"
-  "TCP 重传|网络测试|统计 TCP 重传率，用于定位链路抖动与拥塞|https://raw.githubusercontent.com/ibsgss/TcpQuality/main/runTcpQuality.sh|normal"
-  "三网路由追踪|网络测试|分别经电信、联通、移动节点回程追踪，输出完整跳数路径|https://github.com/zhucaidan/mtr_trace/raw/main/mtr_trace.sh|normal"
+  "$(L MSG_NET_0006)"
+  "$(L MSG_NET_0007)"
+  "$(L MSG_NET_0008)"
+  "$(L MSG_NET_0009)"
+  "$(L MSG_NET_0010)"
   # ---- 解锁检测 ----
-  "ChatGPT 解锁|解锁检测|检测当前 IP 能否正常访问 ChatGPT 及所属区域|https://cdn.jsdelivr.net/gh/missuo/OpenAI-Checker/openai.sh|normal"
-  "流媒体可用性|解锁检测|批量探测 Netflix、YouTube、Disney+ 等平台的可用情况|https://github.com/yeahwu/check/raw/main/check.sh|normal"
+  "$(L MSG_NET_0011)"
+  "$(L MSG_NET_0012)"
   # ---- IP 质量 ----
-  "IP 质量体检|IP 质量|评估 IP 纯净度、风险评分、流媒体与 AI 服务解锁状态|https://IP.Check.Place|normal"
+  "$(L MSG_NET_0013)"
 )
 
 network_main() {
@@ -47,7 +47,7 @@ network_main() {
 
 # ---- IP Query ----
 network_ip() {
-  msg_title "IP 地址查询"
+  msg_title "$(L MSG_NET_0014)"
   msg ""
 
   msg "  ${F_BOLD}IPv4:${F_RESET} ${F_CYAN}${F_IP:-$(curl -s4 --connect-timeout 5 ip.sb 2>/dev/null || echo "N/A")}${F_RESET}"
@@ -58,7 +58,7 @@ network_ip() {
   fi
 
   msg ""
-  msg "  ${F_BOLD}[详细 IP 信息]${F_RESET}"
+  msg "$(L MSG_NET_0015 "${F_BOLD}" "${F_RESET}")"
   # ip-api.com 免费接口仅 HTTP 明文，改用 HTTPS 的 ipinfo.io
   local ip_info; ip_info=$(curl -s --connect-timeout 5 https://ipinfo.io/json 2>/dev/null)
   if [[ -n "$ip_info" ]]; then
@@ -67,16 +67,16 @@ network_ip() {
     local city;     city=$(echo "$ip_info" | grep -o '"city": *"[^"]*"' | cut -d'"' -f4)
     local org;      org=$(echo "$ip_info" | grep -o '"org": *"[^"]*"' | cut -d'"' -f4)
 
-    msg "    国家: ${country:-N/A}"
-    msg "    地区: ${region:-N/A}"
-    msg "    城市: ${city:-N/A}"
-    msg "    ISP/组织: ${org:-N/A}"
+    msg "$(L MSG_NET_0016 "${country:-N/A}")"
+    msg "$(L MSG_NET_0017 "${region:-N/A}")"
+    msg "$(L MSG_NET_0018 "${city:-N/A}")"
+    msg "$(L MSG_NET_0019 "${org:-N/A}")"
   fi
 
   msg ""
   # Additional IP info
   if command -v curl &>/dev/null; then
-    msg "  ${F_BOLD}[CDN / 网络信息]${F_RESET}"
+    msg "$(L MSG_NET_0020 "${F_BOLD}" "${F_RESET}")"
     curl -s --connect-timeout 5 https://speed.cloudflare.com/meta 2>/dev/null | \
       grep -o '"colo":"[^"]*"' | cut -d'"' -f4 | xargs -I{} msg "    Cloudflare Colo: {}"
   fi
@@ -86,9 +86,9 @@ network_ip() {
 
 # ---- Streaming Test ----
 network_streaming() {
-  msg_title "流媒体测试"
+  msg_title "$(L MSG_NET_0021)"
   msg ""
-  msg_info "正在测试流媒体服务可访问性..."
+  msg_info "$(L MSG_NET_0022)"
   msg ""
 
   # Netflix
@@ -97,9 +97,9 @@ network_streaming() {
     -H "User-Agent: Mozilla/5.0" \
     "https://www.netflix.com/title/80018499" 2>/dev/null)
   case "$netflix" in
-    200|301|302) msg "    ${F_GREEN}可用${F_RESET}" ;;
-    403)         msg "    ${F_YELLOW}检测到代理${F_RESET}" ;;
-    *)           msg "    ${F_RED}不可用${F_RESET} (HTTP $netflix)" ;;
+    200|301|302) msg "$(L MSG_NET_0023 "${F_GREEN}" "${F_RESET}")" ;;
+    403)         msg "$(L MSG_NET_0024 "${F_YELLOW}" "${F_RESET}")" ;;
+    *)           msg "$(L MSG_NET_0025 "${F_RED}" "${F_RESET}" "$netflix")" ;;
   esac
 
   # YouTube
@@ -107,51 +107,51 @@ network_streaming() {
   local yt; yt=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.youtube.com" 2>/dev/null)
-  [[ "$yt" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_YELLOW}受限${F_RESET}"
+  [[ "$yt" =~ 200|301|302 ]] && msg "$(L MSG_NET_0023 "${F_GREEN}" "${F_RESET}")" || msg "$(L MSG_NET_0026 "${F_YELLOW}" "${F_RESET}")"
 
   # ChatGPT
   msg "  ${F_BOLD}ChatGPT:${F_RESET}"
   local cgpt; cgpt=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://chat.openai.com" 2>/dev/null)
-  [[ "$cgpt" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_RED}不可用${F_RESET}"
+  [[ "$cgpt" =~ 200|301|302 ]] && msg "$(L MSG_NET_0023 "${F_GREEN}" "${F_RESET}")" || msg "$(L MSG_NET_0027 "${F_RED}" "${F_RESET}")"
 
   # TikTok
   msg "  ${F_BOLD}TikTok:${F_RESET}"
   local tiktok; tiktok=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.tiktok.com" 2>/dev/null)
-  [[ "$tiktok" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_YELLOW}可能受限${F_RESET}"
+  [[ "$tiktok" =~ 200|301|302 ]] && msg "$(L MSG_NET_0023 "${F_GREEN}" "${F_RESET}")" || msg "$(L MSG_NET_0028 "${F_YELLOW}" "${F_RESET}")"
 
   # Disney+
   msg "  ${F_BOLD}Disney+:${F_RESET}"
   local disney; disney=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.disneyplus.com" 2>/dev/null)
-  [[ "$disney" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_RED}不可用${F_RESET}"
+  [[ "$disney" =~ 200|301|302 ]] && msg "$(L MSG_NET_0023 "${F_GREEN}" "${F_RESET}")" || msg "$(L MSG_NET_0027 "${F_RED}" "${F_RESET}")"
 
   # Bilibili
   msg "  ${F_BOLD}Bilibili (HK/TW):${F_RESET}"
   local bili; bili=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.bilibili.com" 2>/dev/null)
-  [[ "$bili" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_RED}不可用${F_RESET}"
+  [[ "$bili" =~ 200|301|302 ]] && msg "$(L MSG_NET_0023 "${F_GREEN}" "${F_RESET}")" || msg "$(L MSG_NET_0027 "${F_RED}" "${F_RESET}")"
 
   # iQIYI
   msg "  ${F_BOLD}iQIYI:${F_RESET}"
   local iqiyi; iqiyi=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
     -H "User-Agent: Mozilla/5.0" \
     "https://www.iqiyi.com" 2>/dev/null)
-  [[ "$iqiyi" =~ 200|301|302 ]] && msg "    ${F_GREEN}可用${F_RESET}" || msg "    ${F_RED}不可用${F_RESET}"
+  [[ "$iqiyi" =~ 200|301|302 ]] && msg "$(L MSG_NET_0023 "${F_GREEN}" "${F_RESET}")" || msg "$(L MSG_NET_0027 "${F_RED}" "${F_RESET}")"
 
   msg ""
-  _log_write "流媒体测试完成"
+  _log_write "$(L MSG_NET_0029)"
   pause
 }
 
 # ---- Speedtest ----
 network_speedtest() {
-  msg_title "网速测试"
+  msg_title "$(L MSG_NET_0030)"
   msg ""
 
   # network.speedtest_server：auto（自动就近）或 speedtest 的数值节点 ID。
@@ -161,14 +161,14 @@ network_speedtest() {
   if [[ "$server_id" != "auto" ]]; then
     if [[ "$server_id" =~ ^[0-9]+$ ]]; then
       st_args=(--server "$server_id")
-      msg_info "指定测速节点 ID: $server_id"
+      msg_info "$(L MSG_NET_0031 "$server_id")"
     else
-      msg_warn "配置 network.speedtest_server 无效（应为 auto 或数字 ID）: $server_id，已回退 auto"
+      msg_warn "$(L MSG_NET_0032 "$server_id")"
       server_id="auto"
     fi
   fi
 
-  msg_info "正在测试网络速度..."
+  msg_info "$(L MSG_NET_0033)"
   msg ""
 
   # Try speedtest-cli first
@@ -182,15 +182,15 @@ network_speedtest() {
     speedtest ${okla_args[@]+"${okla_args[@]}"} --progress no --format human 2>/dev/null || speedtest --simple 2>/dev/null
   else
     # Fallback: download test from Cloudflare
-    msg_info "正在安装 speedtest-cli..."
+    msg_info "$(L MSG_NET_0034)"
     _install_pkg speedtest-cli 2>/dev/null || \
       pip3 install speedtest-cli 2>/dev/null || true
 
     if command -v speedtest-cli &>/dev/null; then
       speedtest-cli --simple 2>/dev/null
     else
-      msg_info "正在运行备用测速 (Cloudflare)..."
-      msg "  下载测试..."
+      msg_info "$(L MSG_NET_0035)"
+      msg "$(L MSG_NET_0036)"
 
       local dl_start; dl_start=$(date +%s)
       _download "https://speed.cloudflare.com/__down?bytes=104857600" /tmp/fusion_speedtest &
@@ -211,32 +211,32 @@ network_speedtest() {
       local final_size; final_size=$(stat -c%s /tmp/fusion_speedtest 2>/dev/null || echo 0)
       local avg_speed=$(( final_size * 8 / total_elapsed / 1048576 ))
 
-      msg "    下载速度: ~${avg_speed} Mbps (${final_size} 字节, ${total_elapsed}秒)"
+      msg "$(L MSG_NET_0037 "${avg_speed}" "${final_size}" "${total_elapsed}")"
 
       # Latency
-      msg "  延迟测试..."
+      msg "$(L MSG_NET_0038)"
       local ping_start; ping_start=$(date +%s%N)
       _download "https://speed.cloudflare.com/__down?bytes=100" /dev/null 2>/dev/null || true
       local ping_end; ping_end=$(date +%s%N)
       local ping_ms=$(( (ping_end - ping_start) / 1000000 ))
-      msg "    延迟: ~${ping_ms}ms"
+      msg "$(L MSG_NET_0039 "${ping_ms}")"
 
       rm -f /tmp/fusion_speedtest
     fi
   fi
 
   msg ""
-  _log_write "网速测试完成"
+  _log_write "$(L MSG_NET_0040)"
   pause
 }
 
 # ---- DNS Test ----
 network_dns() {
   local domain="${1:-google.com}"
-  msg_title "DNS 测试"
+  msg_title "$(L MSG_NET_0041)"
   msg ""
 
-  msg "  正在测试 DNS 解析: $domain"
+  msg "$(L MSG_NET_0042 "$domain")"
   msg ""
 
   local dns_servers=(
@@ -262,7 +262,7 @@ network_dns() {
 
   # Current system DNS
   msg ""
-  msg "  ${F_BOLD}系统 DNS:${F_RESET}"
+  msg "$(L MSG_NET_0043 "${F_BOLD}" "${F_RESET}")"
   cat /etc/resolv.conf 2>/dev/null | grep -v '^#' | grep -v '^$' | while read -r line; do
     msg "    $line"
   done
@@ -274,15 +274,15 @@ network_dns() {
 network_trace() {
   local target="${1:-google.com}"
   if [[ -z "$1" ]]; then
-    read -p "请输入目标主机或 IP: " target
+    read -p "$(L MSG_NET_0044)" target
     [[ -z "$target" ]] && target="google.com"
   fi
 
-  msg_title "路由追踪"
+  msg_title "$(L MSG_NET_0045)"
   msg ""
 
   if command -v mtr &>/dev/null; then
-    msg_info "正在运行 MTR (5 次 ping)..."
+    msg_info "$(L MSG_NET_0046)"
     mtr -r -c 5 "$target" 2>/dev/null | while read -r line; do
       msg "  $line"
     done
@@ -295,7 +295,7 @@ network_trace() {
       msg "  $line"
     done
   else
-    msg_err "请安装 traceroute 或 mtr: fusionbox market install traceroute"
+    msg_err "$(L MSG_NET_0047)"
   fi
 
   pause
@@ -305,14 +305,14 @@ network_trace() {
 network_ping() {
   local target="${1:-google.com}"
   if [[ -z "$1" ]]; then
-    read -p "请输入目标主机或 IP: " target
+    read -p "$(L MSG_NET_0044)" target
     [[ -z "$target" ]] && target="google.com"
   fi
 
-  msg_title "Ping 测试"
+  msg_title "$(L MSG_NET_0048)"
   msg ""
 
-  if _require_optional_cmd ping iputils-ping "Ping 测试"; then
+  if _require_optional_cmd ping iputils-ping "$(L MSG_NET_0048)"; then
     ping -c 5 "$target" 2>/dev/null | while read -r line; do
       msg "  $line"
     done
@@ -324,12 +324,12 @@ network_ping() {
 network_mtr() {
   local target="${1:-}"
   if [[ -z "$target" ]]; then
-    read -p "请输入 MTR 目标主机或 IP: " target
+    read -p "$(L MSG_NET_0049)" target
     [[ -z "$target" ]] && target="google.com"
   fi
 
   _check_pkg mtr mtr
-  msg_title "MTR 报告: $target"
+  msg_title "$(L MSG_NET_0050 "$target")"
   mtr -r -c 10 "$target" 2>/dev/null | while read -r line; do
     msg "  $line"
   done
@@ -341,21 +341,21 @@ network_port_check() {
   local host="${1:-localhost}"
   local port="${2:-80}"
   if [[ -z "$1" || -z "$2" ]]; then
-    read -p "请输入主机: " host
-    read -p "请输入端口: " port
+    read -p "$(L MSG_NET_0051)" host
+    read -p "$(L MSG_NET_0052)" port
     [[ -z "$host" ]] && host="localhost"
     [[ -z "$port" ]] && port="80"
   fi
 
   # 输入校验：主机/端口直接拼入 /dev/tcp，必须先过滤
-  [[ "$host" =~ ^[a-zA-Z0-9._-]+$ ]] || { msg_err "无效的主机名（仅允许字母数字与 . _ -）"; pause; return 1; }
-  [[ "$port" =~ ^[0-9]+$ && "$port" -ge 1 && "$port" -le 65535 ]] || { msg_err "无效端口（1-65535）"; pause; return 1; }
+  [[ "$host" =~ ^[a-zA-Z0-9._-]+$ ]] || { msg_err "$(L MSG_NET_0053)"; pause; return 1; }
+  [[ "$port" =~ ^[0-9]+$ && "$port" -ge 1 && "$port" -le 65535 ]] || { msg_err "$(L MSG_NET_0054)"; pause; return 1; }
 
-  msg_title "端口检测: $host:$port"
+  msg_title "$(L MSG_NET_0055 "$host" "$port")"
   msg ""
   timeout 5 bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null && \
-    msg_ok "端口 $port 在 $host 上${F_GREEN}开放${F_RESET}" || \
-    msg_err "端口 $port 在 $host 上${F_RED}关闭${F_RESET}或被过滤"
+    msg_ok "$(L MSG_NET_0056 "$port" "$host" "${F_GREEN}" "${F_RESET}")" || \
+    msg_err "$(L MSG_NET_0057 "$port" "$host" "${F_RED}" "${F_RESET}")"
   pause
 }
 
@@ -370,9 +370,9 @@ _network_bench_domain() {
 # 模式标签
 _network_bench_mode_label() {
   if [[ "$1" == "intensive" ]]; then
-    echo "${F_YELLOW}重型${F_RESET}"
+    echo "$(L MSG_NET_0058 "${F_YELLOW}" "${F_RESET}")"
   else
-    echo "${F_GREEN}轻量${F_RESET}"
+    echo "$(L MSG_NET_0059 "${F_GREEN}" "${F_RESET}")"
   fi
 }
 
@@ -392,7 +392,7 @@ _network_bench_swap_mb() {
 # 列出全部评测项（按分类分组，含模式与来源域名）
 network_bench_list() {
   local item name cat desc url mode idx=0 cur_cat=""
-  msg "${F_BOLD}VPS 评测矩阵${F_RESET}（共 ${#NETWORK_BENCH_ITEMS[@]} 项）"
+  msg "$(L MSG_NET_0060 "${F_BOLD}" "${F_RESET}" "${#NETWORK_BENCH_ITEMS[@]}")"
   for item in "${NETWORK_BENCH_ITEMS[@]}"; do
     IFS='|' read -r name cat desc url mode <<< "$item"
     idx=$((idx + 1))
@@ -402,9 +402,9 @@ network_bench_list() {
       msg "  ${F_CYAN}${F_BOLD}[$cat]${F_RESET}"
     fi
     printf -v num '%2d' "$idx"
-    msg "  ${F_GREEN}${num}${F_RESET}) ${F_BOLD}${name}${F_RESET}  模式: $(_network_bench_mode_label "$mode")"
+    msg "$(L MSG_NET_0061 "${F_GREEN}" "${num}" "${F_RESET}" "${F_BOLD}" "${name}" "${F_RESET}" "$(_network_bench_mode_label "$mode")")"
     msg "      ${desc}"
-    msg "      来源: $(_network_bench_domain "$url")"
+    msg "$(L MSG_NET_0062 "$(_network_bench_domain "$url")")"
   done
   msg ""
 }
@@ -413,10 +413,10 @@ network_bench_list() {
 _network_bench_execute() {
   local name="$1" desc="$2" url="$3" mode="$4" auto="${5:-}"
 
-  msg_title "VPS 评测: $name"
+  msg_title "$(L MSG_NET_0063 "$name")"
   msg ""
-  msg "  说明: $desc"
-  msg "  模式: $(_network_bench_mode_label "$mode")"
+  msg "$(L MSG_NET_0064 "$desc")"
+  msg "$(L MSG_NET_0065 "$(_network_bench_mode_label "$mode")")"
 
   # 重型项目：内存不足且无 swap 时仅提示，不自动创建
   if [[ "$mode" == "intensive" ]]; then
@@ -424,47 +424,47 @@ _network_bench_execute() {
     mem_mb=$(_network_bench_mem_mb)
     swap_mb=$(_network_bench_swap_mb)
     if [[ -n "$mem_mb" && "$mem_mb" -lt 1024 && "$swap_mb" -eq 0 ]]; then
-      msg_warn "当前内存 ${mem_mb}MB 且未启用 swap，重型评测可能因内存不足而中断"
-      msg_warn "建议先执行: fusionbox system swap（本操作不会自动创建 swap）"
+      msg_warn "$(L MSG_NET_0066 "${mem_mb}")"
+      msg_warn "$(L MSG_NET_0067)"
     fi
   fi
 
-  [[ "$F_IS_ROOT" == "1" ]] || msg_warn "当前非 root，部分评测项可能无法采集完整数据"
+  [[ "$F_IS_ROOT" == "1" ]] || msg_warn "$(L MSG_NET_0068)"
 
   msg ""
-  msg "  来源: ${F_ULINE}${url}${F_RESET}"
+  msg "$(L MSG_NET_0069 "${F_ULINE}" "${url}" "${F_RESET}")"
   msg ""
   if [[ "$auto" != "auto" ]]; then
-    confirm "确认下载并运行该评测脚本？" || { msg_info "已取消"; return 0; }
+    confirm "$(L MSG_NET_0070)" || { msg_info "$(L MSG_NET_0071)"; return 0; }
   fi
 
   local tmp; tmp=$(mktemp)
   if ! _download "$url" "$tmp"; then
-    msg_err "脚本下载失败: $url"
-    msg_err "可能是本机网络不通或上游脚本已失效，请稍后重试"
+    msg_err "$(L MSG_NET_0072 "$url")"
+    msg_err "$(L MSG_NET_0073)"
     rm -f "$tmp"
     [[ "$auto" != "auto" ]] && pause
     return 1
   fi
   if [[ ! -s "$tmp" ]]; then
-    msg_err "下载内容为空: $url"
+    msg_err "$(L MSG_NET_0074 "$url")"
     rm -f "$tmp"
     [[ "$auto" != "auto" ]] && pause
     return 1
   fi
 
-  _log_write "VPS 评测开始: $name ($url)"
+  _log_write "$(L MSG_NET_0075 "$name" "$url")"
   bash "$tmp"
   local rc=$?
   rm -f "$tmp"
 
   msg ""
   if [[ $rc -eq 0 ]]; then
-    msg_ok "评测脚本执行完成: $name"
+    msg_ok "$(L MSG_NET_0076 "$name")"
   else
-    msg_warn "评测脚本退出码: $rc（部分脚本以非零码结束属正常）"
+    msg_warn "$(L MSG_NET_0077 "$rc")"
   fi
-  _log_write "VPS 评测结束: $name (退出码 $rc)"
+  _log_write "$(L MSG_NET_0078 "$name" "$rc")"
   [[ "$auto" != "auto" ]] && pause
   return "$rc"
 }
@@ -480,7 +480,7 @@ network_bench_run() {
       return $?
     fi
   done
-  msg_err "未找到评测项: $want（可用序号或名称）"
+  msg_err "$(L MSG_NET_0079 "$want")"
   pause
   return 1
 }
@@ -493,32 +493,32 @@ network_bench_all_light() {
     [[ "$mode" == "normal" ]] && count=$((count + 1))
   done
 
-  msg_info "将依次运行 ${count} 个轻量评测项（重型项目请单独运行）"
-  confirm "确认继续？" || { msg_info "已取消"; return 0; }
+  msg_info "$(L MSG_NET_0080 "${count}")"
+  confirm "$(L MSG_NET_0081)" || { msg_info "$(L MSG_NET_0071)"; return 0; }
 
   for item in "${NETWORK_BENCH_ITEMS[@]}"; do
     IFS='|' read -r name cat desc url mode <<< "$item"
     [[ "$mode" == "normal" ]] || continue
     _network_bench_execute "$name" "$desc" "$url" "$mode" auto || failed=1
   done
-  msg_ok "轻量评测项已全部执行完毕"
-  _log_write "VPS 轻量评测批量执行完成"
+  msg_ok "$(L MSG_NET_0082)"
+  _log_write "$(L MSG_NET_0083)"
   return "$failed"
 }
 
 # 自定义 URL 运行
 network_bench_custom() {
-  local url; url=$(read_input "请输入评测脚本 URL (https:// 开头)")
+  local url; url=$(read_input "$(L MSG_NET_0084)")
   if [[ -z "$url" ]]; then
-    msg_info "未输入 URL，已取消"
+    msg_info "$(L MSG_NET_0085)"
     return 0
   fi
   if [[ "$url" != https://* ]]; then
-    msg_err "仅支持 https:// 开头的地址: $url"
+    msg_err "$(L MSG_NET_0086 "$url")"
     pause
     return 1
   fi
-  _network_bench_execute "自定义脚本" "用户提供的自定义评测脚本" "$url" "normal"
+  _network_bench_execute "$(L MSG_NET_0087)" "$(L MSG_NET_0088)" "$url" "normal"
 }
 
 # 交互式矩阵菜单
@@ -526,12 +526,12 @@ network_bench_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "VPS 评测矩阵"
+    msg_title "$(L MSG_NET_0089)"
     msg ""
     network_bench_list
-    msg "  输入 ${F_GREEN}序号${F_RESET} 或 ${F_GREEN}名称${F_RESET} 运行；${F_GREEN}l${F_RESET}) 仅列表  ${F_GREEN}a${F_RESET}) 运行全部轻量项  ${F_GREEN}u${F_RESET}) 自定义 URL  ${F_GREEN}0${F_RESET}) 返回"
+    msg "$(L MSG_NET_0090 "${F_GREEN}" "${F_RESET}" "${F_GREEN}" "${F_RESET}" "${F_GREEN}" "${F_RESET}" "${F_GREEN}" "${F_RESET}" "${F_GREEN}" "${F_RESET}" "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "请选择: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_NET_0091)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       ""|l|L) continue ;;
       0)      break ;;
@@ -555,8 +555,8 @@ network_bench() {
 # ---- 网卡管理 (G10)：列表/详情/启停 ----
 
 _nic_check_name() {
-  [[ "$1" =~ ^[a-zA-Z0-9._-]{1,15}$ ]] || { msg_err "网卡名无效: $1"; return 1; }
-  ip link show dev "$1" &>/dev/null || { msg_err "网卡不存在: $1"; return 1; }
+  [[ "$1" =~ ^[a-zA-Z0-9._-]{1,15}$ ]] || { msg_err "$(L MSG_NET_0092 "$1")"; return 1; }
+  ip link show dev "$1" &>/dev/null || { msg_err "$(L MSG_NET_0093 "$1")"; return 1; }
 }
 
 _nic_default_iface() {
@@ -564,29 +564,29 @@ _nic_default_iface() {
 }
 
 _nic_list() {
-  msg "  ${F_BOLD}网卡与地址 (ip -br addr):${F_RESET}"
+  msg "$(L MSG_NET_0094 "${F_BOLD}" "${F_RESET}")"
   ip -br addr 2>/dev/null || ip addr show
   msg ""
-  msg "  ${F_BOLD}默认路由网卡:${F_RESET} $(_nic_default_iface)"
-  msg "  启停网卡前请注意：停用承载 SSH 连接的网卡会立即断开你的会话"
+  msg "$(L MSG_NET_0095 "${F_BOLD}" "${F_RESET}" "$(_nic_default_iface)")"
+  msg "$(L MSG_NET_0096)"
 }
 
 _nic_info() {
   local dev="${1:-}"
   _nic_check_name "$dev" || return 1
-  msg "  ${F_BOLD}地址 (${dev}):${F_RESET}"
+  msg "$(L MSG_NET_0097 "${F_BOLD}" "${dev}" "${F_RESET}")"
   ip addr show dev "$dev"
   msg ""
-  msg "  ${F_BOLD}计数器 (${dev}):${F_RESET}"
+  msg "$(L MSG_NET_0098 "${F_BOLD}" "${dev}" "${F_RESET}")"
   ip -s link show dev "$dev"
   if command -v ethtool &>/dev/null; then
     msg ""
-    msg "  ${F_BOLD}链路与驱动 (${dev}):${F_RESET}"
+    msg "$(L MSG_NET_0099 "${F_BOLD}" "${dev}" "${F_RESET}")"
     ethtool "$dev" 2>/dev/null | grep -E "Speed|Duplex|Link detected" | sed 's/^/  /'
     ethtool -i "$dev" 2>/dev/null | grep -E "^(driver|version|bus-info)" | sed 's/^/  /'
   else
     msg ""
-    msg_info "未安装 ethtool，跳过链路/驱动详情"
+    msg_info "$(L MSG_NET_0100)"
   fi
 }
 
@@ -595,35 +595,35 @@ _nic_toggle() {
   _nic_check_name "$dev" || return 1
   local def_if; def_if=$(_nic_default_iface)
   if [[ "$action" == "down" && "$dev" == "$def_if" ]]; then
-    msg_warn "$dev 承载默认路由。停用它很可能立即切断你的 SSH 会话与本机外网连接"
-    confirm "我了解风险，确认停用 $dev？" || { msg_info "已取消"; return 1; }
+    msg_warn "$(L MSG_NET_0101 "$dev")"
+    confirm "$(L MSG_NET_0102 "$dev")" || { msg_info "$(L MSG_NET_0071)"; return 1; }
   fi
   if ! ip link set dev "$dev" "$action"; then
-    msg_err "ip link set dev $dev $action 失败"
+    msg_err "$(L MSG_NET_0103 "$dev" "$action")"
     return 1
   fi
   local st; st=$(cat "/sys/class/net/$dev/operstate" 2>/dev/null || echo unknown)
-  msg_ok "$dev 已 $action (operstate: $st)"
-  _log_write "网卡 $dev 已 $action"
+  msg_ok "$(L MSG_NET_0104 "$dev" "$action" "$st")"
+  _log_write "$(L MSG_NET_0105 "$dev" "$action")"
 }
 
 _nic_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "网卡管理"
+    msg_title "$(L MSG_NET_0106)"
     msg ""
     _nic_list
     msg ""
-    msg "  1) 网卡详情（地址/计数器/ethtool）"
-    msg "  2) 启用网卡 (up)"
-    msg "  3) 停用网卡 (down)"
-    msg "  0) 返回"
-    read -p "请选择: " nic_choice || { msg ""; return; }
+    msg "$(L MSG_NET_0107)"
+    msg "$(L MSG_NET_0108)"
+    msg "$(L MSG_NET_0109)"
+    msg "$(L MSG_NET_0110)"
+    read -p "$(L MSG_NET_0091)" nic_choice || { msg ""; return; }
     case "$nic_choice" in
-      1) nic_d=$(read_input "网卡名（如 eth0/ens3）") && _nic_info "$nic_d" && pause ;;
-      2) nic_d=$(read_input "要启用的网卡名") && _nic_toggle up "$nic_d" && pause ;;
-      3) nic_d=$(read_input "要停用的网卡名") && _nic_toggle down "$nic_d" && pause ;;
+      1) nic_d=$(read_input "$(L MSG_NET_0111)") && _nic_info "$nic_d" && pause ;;
+      2) nic_d=$(read_input "$(L MSG_NET_0112)") && _nic_toggle up "$nic_d" && pause ;;
+      3) nic_d=$(read_input "$(L MSG_NET_0113)") && _nic_toggle down "$nic_d" && pause ;;
       0) return ;;
       *) ;;
     esac
@@ -639,32 +639,32 @@ network_nic() {
     up)    shift; _nic_toggle up "$@" ;;
     down)  shift; _nic_toggle down "$@" ;;
     menu|"") _nic_menu ;;
-    *)     msg_err "未知子命令: $cmd（可用: list/info/up/down）"; return 1 ;;
+    *)     msg_err "$(L MSG_NET_0114 "$cmd")"; return 1 ;;
   esac
 }
 
 # ---- Help ----
 network_help() {
-  msg_title "网络工具 帮助"
+  msg_title "$(L MSG_NET_0115)"
   msg ""
-  msg "  fusionbox network ip           IP 地址查询"
-  msg "  fusionbox network streaming    流媒体测试"
-  msg "  fusionbox network speedtest    网速测试"
-  msg "  fusionbox network dns          DNS 解析测试"
-  msg "  fusionbox network trace        路由追踪"
-  msg "  fusionbox network ping <host>  Ping 测试"
-  msg "  fusionbox network mtr <host>   MTR 报告"
-  msg "  fusionbox network port <host> <port>  端口检测"
+  msg "$(L MSG_NET_0116)"
+  msg "$(L MSG_NET_0117)"
+  msg "$(L MSG_NET_0118)"
+  msg "$(L MSG_NET_0119)"
+  msg "$(L MSG_NET_0120)"
+  msg "$(L MSG_NET_0121)"
+  msg "$(L MSG_NET_0122)"
+  msg "$(L MSG_NET_0123)"
   msg ""
-  msg "  fusionbox network bench            VPS 评测矩阵 (交互式)"
-  msg "  fusionbox network bench list       列出全部评测项"
-  msg "  fusionbox network bench <序号|名称>  运行指定评测项"
-  msg "  fusionbox network bench all        依次运行全部轻量评测项"
+  msg "$(L MSG_NET_0124)"
+  msg "$(L MSG_NET_0125)"
+  msg "$(L MSG_NET_0126)"
+  msg "$(L MSG_NET_0127)"
   msg ""
-  msg "  fusionbox network nic          网卡管理 (list/info/up/down)"
+  msg "$(L MSG_NET_0128)"
   msg ""
-  msg "  评测项分综合评测 / 网络测试 / 解锁检测 / IP 质量四类，"
-  msg "  运行前会显示来源 URL 并二次确认，脚本仅在临时文件中执行。"
+  msg "$(L MSG_NET_0129)"
+  msg "$(L MSG_NET_0130)"
   msg ""
 }
 
@@ -673,21 +673,21 @@ network_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "网络工具"
+    msg_title "$(L MSG_NET_0131)"
     msg ""
-    msg "  ${F_GREEN}1${F_RESET}) IP 地址查询"
-    msg "  ${F_GREEN}2${F_RESET}) 流媒体测试"
-    msg "  ${F_GREEN}3${F_RESET}) 网速测试"
-    msg "  ${F_GREEN}4${F_RESET}) DNS 测试"
-    msg "  ${F_GREEN}5${F_RESET}) 路由追踪"
-    msg "  ${F_GREEN}6${F_RESET}) Ping 测试"
-    msg "  ${F_GREEN}7${F_RESET}) MTR 报告"
-    msg "  ${F_GREEN}8${F_RESET}) 端口检测"
-    msg "  ${F_GREEN}9${F_RESET}) VPS 评测矩阵"
-    msg "  ${F_GREEN}10${F_RESET}) 网卡管理"
-    msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
+    msg "$(L MSG_NET_0132 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0133 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0134 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0135 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0136 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0137 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0138 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0139 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0140 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0141 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_NET_0142 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "请选择 [0-10]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_NET_0143)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) network_ip ;;
       2) network_streaming ;;

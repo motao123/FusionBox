@@ -67,40 +67,40 @@ _singbox_233_install() {
   for path in "$SB_SH_BIN" "$(dirname "$SB_SH_BIN")/sb" "$SB_CORE_DIR" \
     "$P_SERVICE_DIR/sing-box.service" /var/log/sing-box; do
     if [[ -e "$path" || -L "$path" ]]; then
-      msg_err "拒绝覆盖现有文件: $path；请先确认归属并手动处理"
+      msg_err "$(L MSG_PROXY_0001 "$path")"
       return 1
     fi
   done
-  msg_info "正在安装 233boy/sing-box（下载内核与管理脚本，约 1 分钟）..."
+  msg_info "$(L MSG_PROXY_0002)"
   local tmpf
   tmpf=$(mktemp) || return $?
   local rc=0
   _download "https://raw.githubusercontent.com/233boy/sing-box/main/install.sh" "$tmpf" || rc=$?
   if [[ $rc -ne 0 ]]; then
-    msg_err "下载 233boy/sing-box 安装脚本失败"
+    msg_err "$(L MSG_PROXY_0003)"
     rm -f "$tmpf"
     return "$rc"
   fi
   bash "$tmpf" || rc=$?
   rm -f "$tmpf"
   if [[ $rc -ne 0 ]]; then
-    msg_err "233boy/sing-box 安装失败（退出码 $rc），可查看上方输出定位原因"
+    msg_err "$(L MSG_PROXY_0004 "$rc")"
     return "$rc"
   fi
   if ! _singbox_233_installed; then
-    msg_err "安装后未检测到受支持的 233boy/sing-box 管理入口"
+    msg_err "$(L MSG_PROXY_0005)"
     return 1
   fi
-  msg_ok "233boy/sing-box 安装完成（已自动创建 REALITY 配置）"
-  msg_info "管理入口: fusionbox proxy sb   （或直接运行 sb）"
-  _log_write "233boy/sing-box 已安装"
+  msg_ok "$(L MSG_PROXY_0006)"
+  msg_info "$(L MSG_PROXY_0007)"
+  _log_write "$(L MSG_PROXY_0008)"
 }
 
 # 入口: fusionbox proxy sb [参数] —— 无参数进 233boy 交互主菜单，带参数原样透传
 proxy_sb() {
   _require_root || return $?
   if ! _singbox_233_installed; then
-    confirm "未检测到 233boy/sing-box，是否立即安装？（自动创建 REALITY 配置）" || return 1
+    confirm "$(L MSG_PROXY_0009)" || return 1
     _singbox_233_install || return $?
     return
   fi
@@ -139,26 +139,26 @@ proxy_main() {
 # ---- 安装代理核心 ----
 proxy_install() {
   _require_root || return $?
-  msg_title "安装代理核心"
+  msg_title "$(L MSG_PROXY_0010)"
   msg ""
 
   # 选择后端
-  msg "  请选择代理后端："
+  msg "$(L MSG_PROXY_0011)"
   local i=1
   for be in "${P_BACKENDS[@]}"; do
     local name="${be%%:*}"; local rest="${be#*:}"; local label="${rest%%:*}"
     local installed=""
-    [[ -f "$P_BIN_DIR/$name" ]] && installed=" ${F_GREEN}[已安装]${F_RESET}"
+    [[ -f "$P_BIN_DIR/$name" ]] && installed="$(L MSG_PROXY_0012 "${F_GREEN}" "${F_RESET}")"
     msg "  ${F_GREEN}$i${F_RESET}) $label$installed"
     i=$((i+1))
   done
   msg ""
-  read -p "请选择 [1-${#P_BACKENDS[@]}]: " be_choice
-  [[ "$be_choice" =~ ^[0-9]+$ ]] || { msg_err "无效选择"; return 1; }
+  read -p "$(L MSG_PROXY_0013 "${#P_BACKENDS[@]}")" be_choice
+  [[ "$be_choice" =~ ^[0-9]+$ ]] || { msg_err "$(L MSG_PROXY_0014)"; return 1; }
   be_choice=$((be_choice - 1))
 
   if [[ $be_choice -lt 0 || $be_choice -ge ${#P_BACKENDS[@]} ]]; then
-    msg_err "无效选择"
+    msg_err "$(L MSG_PROXY_0014)"
     return 1
   fi
 
@@ -171,11 +171,11 @@ proxy_install() {
   # sing-box 后端交由 233boy 脚本接管（社区最佳实践，自动 REALITY + 全协议管理）
   if [[ "$be_name" == "sing-box" ]]; then
     if _singbox_233_installed; then
-      msg_ok "233boy/sing-box 已安装"
+      msg_ok "$(L MSG_PROXY_0008)"
       proxy_sb
       return
     fi
-    confirm "sing-box 将由社区最佳实践的 233boy 脚本安装与管理（自动创建 REALITY 配置），是否继续？" || return
+    confirm "$(L MSG_PROXY_0015)" || return
     _singbox_233_install
     return
   fi
@@ -183,14 +183,14 @@ proxy_install() {
   local command_path="/usr/local/bin/$be_name"
   if [[ -e "$command_path" || -L "$command_path" ]] && \
     ! _proxy_link_points_to "$command_path" "$P_BIN_DIR/$be_name"; then
-    msg_err "拒绝覆盖不属于 FusionBox 的命令: $command_path"
+    msg_err "$(L MSG_PROXY_0016 "$command_path")"
     return 1
   fi
 
   # 检查是否已安装
   if [[ -f "$P_BIN_DIR/$be_name" ]]; then
-    msg_warn "$be_label 已安装"
-    confirm "是否重新安装？" || return
+    msg_warn "$(L MSG_PROXY_0017 "$be_label")"
+    confirm "$(L MSG_PROXY_0018)" || return
   fi
 
   # 创建目录（配置目录存放密钥，权限收紧）
@@ -214,7 +214,7 @@ proxy_install() {
   esac
 
   if [[ ! -f "$tmpdir/$be_name" ]]; then
-    msg_err "下载失败，请检查网络连接"
+    msg_err "$(L MSG_PROXY_0019)"
     rm -rf "$tmpdir"
     progress_end
     return 1
@@ -236,8 +236,8 @@ proxy_install() {
   progress_step "$(_tr MSG_PROXY_STAGES_4)"
   local ver=$($P_BIN_DIR/$be_name version 2>/dev/null | head -1)
   progress_end
-  msg_ok "$be_label 安装成功: $ver"
-  _log_write "代理核心安装: $be_label $ver"
+  msg_ok "$(L MSG_PROXY_0020 "$be_label" "$ver")"
+  _log_write "$(L MSG_PROXY_0021 "$be_label" "$ver")"
   pause
 }
 
@@ -386,7 +386,7 @@ SEOF
 # ---- 卸载 ----
 proxy_uninstall() {
   _require_root || return $?
-  msg_title "卸载代理核心"
+  msg_title "$(L MSG_PROXY_0022)"
 
   # Snapshot both owners before native removal can break the legacy shared link.
   local native=0 upstream=0 path be rc=0
@@ -398,11 +398,11 @@ proxy_uninstall() {
     _proxy_link_points_to "$path" "$P_BIN_DIR/$be" && native_links+=("$path")
   done
   if [[ $native -eq 0 && $upstream -eq 0 ]]; then
-    msg_warn "代理模块未安装"
+    msg_warn "$(L MSG_PROXY_0023)"
     return 0
   fi
 
-  if [[ $native -eq 1 ]] && confirm "将删除 FusionBox 自有代理配置和核心文件，确认继续？"; then
+  if [[ $native -eq 1 ]] && confirm "$(L MSG_PROXY_0024)"; then
     local unit="$P_SERVICE_DIR/fusionbox-proxy.service" owned_unit=0
     for be in xray v2ray sing-box clash-meta; do
       if [[ ! -L "$unit" ]] && grep -Fxq "ExecStart=$P_BIN_DIR/$be run -c $P_CONF_DIR/config.json" "$unit" 2>/dev/null; then
@@ -419,19 +419,19 @@ proxy_uninstall() {
       rm -f "$path" || return $?
     done
     rm -rf "$P_BASE_DIR" "$P_LOG_DIR" || return $?
-    msg_ok "FusionBox 自有代理模块已卸载"
-    _log_write "FusionBox 自有代理模块已卸载"
+    msg_ok "$(L MSG_PROXY_0025)"
+    _log_write "$(L MSG_PROXY_0025)"
   fi
 
-  if [[ $upstream -eq 1 ]] && confirm "卸载 233boy/sing-box 及其配置？"; then
+  if [[ $upstream -eq 1 ]] && confirm "$(L MSG_PROXY_0026)"; then
     _singbox_233_installed || return 1
     "$SB_SH_BIN" uninstall || rc=$?
     if [[ $rc -ne 0 ]]; then
-      msg_err "233boy/sing-box 卸载失败（退出码 $rc）"
+      msg_err "$(L MSG_PROXY_0027 "$rc")"
       return "$rc"
     fi
-    msg_ok "233boy/sing-box 卸载命令已完成"
-    _log_write "233boy/sing-box 卸载命令已完成"
+    msg_ok "$(L MSG_PROXY_0028)"
+    _log_write "$(L MSG_PROXY_0028)"
   fi
   pause
   return 0
@@ -459,34 +459,34 @@ proxy_add() {
   _require_root
   # 只装了 233boy sing-box 时（自有目录不存在）也要正确引导
   if [[ ! -d "$P_BASE_DIR" ]] && _singbox_233_installed; then
-    msg_info "检测到 233boy/sing-box 实例（由其自有服务管理）"
-    msg_info "请使用: fusionbox proxy sb add   （或进入 fusionbox proxy sb 主菜单）"
+    msg_info "$(L MSG_PROXY_0029)"
+    msg_info "$(L MSG_PROXY_0030)"
     return 1
   fi
   if [[ ! -d "$P_BASE_DIR" ]]; then
-    msg_err "请先安装代理核心：fusionbox proxy install"
+    msg_err "$(L MSG_PROXY_0031)"
     return 1
   fi
 
   local backend=$(cat "$P_BASE_DIR/current_backend" 2>/dev/null)
   if [[ -z "$backend" ]]; then
     if _singbox_233_installed; then
-      msg_info "检测到 233boy/sing-box 实例（由其自有服务管理）"
-      msg_info "请使用: fusionbox proxy sb add   （或进入 fusionbox proxy sb 主菜单）"
+      msg_info "$(L MSG_PROXY_0029)"
+      msg_info "$(L MSG_PROXY_0030)"
       return 1
     fi
-    msg_err "未找到已安装的代理后端"
+    msg_err "$(L MSG_PROXY_0032)"
     return 1
   fi
 
   # 选择协议
-  msg_title "添加代理配置"
+  msg_title "$(L MSG_PROXY_0033)"
   msg ""
-  msg "  当前后端: ${F_CYAN}$backend${F_RESET}"
+  msg "$(L MSG_PROXY_0034 "${F_CYAN}" "$backend" "${F_RESET}")"
   msg ""
   _proxy_show_protocols
-  read -p "请选择协议 [1-${#P_PROTOCOLS[@]}]: " proto_idx
-  [[ "$proto_idx" =~ ^[0-9]+$ ]] || { msg_err "无效选择"; return 1; }
+  read -p "$(L MSG_PROXY_0035 "${#P_PROTOCOLS[@]}")" proto_idx
+  [[ "$proto_idx" =~ ^[0-9]+$ ]] || { msg_err "$(L MSG_PROXY_0014)"; return 1; }
   proto_idx=$((proto_idx - 1))
 
   local p_name="${P_PROTOCOLS[$((proto_idx * 3))]}"
@@ -494,16 +494,16 @@ proxy_add() {
   local p_transport="${P_PROTOCOLS[$((proto_idx * 3 + 2))]}"
 
   if [[ -z "$p_name" ]]; then
-    msg_err "无效的协议选择"
+    msg_err "$(L MSG_PROXY_0036)"
     return 1
   fi
 
   if ! _proxy_proto_supported "$backend" "$p_type"; then
-    msg_err "当前后端 $backend 不支持 $p_name（该协议请使用支持它的后端，或更换协议）"
+    msg_err "$(L MSG_PROXY_0037 "$backend" "$p_name")"
     return 1
   fi
 
-  msg_info "正在添加 $p_name 配置..."
+  msg_info "$(L MSG_PROXY_0038 "$p_name")"
 
   # 生成 UUID 和端口
   local uuid
@@ -521,20 +521,20 @@ proxy_add() {
   _proxy_generate_config "$p_name" "$p_type" "$p_transport" "$uuid" "$port" "$conf_file"
 
   if [[ -f "$conf_file" ]]; then
-    msg_ok "$p_name 配置已创建: $conf_file"
-    msg_info "端口: $port | UUID: $uuid"
+    msg_ok "$(L MSG_PROXY_0039 "$p_name" "$conf_file")"
+    msg_info "$(L MSG_PROXY_0040 "$port" "$uuid")"
     _proxy_rebuild_config
     proxy_service "restart" 2>/dev/null
-    _log_write "添加代理配置: $p_name (端口 $port)"
+    _log_write "$(L MSG_PROXY_0041 "$p_name" "$port")"
   else
-    msg_err "配置创建失败"
+    msg_err "$(L MSG_PROXY_0042)"
     return 1
   fi
   pause
 }
 
 _proxy_show_protocols() {
-  msg "  支持的协议："
+  msg "$(L MSG_PROXY_0043)"
   local i=1; local idx=0
   while [[ $idx -lt ${#P_PROTOCOLS[@]} ]]; do
     msg "  ${F_GREEN}$i${F_RESET}) ${P_PROTOCOLS[$idx]}"
@@ -670,7 +670,7 @@ JEOF
 # ---- 列出配置 ----
 proxy_list() {
   if [[ ! -d "$P_CONF_DIR" ]]; then
-    msg_info "暂无代理配置"
+    msg_info "$(L MSG_PROXY_0044)"
     return
   fi
 
@@ -680,11 +680,11 @@ proxy_list() {
   done
 
   if [[ ${#configs[@]} -eq 0 ]]; then
-    msg_info "暂无代理配置"
+    msg_info "$(L MSG_PROXY_0044)"
     return
   fi
 
-  msg_title "代理配置列表"
+  msg_title "$(L MSG_PROXY_0045)"
   local i=1
   for f in "${configs[@]}"; do
     local name=$(basename "$f" .json)
@@ -701,18 +701,18 @@ proxy_info() {
   local name="$1"
   if [[ -z "$name" ]]; then
     proxy_list
-    read -p "请输入配置名称: " name
+    read -p "$(L MSG_PROXY_0046)" name
   fi
 
   local conf_file="$P_CONF_DIR/$name.json"
   [[ ! -f "$conf_file" ]] && conf_file=$(find "$P_CONF_DIR" -name "*$name*.json" 2>/dev/null | head -1)
 
   if [[ ! -f "$conf_file" ]]; then
-    msg_err "未找到配置: $name"
+    msg_err "$(L MSG_PROXY_0047 "$name")"
     return 1
   fi
 
-  msg_title "配置详情: $(basename "$conf_file" .json)"
+  msg_title "$(L MSG_PROXY_0048 "$(basename "$conf_file" .json)")"
   if command -v jq &>/dev/null; then
     jq . "$conf_file"
   else
@@ -727,29 +727,29 @@ proxy_del() {
   local name="$1"
   if [[ -z "$name" ]]; then
     proxy_list
-    read -p "请输入要删除的配置名称: " name
+    read -p "$(L MSG_PROXY_0049)" name
   fi
 
   local conf_file="$P_CONF_DIR/$name.json"
   [[ ! -f "$conf_file" ]] && conf_file=$(find "$P_CONF_DIR" -name "*$name*.json" 2>/dev/null | head -1)
 
   if [[ ! -f "$conf_file" ]]; then
-    msg_err "未找到配置: $name"
+    msg_err "$(L MSG_PROXY_0047 "$name")"
     return 1
   fi
 
-  confirm "确认删除配置 $(basename "$conf_file")？" || return
+  confirm "$(L MSG_PROXY_0050 "$(basename "$conf_file")")" || return
   rm -f "$conf_file"
   _proxy_rebuild_config
-  msg_ok "配置已删除"
+  msg_ok "$(L MSG_PROXY_0051)"
   proxy_service "restart" 2>/dev/null
-  _log_write "删除代理配置: $(basename "$conf_file")"
+  _log_write "$(L MSG_PROXY_0052 "$(basename "$conf_file")")"
 }
 
 # ---- 服务管理 ----
 proxy_service_menu() {
-  msg "1) 启动  2) 停止  3) 重启"
-  read -p "操作: " act
+  msg "$(L MSG_PROXY_0053)"
+  read -p "$(L MSG_PROXY_0054)" act
   case "$act" in 1) proxy_service "start" ;; 2) proxy_service "stop" ;; 3) proxy_service "restart" ;; esac
   pause
 }
@@ -761,23 +761,23 @@ proxy_service() {
       systemctl reset-failed fusionbox-proxy 2>/dev/null
       systemctl start fusionbox-proxy 2>/dev/null
       if systemctl is-active fusionbox-proxy &>/dev/null; then
-        msg_ok "代理服务已启动"
+        msg_ok "$(L MSG_PROXY_0055)"
       else
-        msg_err "代理服务启动失败"
+        msg_err "$(L MSG_PROXY_0056)"
       fi
       ;;
     stop)
       systemctl stop fusionbox-proxy 2>/dev/null
-      msg_info "代理服务已停止"
+      msg_info "$(L MSG_PROXY_0057)"
       ;;
     restart)
       systemctl reset-failed fusionbox-proxy 2>/dev/null
       systemctl restart fusionbox-proxy 2>/dev/null
       sleep 1
       if systemctl is-active fusionbox-proxy &>/dev/null; then
-        msg_ok "代理服务已重启"
+        msg_ok "$(L MSG_PROXY_0058)"
       else
-        msg_err "代理服务重启失败"
+        msg_err "$(L MSG_PROXY_0059)"
       fi
       ;;
   esac
@@ -785,45 +785,45 @@ proxy_service() {
 
 # ---- 状态 ----
 proxy_status() {
-  msg_title "代理状态"
+  msg_title "$(L MSG_PROXY_0060)"
 
   local backend=""
   [[ -f "$P_BASE_DIR/current_backend" ]] && backend=$(cat "$P_BASE_DIR/current_backend")
 
   # 无自有后端且无 233boy 实例才是真正的"未安装"
   if [[ -z "$backend" ]] && ! _singbox_233_installed; then
-    msg "  ${F_BOLD}状态:${F_RESET} ${F_RED}未安装${F_RESET}"
+    msg "$(L MSG_PROXY_0061 "${F_BOLD}" "${F_RESET}" "${F_RED}" "${F_RESET}")"
     msg ""
     return
   fi
 
   if [[ -n "$backend" ]]; then
     local ver=$($P_BIN_DIR/$backend version 2>/dev/null | head -1)
-    msg "  ${F_BOLD}后端:${F_RESET} $backend ($ver)"
+    msg "$(L MSG_PROXY_0062 "${F_BOLD}" "${F_RESET}" "$backend" "$ver")"
 
     if systemctl is-active fusionbox-proxy &>/dev/null; then
-      msg "  ${F_BOLD}状态:${F_RESET} ${F_GREEN}运行中${F_RESET}"
+      msg "$(L MSG_PROXY_0063 "${F_BOLD}" "${F_RESET}" "${F_GREEN}" "${F_RESET}")"
       local pid=$(systemctl show fusionbox-proxy --property=MainPID --value 2>/dev/null)
       msg "  ${F_BOLD}PID:${F_RESET} $pid"
     else
-      msg "  ${F_BOLD}状态:${F_RESET} ${F_YELLOW}已停止${F_RESET}"
+      msg "$(L MSG_PROXY_0064 "${F_BOLD}" "${F_RESET}" "${F_YELLOW}" "${F_RESET}")"
     fi
 
     local count=$(find "$P_CONF_DIR" -name "*.json" 2>/dev/null | wc -l)
-    msg "  ${F_BOLD}配置:${F_RESET} $count 个"
+    msg "$(L MSG_PROXY_0065 "${F_BOLD}" "${F_RESET}" "$count")"
   fi
 
   # 233boy/sing-box 实例（独立于 FusionBox 自有后端）
   if _singbox_233_installed; then
     local sb_status
     if systemctl is-active sing-box &>/dev/null; then
-      sb_status="${F_GREEN}运行中${F_RESET}"
+      sb_status="$(L MSG_PROXY_0066 "${F_GREEN}" "${F_RESET}")"
     else
-      sb_status="${F_YELLOW}已停止${F_RESET}"
+      sb_status="$(L MSG_PROXY_0067 "${F_YELLOW}" "${F_RESET}")"
     fi
     local sb_count
     sb_count=$(find "$SB_CORE_DIR/conf" -name "*.json" 2>/dev/null | wc -l)
-    msg "  ${F_BOLD}233boy/sing-box:${F_RESET} $sb_status | 配置 $sb_count 个 | 管理: fusionbox proxy sb"
+    msg "$(L MSG_PROXY_0068 "${F_BOLD}" "${F_RESET}" "$sb_status" "$sb_count")"
   fi
   msg ""
 }
@@ -832,10 +832,10 @@ proxy_status() {
 proxy_log() {
   local log_file="$P_LOG_DIR/access.log"
   if [[ -f "$log_file" ]]; then
-    msg_info "查看日志 (Ctrl+C 退出)..."
+    msg_info "$(L MSG_PROXY_0069)"
     tail -f "$log_file" 2>/dev/null
   else
-    journalctl -u fusionbox-proxy --no-pager -n 50 2>/dev/null || msg_info "暂无日志"
+    journalctl -u fusionbox-proxy --no-pager -n 50 2>/dev/null || msg_info "$(L MSG_PROXY_0070)"
   fi
 }
 
@@ -844,14 +844,14 @@ proxy_bbr() {
   _require_root
   local cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
   if [[ "$cc" == "bbr" ]]; then
-    msg_ok "BBR 已启用"
+    msg_ok "$(L MSG_PROXY_0071)"
     return
   fi
 
   local kmaj=$(uname -r | cut -d. -f1)
   local kmin=$(uname -r | cut -d. -f2)
   if [[ $kmaj -lt 4 ]] || [[ $kmaj -eq 4 && $kmin -lt 9 ]]; then
-    msg_err "BBR 需要内核 4.9+，当前内核: $(uname -r)"
+    msg_err "$(L MSG_PROXY_0072 "$(uname -r)")"
     return 1
   fi
 
@@ -867,8 +867,8 @@ proxy_bbr() {
     echo 'net.core.default_qdisc = fq' >> /etc/sysctl.conf
   fi
   sysctl -p 2>/dev/null
-  msg_ok "BBR 已启用"
-  _log_write "BBR 已启用"
+  msg_ok "$(L MSG_PROXY_0071)"
+  _log_write "$(L MSG_PROXY_0071)"
 }
 
 # ---- 分享链接 ----
@@ -876,14 +876,14 @@ proxy_url() {
   local name="$1"
   if [[ -z "$name" ]]; then
     proxy_list
-    read -p "请输入配置名称: " name
+    read -p "$(L MSG_PROXY_0046)" name
   fi
 
   local conf_file="$P_CONF_DIR/$name.json"
   [[ ! -f "$conf_file" ]] && conf_file=$(find "$P_CONF_DIR" -name "*$name*.json" 2>/dev/null | head -1)
 
   if [[ ! -f "$conf_file" ]]; then
-    msg_err "未找到配置: $name"
+    msg_err "$(L MSG_PROXY_0047 "$name")"
     return 1
   fi
 
@@ -893,7 +893,7 @@ proxy_url() {
   local pass=$(grep -o '"password": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local ip="${F_IP:-$(curl -s4 --connect-timeout 5 ip.sb 2>/dev/null || echo "YOUR_IP")}"
 
-  msg_title "分享链接"
+  msg_title "$(L MSG_PROXY_0073)"
   case "$proto" in
     vless)   msg_tip "vless://$uuid@$ip:$port?type=tcp" ;;
     vmess)   msg_tip "vmess://$(echo -n "{\"v\":\"2\",\"add\":\"$ip\",\"port\":\"$port\",\"id\":\"$uuid\"}" | base64 -w0 2>/dev/null)" ;;
@@ -901,32 +901,32 @@ proxy_url() {
     hysteria2) msg_tip "hysteria2://$pass@$ip:$port" ;;
     tuic)    msg_tip "tuic://$uuid:$pass@$ip:$port" ;;
     shadowsocks) msg_tip "ss://$(echo -n "aes-256-gcm:$pass" | base64 -w0 2>/dev/null)@$ip:$port" ;;
-    *)       msg_info "地址: $ip:$port" ;;
+    *)       msg_info "$(L MSG_PROXY_0074 "$ip" "$port")" ;;
   esac
   msg ""
 }
 
 # ---- 帮助 ----
 proxy_help() {
-  msg_title "代理管理 帮助"
+  msg_title "$(L MSG_PROXY_0075)"
   msg ""
-  msg "  ${F_GREEN}fusionbox proxy install${F_RESET}        安装代理核心"
-  msg "  ${F_GREEN}fusionbox proxy uninstall${F_RESET}      卸载代理模块"
-  msg "  ${F_GREEN}fusionbox proxy add${F_RESET}            添加代理配置"
-  msg "  ${F_GREEN}fusionbox proxy list${F_RESET}           列出所有配置"
-  msg "  ${F_GREEN}fusionbox proxy info <名称>${F_RESET}    查看配置详情"
-  msg "  ${F_GREEN}fusionbox proxy del <名称>${F_RESET}     删除配置"
-  msg "  ${F_GREEN}fusionbox proxy start${F_RESET}          启动代理服务"
-  msg "  ${F_GREEN}fusionbox proxy stop${F_RESET}           停止代理服务"
-  msg "  ${F_GREEN}fusionbox proxy restart${F_RESET}        重启代理服务"
-  msg "  ${F_GREEN}fusionbox proxy status${F_RESET}         查看代理状态"
-  msg "  ${F_GREEN}fusionbox proxy log${F_RESET}            查看日志"
-  msg "  ${F_GREEN}fusionbox proxy bbr${F_RESET}            启用 BBR 加速"
-  msg "  ${F_GREEN}fusionbox proxy url <名称>${F_RESET}     生成分享链接"
+  msg "$(L MSG_PROXY_0076 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0077 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0078 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0079 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0080 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0081 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0082 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0083 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0084 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0085 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0086 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0087 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0088 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "  ${F_BOLD}支持的后端:${F_RESET} Xray-core、v2ray-core、233boy/sing-box（推荐）、Clash.Meta"
-  msg "  ${F_BOLD}支持的协议:${F_RESET} VLESS(含Reality)、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5"
-  msg "  ${F_BOLD}sing-box:${F_RESET}   fusionbox proxy sb     # 233boy 脚本管理（自动 REALITY）"
+  msg "$(L MSG_PROXY_0089 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0090 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_PROXY_0091 "${F_BOLD}" "${F_RESET}")"
   msg ""
 }
 
@@ -935,21 +935,21 @@ proxy_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "代理管理"
+    msg_title "$(L MSG_PROXY_0092)"
     msg ""
     proxy_status
-    msg "  ${F_GREEN}1${F_RESET}) 安装代理核心"
-    msg "  ${F_GREEN}2${F_RESET}) 添加代理配置"
-    msg "  ${F_GREEN}3${F_RESET}) 列出配置"
-    msg "  ${F_GREEN}4${F_RESET}) 查看配置详情"
-    msg "  ${F_GREEN}5${F_RESET}) 删除配置"
-    msg "  ${F_GREEN}6${F_RESET}) 启动/停止/重启"
-    msg "  ${F_GREEN}7${F_RESET}) 启用 BBR"
-    msg "  ${F_GREEN}8${F_RESET}) 生成分享链接"
-    msg "  ${F_GREEN}9${F_RESET}) sing-box 管理 (233boy)"
-    msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
+    msg "$(L MSG_PROXY_0093 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0094 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0095 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0096 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0097 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0098 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0099 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0100 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0101 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PROXY_0102 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "请选择 [0-9]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_PROXY_0103)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) proxy_install ;;
       2) proxy_add ;;
