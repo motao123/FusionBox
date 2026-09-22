@@ -49,8 +49,26 @@ check "preflight 退出码 0" "$?"
 grep -qi "$DOMAIN" /tmp/fb-staging-preflight.log; check "报告包含域名" "$?"
 
 step "2. issue：真实 CA（staging）+ 真实 HTTP-01 签发"
-"${ACME_ENV[@]}" "$FUSION" web ssl issue --domain "$DOMAIN" --email "$EMAIL" >/tmp/fb-staging-issue.log 2>&1
-check "issue 退出码 0" "$?"
+# LE staging 会间歇性返回 "too many requests / Service busy"（外部限流，与产品无关）。
+# 对这类瞬时错误退避重试；重试耗尽仍如实 FAIL，不掩盖真实问题。
+issue_rc=1
+attempts=0
+for attempt in 1 2 3; do
+  attempts=$attempt
+  "${ACME_ENV[@]}" "$FUSION" web ssl issue --domain "$DOMAIN" --email "$EMAIL" >/tmp/fb-staging-issue.log 2>&1
+  issue_rc=$?
+  [[ $issue_rc -eq 0 ]] && break
+  if grep -qiE "too many requests|service busy|rate ?limit" /tmp/fb-staging-issue.log && [[ $attempt -lt 3 ]]; then
+    echo "    （第 $attempt 次遇到 LE staging 限流，90s 后重试）"
+    sleep 90
+    continue
+  fi
+  break
+done
+if [[ $issue_rc -ne 0 ]] && grep -qiE "too many requests|service busy|rate ?limit" /tmp/fb-staging-issue.log; then
+  echo "    注意: $attempts 次尝试均被 Let's Encrypt staging 限流（外部环境问题，非 FusionBox 缺陷）"
+fi
+check "issue 退出码 0（尝试 $attempts 次）" "$issue_rc"
 [[ -s "$LE_DIR/live/$DOMAIN/fullchain.pem" ]]; check "证书落盘" "$?"
 issuer="$(openssl x509 -in "$LE_DIR/live/$DOMAIN/fullchain.pem" -noout -issuer 2>/dev/null)"
 printf '%s' "$issuer" | grep -qi "STAGING"; check "签发者为 Let's Encrypt staging（${issuer:0:60}）" "$?"
