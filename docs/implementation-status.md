@@ -1,4 +1,6 @@
-# 当前实施状态（v1.42.0）
+# 当前实施状态（v1.43.0）
+
+2026-09-22 本轮（1.43.0）完成 **模块层双语收口**：9 个模块（system/web/panels/cluster/network/market/workspace/proxy/warp）共 2957 处文案改为键式取值，语言包扩到 3247 键（中英逐键对等）；抽取器新增四类出口（交互/日志函数参数、变量赋值、菜单与数据表、值表达式整体透传），全仓未抽取数归零并被闸门强制。回归与验收：闸门 193/193（root 与非 root）+ 完整套件 bash 229 项 + Python 764 项（34 模块）零失败；真机逐字节对照 v1.42.0 中文输出一致、英文模式零中文。环境限制未变：真实 OCI 实例、TG bot token、真机关机分支。
 
 2026-09-21 本轮（1.40.0，roadmap 批次 4）按判定收尾：`vocechat` 入内置目录并真机验收（`market_app_expansion.sh`：安装/HTTP/卸载保留卷/reuse-data 重装）；实测 Webtop（s6）与 `cap_drop ALL` 不兼容并如实记录；harness 管理器设计稿（docs/harness-design.md，L1–L4 分层验收）；`netopt_sysctl.sh` 真实改值 + 快照恢复（11 键零漂移）收口 G18/G67 的真实执行缺口；一键 DD 与 Oracle 三件套的判定收口（设计决策）。回归与验收：闸门 177/177（root 与非 root）+ 完整套件 bash 229 项 + Python 741 项（33 模块）零失败，真机脚本全部可一键重放。环境限制未变：真实 OCI 实例、TG/CF 真实凭据、模型 API 凭据。
 

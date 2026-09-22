@@ -23,7 +23,12 @@ class ProxyLifecycle(unittest.TestCase):
         (self.root / "proxy.sh").write_text(source, encoding="utf-8")
 
     def run_shell(self, body, expected=0, real_links=False):
-        script = '''source "$T/proxy.sh"
+        # 模块文案已走语言包（v1.43.0）：先初始化 i18n，否则 $(L KEY) 取空；
+        # 这些用例用 confirm 的提示语内容决定回答（*233boy*），空提示会把行为带偏。
+        i18n_prelude = ('FUSION_I18N_DIR="%s/src/i18n"\n'
+                        'source "%s/src/lib/i18n.sh"\n'
+                        '_i18n_init >/dev/null 2>&1 || true\n') % (ROOT.as_posix(), ROOT.as_posix())
+        script = i18n_prelude + '''source "$T/proxy.sh"
 for name in msg msg_info msg_warn msg_err msg_title msg_ok _log_write pause _require_root; do
   eval "$name() { :; }"
 done

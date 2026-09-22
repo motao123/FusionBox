@@ -22,16 +22,16 @@ warp_main() {
 # ---- 安装 WARP ----
 warp_install() {
   _require_root
-  msg_title "安装 WARP"
+  msg_title "$(L MSG_WARP_0083)"
   msg ""
 
   if systemctl is-active warp-svc &>/dev/null; then
-    msg_ok "WARP 已安装并运行中"
+    msg_ok "$(L MSG_WARP_0084)"
     warp_status
     pause; return
   fi
 
-  msg_info "正在安装 Cloudflare WARP..."
+  msg_info "$(L MSG_WARP_0085)"
 
   # Detect package manager and add repo
   case "$F_PKG_MGR" in
@@ -48,19 +48,19 @@ warp_install() {
       _install_pkg cloudflare-warp
       ;;
     *)
-      msg_err "当前系统不支持自动安装 WARP"
-      msg_info "请参考: https://pkg.cloudflareclient.com/"
+      msg_err "$(L MSG_WARP_0086)"
+      msg_info "$(L MSG_WARP_0087)"
       pause; return
       ;;
   esac
 
   if command -v warp-cli &>/dev/null || systemctl is-active warp-svc &>/dev/null; then
-    msg_ok "WARP 安装完成"
+    msg_ok "$(L MSG_WARP_0088)"
 
-    msg_info "正在注册 WARP..."
+    msg_info "$(L MSG_WARP_0089)"
     if ! warp-cli --accept-tos registration new 2>/dev/null; then
       # warp-cli 注册失败不再静默（旧版误报"安装完成"）
-      msg_warn "WARP 注册命令未成功（可能已注册或网络异常），请稍后用 'fusionbox warp status' 复查"
+      msg_warn "$(L MSG_WARP_0090)"
     fi
 
     # Set default mode to proxy
@@ -74,13 +74,13 @@ warp_install() {
     # 禁止开机自启
     systemctl disable warp-svc 2>/dev/null
 
-    msg_ok "WARP 已注册，默认模式: Proxy (SOCKS5)"
+    msg_ok "$(L MSG_WARP_0091)"
     msg ""
-    msg "  ${F_BOLD}SOCKS5 代理:${F_RESET} 127.0.0.1:40000"
-    msg "  ${F_BOLD}提示:${F_RESET} 使用 'fusionbox warp on' 开启"
-    _log_write "WARP 已安装"
+    msg "$(L MSG_WARP_0092 "${F_BOLD}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0093 "${F_BOLD}" "${F_RESET}")"
+    _log_write "$(L MSG_WARP_0094)"
   else
-    msg_err "WARP 安装失败"
+    msg_err "$(L MSG_WARP_0095)"
   fi
   pause
 }
@@ -89,19 +89,19 @@ warp_install() {
 warp_uninstall() {
   _require_root
   if ! command -v warp-cli &>/dev/null && ! systemctl is-active warp-svc &>/dev/null; then
-    msg_warn "WARP 未安装"
+    msg_warn "$(L MSG_WARP_0096)"
     pause; return
   fi
 
-  if confirm "确认卸载 WARP？"; then
+  if confirm "$(L MSG_WARP_0097)"; then
     warp-cli --accept-tos disconnect 2>/dev/null
     warp-cli --accept-tos registration delete 2>/dev/null
     case "$F_PKG_MGR" in
       apt) apt-get remove -y cloudflare-warp 2>/dev/null ;;
       yum) yum remove -y cloudflare-warp 2>/dev/null ;;
     esac
-    msg_ok "WARP 已卸载"
-    _log_write "WARP 已卸载"
+    msg_ok "$(L MSG_WARP_0098)"
+    _log_write "$(L MSG_WARP_0098)"
   fi
   pause
 }
@@ -110,15 +110,15 @@ warp_uninstall() {
 warp_status() {
   msg ""
   if command -v warp-cli &>/dev/null; then
-    msg "  ${F_BOLD}WARP 版本:${F_RESET} $(warp-cli --accept-tos --version 2>/dev/null)"
+    msg "$(L MSG_WARP_0099 "${F_BOLD}" "${F_RESET}" "$(warp-cli --accept-tos --version 2>/dev/null)")"
     local reg_status=$(warp-cli --accept-tos registration show 2>/dev/null | head -1)
-    msg "  ${F_BOLD}注册状态:${F_RESET} ${reg_status:-未注册}"
+    msg "$(L MSG_WARP_0100 "${F_BOLD}" "${F_RESET}" "${reg_status:-未注册}")"
     local conn_status=$(warp-cli --accept-tos status 2>/dev/null | head -1)
-    msg "  ${F_BOLD}连接状态:${F_RESET} ${conn_status:-未连接}"
+    msg "$(L MSG_WARP_0101 "${F_BOLD}" "${F_RESET}" "${conn_status:-未连接}")"
     local warp_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
-    msg "  ${F_BOLD}当前模式:${F_RESET} ${warp_mode:-未知}"
+    msg "$(L MSG_WARP_0102 "${F_BOLD}" "${F_RESET}" "${warp_mode:-未知}")"
   else
-    msg "  WARP 未安装"
+    msg "$(L MSG_WARP_0103)"
   fi
 }
 
@@ -126,7 +126,7 @@ warp_status() {
 warp_on() {
   _require_root
   if ! command -v warp-cli &>/dev/null; then
-    msg_err "WARP 未安装，请先安装"
+    msg_err "$(L MSG_WARP_0104)"
     pause; return
   fi
 
@@ -149,15 +149,15 @@ warp_on() {
   sleep 3
   local status=$(warp-cli --accept-tos status 2>/dev/null | head -1)
   if echo "$status" | grep -qi "connected"; then
-    msg_ok "WARP 已开启 (Proxy 模式)"
-    msg "  ${F_BOLD}SOCKS5 代理:${F_RESET} 127.0.0.1:40000"
+    msg_ok "$(L MSG_WARP_0105)"
+    msg "$(L MSG_WARP_0092 "${F_BOLD}" "${F_RESET}")"
 
     # Test IP
     warp_ip
   else
-    msg_warn "WARP 状态: $status"
+    msg_warn "$(L MSG_WARP_0106 "$status")"
   fi
-  _log_write "WARP 已开启"
+  _log_write "$(L MSG_WARP_0107)"
   pause
 }
 
@@ -165,8 +165,8 @@ warp_on() {
 warp_off() {
   _require_root
   warp-cli --accept-tos disconnect 2>/dev/null
-  msg_ok "WARP 已关闭"
-  _log_write "WARP 已关闭"
+  msg_ok "$(L MSG_WARP_0108)"
+  _log_write "$(L MSG_WARP_0108)"
   pause
 }
 
@@ -174,52 +174,52 @@ warp_off() {
 warp_mode() {
   _require_root
   if ! command -v warp-cli &>/dev/null; then
-    msg_err "WARP 未安装"
+    msg_err "$(L MSG_WARP_0096)"
     pause; return
   fi
 
-  msg_title "WARP 模式切换"
+  msg_title "$(L MSG_WARP_0109)"
   msg ""
   local current_mode=$(warp-cli --accept-tos settings 2>/dev/null | grep -i mode | awk '{print $NF}')
-  msg "  ${F_BOLD}当前模式:${F_RESET} ${current_mode:-未知}"
+  msg "$(L MSG_WARP_0102 "${F_BOLD}" "${F_RESET}" "${current_mode:-未知}")"
   msg ""
-  msg "  ${F_GREEN}1${F_RESET}) WARP 模式 (全局代理，所有流量经过 WARP)"
-  msg "  ${F_GREEN}2${F_RESET}) Proxy 模式 (SOCKS5 代理，手动配置)"
-  msg "  ${F_GREEN}3${F_RESET}) DoH 模式 (仅 DNS over HTTPS)"
-  msg "  ${F_GREEN}0${F_RESET}) 返回"
+  msg "$(L MSG_WARP_0110 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0111 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0112 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0113 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  read -p "请选择: " mode_choice
+  read -p "$(L MSG_WARP_0114)" mode_choice
 
   case "$mode_choice" in
     1)
-      msg_warn "全局模式会将服务器全部流量经 WARP 转发，可能导致当前 SSH 会话中断！"
-      if confirm "确认切换到 WARP 全局模式？"; then
+      msg_warn "$(L MSG_WARP_0115)"
+      if confirm "$(L MSG_WARP_0116)"; then
         warp-cli --accept-tos mode warp 2>/dev/null
-        msg_ok "已切换到 WARP 模式（全局代理）"
-        _log_write "WARP 模式已切换为 warp"
+        msg_ok "$(L MSG_WARP_0117)"
+        _log_write "$(L MSG_WARP_0118)"
       else
-        msg_info "已取消"
+        msg_info "$(L MSG_WARP_0119)"
       fi
       ;;
     2)
       warp-cli --accept-tos mode proxy 2>/dev/null
-      msg_ok "已切换到 Proxy 模式"
-      msg "  SOCKS5 代理地址: 127.0.0.1:40000"
+      msg_ok "$(L MSG_WARP_0120)"
+      msg "$(L MSG_WARP_0121)"
       ;;
     3)
       warp-cli --accept-tos mode doh 2>/dev/null
-      msg_ok "已切换到 DoH 模式"
+      msg_ok "$(L MSG_WARP_0122)"
       ;;
     0) return ;;
   esac
-  _log_write "WARP 模式已切换为 $mode_choice"
+  _log_write "$(L MSG_WARP_0123 "$mode_choice")"
   pause
 }
 
 # ---- 查看 IP ----
 warp_ip() {
   msg ""
-  msg_info "正在检测 IP..."
+  msg_info "$(L MSG_WARP_0124)"
   local real_ip=$(curl -s4 --connect-timeout 5 https://api.ipify.org 2>/dev/null)
   local warp_ip_check=""
 
@@ -233,54 +233,54 @@ warp_ip() {
     fi
   fi
 
-  msg "  ${F_BOLD}原始 IP:${F_RESET} ${real_ip:-未知}"
+  msg "$(L MSG_WARP_0125 "${F_BOLD}" "${F_RESET}" "${real_ip:-未知}")"
   if [[ -n "$warp_ip_check" ]]; then
-    msg "  ${F_BOLD}WARP IP:${F_RESET} ${warp_ip_check:-未知}"
+    msg "$(L MSG_WARP_0126 "${F_BOLD}" "${F_RESET}" "${warp_ip_check:-未知}")"
     if [[ "$real_ip" != "$warp_ip_check" && -n "$warp_ip_check" ]]; then
-      msg "  ${F_GREEN}IP 已通过 WARP 隐藏${F_RESET}"
+      msg "$(L MSG_WARP_0127 "${F_GREEN}" "${F_RESET}")"
     fi
   fi
 
   # Check streaming unlock
   msg ""
-  msg_info "正在检测流媒体解锁..."
+  msg_info "$(L MSG_WARP_0128)"
   local cf_trace=$(curl -s4 --connect-timeout 5 "https://www.cloudflare.com/cdn-cgi/trace" 2>/dev/null)
   local warp_status=$(echo "$cf_trace" | grep "warp=" | cut -d= -f2)
-  msg "  Cloudflare WARP 状态: ${warp_status:-N/A}"
+  msg "$(L MSG_WARP_0129 "${warp_status:-N/A}")"
 }
 
 # ---- WARP 代理配置 ----
 warp_proxy() {
   _require_root
-  msg_title "WARP 代理配置"
+  msg_title "$(L MSG_WARP_0130)"
   msg ""
 
   if ! warp-cli --accept-tos status 2>/dev/null | grep -qi "connected"; then
-    msg_warn "WARP 未连接"
-    if confirm "是否开启 WARP？"; then
+    msg_warn "$(L MSG_WARP_0131)"
+    if confirm "$(L MSG_WARP_0132)"; then
       warp-cli --accept-tos connect 2>/dev/null
       sleep 2
     fi
   fi
 
-  msg "  ${F_BOLD}WARP Proxy 信息:${F_RESET}"
-  msg "  类型: SOCKS5"
-  msg "  地址: 127.0.0.1:40000"
+  msg "$(L MSG_WARP_0133 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0134)"
+  msg "$(L MSG_WARP_0135)"
   msg ""
-  msg "  ${F_BOLD}使用场景:${F_RESET}"
-  msg "  1. 代理程序的出站流量通过 WARP 解锁"
-  msg "  2. 浏览器配置 SOCKS5 代理: 127.0.0.1:40000"
+  msg "$(L MSG_WARP_0136 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0137)"
+  msg "$(L MSG_WARP_0138)"
   msg "  3. curl --socks5 127.0.0.1:40000 https://example.com"
   msg ""
-  msg "  ${F_BOLD}代理程序配置示例:${F_RESET}"
+  msg "$(L MSG_WARP_0139 "${F_BOLD}" "${F_RESET}")"
   msg ""
-  msg "  ${F_CYAN}Xray-core 出站配置:${F_RESET}"
+  msg "$(L MSG_WARP_0140 "${F_CYAN}" "${F_RESET}")"
   msg '  {'
   msg '    "protocol": "socks",'
   msg '    "settings": {"servers": [{"address": "127.0.0.1", "port": 40000}]}'
   msg '  }'
   msg ""
-  msg "  ${F_CYAN}sing-box 出站配置:${F_RESET}"
+  msg "$(L MSG_WARP_0141 "${F_CYAN}" "${F_RESET}")"
   msg '  {'
   msg '    "type": "socks",'
   msg '    "server": "127.0.0.1",'
@@ -292,21 +292,21 @@ warp_proxy() {
 
 # ---- Help ----
 warp_help() {
-  msg_title "WARP 管理 帮助"
+  msg_title "$(L MSG_WARP_0142)"
   msg ""
-  msg "  fusionbox warp install          安装 WARP"
-  msg "  fusionbox warp uninstall        卸载 WARP"
-  msg "  fusionbox warp status           查看 WARP 状态"
-  msg "  fusionbox warp on               开启 WARP"
-  msg "  fusionbox warp off              关闭 WARP"
-  msg "  fusionbox warp mode             切换模式 (WARP/Proxy/DoH)"
-  msg "  fusionbox warp ip               查看 WARP IP 和流媒体解锁"
-  msg "  fusionbox warp proxy            查看代理配置信息"
+  msg "$(L MSG_WARP_0143)"
+  msg "$(L MSG_WARP_0144)"
+  msg "$(L MSG_WARP_0145)"
+  msg "$(L MSG_WARP_0146)"
+  msg "$(L MSG_WARP_0147)"
+  msg "$(L MSG_WARP_0148)"
+  msg "$(L MSG_WARP_0149)"
+  msg "$(L MSG_WARP_0150)"
   msg ""
-  msg "  ${F_BOLD}模式说明:${F_RESET}"
-  msg "  WARP    - 全局代理，所有流量经过 Cloudflare"
-  msg "  Proxy   - SOCKS5 代理 (127.0.0.1:40000)，手动配置使用"
-  msg "  DoH     - 仅 DNS over HTTPS"
+  msg "$(L MSG_WARP_0151 "${F_BOLD}" "${F_RESET}")"
+  msg "$(L MSG_WARP_0152)"
+  msg "$(L MSG_WARP_0153)"
+  msg "$(L MSG_WARP_0154)"
   msg ""
 }
 
@@ -315,20 +315,20 @@ warp_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "WARP 管理"
+    msg_title "$(L MSG_WARP_0155)"
     msg ""
     warp_status
     msg ""
-    msg "  ${F_GREEN}1${F_RESET}) 安装 WARP"
-    msg "  ${F_GREEN}2${F_RESET}) 卸载 WARP"
-    msg "  ${F_GREEN}3${F_RESET}) 开启 WARP"
-    msg "  ${F_GREEN}4${F_RESET}) 关闭 WARP"
-    msg "  ${F_GREEN}5${F_RESET}) 切换模式"
-    msg "  ${F_GREEN}6${F_RESET}) 查看 IP / 流媒体解锁"
-    msg "  ${F_GREEN}7${F_RESET}) 代理配置说明"
-    msg "  ${F_GREEN}0${F_RESET}) 返回主菜单"
+    msg "$(L MSG_WARP_0156 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0157 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0158 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0159 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0160 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0161 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0162 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_WARP_0163 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "请选择 [0-7]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_WARP_0164)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) warp_install ;;
       2) warp_uninstall ;;

@@ -37,7 +37,13 @@ class Safety(unittest.TestCase):
         prelude = '\n'.join(f'{n}() {{ :; }}' for n in ('msg', 'msg_err', 'msg_ok', 'msg_warn', 'msg_info', 'msg_tip', 'msg_title', '_log_write', 'pause', '_require_root'))
         if os.name == 'nt':
             prelude += '\npython3() { "' + sys.executable.replace('\\', '/') + '" "$@"; }'
-        script = f'source "{self.modules[name]}"\n{prelude}\nconfirm() {{ return 0; }}\nT="{self.posix}"\n{body}\n'
+        # 模块文案已走语言包（v1.43.0）：必须先初始化 i18n，否则 $(L KEY) 取不到值，
+        # 断言中文文案的用例会看到空输出。
+        i18n = (f'FUSION_I18N_DIR="{ROOT.as_posix()}/src/i18n"\n'
+                f'source "{ROOT.as_posix()}/src/lib/i18n.sh"\n'
+                '_i18n_init >/dev/null 2>&1 || true\n')
+        script = (f'{i18n}source "{self.modules[name]}"\n{prelude}\n'
+                  f'confirm() {{ return 0; }}\nT="{self.posix}"\n{body}\n')
         env = os.environ.copy()
         if os.name == 'nt':
             env['FB_SRC'] = str(self.root / 'input.json')

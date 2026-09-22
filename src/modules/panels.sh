@@ -6,36 +6,36 @@
 # argparse usage dump. Mirrors the existing ssh-candidate behaviour.
 
 panels_compose_backup_help() {
-  msg_title "受管 Compose 备份 帮助"
+  msg_title "$(L MSG_PANEL_0345)"
   msg ""
-  msg "  用法: fusionbox panels compose-backup <操作> <项目名> <路径> [选项]"
+  msg "$(L MSG_PANEL_0346)"
   msg ""
-  msg "  操作:"
-  msg "  ${F_GREEN}register${F_RESET} <项目名> <compose 文件>   注册受管项目（需 --confirm-owned-import）"
-  msg "  ${F_GREEN}backup${F_RESET}   <项目名> <归档路径>        备份（需 --confirm-stop-writers）"
-  msg "  ${F_GREEN}restore${F_RESET}  <项目名> <归档路径>        恢复（需 --confirm-stop-writers）"
+  msg "$(L MSG_PANEL_0347)"
+  msg "$(L MSG_PANEL_0348 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0349 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0350 "${F_GREEN}" "${F_RESET}")"
   msg ""
-  msg "  说明: 私有元数据可能包含密钥，错误输出不会打印 Docker 原始内容。"
-  msg "  示例: fusionbox panels compose-backup register myapp /opt/myapp/compose.yml --confirm-owned-import"
+  msg "$(L MSG_PANEL_0351)"
+  msg "$(L MSG_PANEL_0352)"
   msg ""
 }
 
 panels_docker_migration_help() {
-  msg_title "Docker 离线迁移 帮助"
+  msg_title "$(L MSG_PANEL_0353)"
   msg ""
-  msg "  用法: fusionbox panels docker-migration <操作> [参数] [选项]"
+  msg "$(L MSG_PANEL_0354)"
   msg ""
-  msg "  操作:"
-  msg "  ${F_GREEN}export${F_RESET} <bundle>       导出（-容器/--compose-project 二选一）"
-  msg "  ${F_GREEN}verify${F_RESET} <bundle>       校验离线包完整性"
-  msg "  ${F_GREEN}preflight${F_RESET} <bundle>    只读目标兼容性与冲突预检"
-  msg "  ${F_GREEN}restore${F_RESET} <bundle>      恢复（--confirm-clean-target 清空目标）"
-  msg "  ${F_GREEN}rollback${F_RESET} <事务ID>     回滚"
-  msg "  ${F_GREEN}resume${F_RESET} <事务ID>       续跑中断的恢复"
-  msg "  ${F_GREEN}remote${F_RESET} <节点>         跨主机迁移编排（目标机 preflight → 传输 → 目标机"
-  msg "                                  restore → 健康校验 → 失败自动回滚；详见 --help）"
+  msg "$(L MSG_PANEL_0347)"
+  msg "$(L MSG_PANEL_0355 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0356 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0357 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0358 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0359 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0360 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0361 "${F_GREEN}" "${F_RESET}")"
+  msg "$(L MSG_PANEL_0362)"
   msg ""
-  msg "  示例: fusionbox panels docker-migration preflight ./mybundle"
+  msg "$(L MSG_PANEL_0363)"
   msg "        fusionbox panels docker-migration remote node2 --bundle app.tar.gz \\"
   msg "               --name app.tar.gz --key ~/.ssh/migrate --known-hosts /etc/fusionbox/cluster/known_hosts"
   msg ""
@@ -48,19 +48,19 @@ panels_main() {
     compose-backup)
       _require_root
       [[ $# -ge 1 ]] || { panels_compose_backup_help; return 2; }
-      _require_docker_compose "Compose 备份/恢复" || return 1
-      _require_python3 "Compose 备份/恢复" || return 1
+      _require_docker_compose "$(L MSG_PANEL_0364)" || return 1
+      _require_python3 "$(L MSG_PANEL_0364)" || return 1
       python3 "$FUSION_SRC/lib/compose_backup.py" "$@"
       ;;
     docker-migration)
       _require_root
       [[ $# -ge 1 ]] || { panels_docker_migration_help; return 2; }
       if [[ "$1" == "remote" ]]; then
-        _require_python3 "Docker 跨主机迁移编排" || return 1
+        _require_python3 "$(L MSG_PANEL_0365)" || return 1
         python3 "$FUSION_SRC/lib/docker_migration_remote.py" "$@"
       else
-        _require_docker "Docker 离线迁移" || return 1
-        _require_python3 "Docker 离线迁移" || return 1
+        _require_docker "$(L MSG_PANEL_0366)" || return 1
+        _require_python3 "$(L MSG_PANEL_0366)" || return 1
         python3 "$FUSION_SRC/lib/docker_migration.py" "$@"
       fi
       ;;
@@ -96,11 +96,11 @@ panels_docker() {
       _require_root
       [[ $# -ge 1 ]] || { panels_docker_migration_help; return 2; }
       if [[ "$1" == "remote" ]]; then
-        _require_python3 "Docker 跨主机迁移编排" || return 1
+        _require_python3 "$(L MSG_PANEL_0365)" || return 1
         python3 "$FUSION_SRC/lib/docker_migration_remote.py" "$@"
       else
-        _require_docker "Docker 离线迁移" || return 1
-        _require_python3 "Docker 离线迁移" || return 1
+        _require_docker "$(L MSG_PANEL_0366)" || return 1
+        _require_python3 "$(L MSG_PANEL_0366)" || return 1
         python3 "$FUSION_SRC/lib/docker_migration.py" "$@"
       fi
       ;;
@@ -203,11 +203,11 @@ Environment=[redacted: all values omitted]' -- "$target") || return 1
 panels_docker_install() {
   _require_root
   if command -v docker &>/dev/null; then
-    msg_info "Docker 已安装: $(docker --version)"
+    msg_info "$(L MSG_PANEL_0367 "$(docker --version)")"
     return
   fi
 
-  msg_info "正在安装 Docker..."
+  msg_info "$(L MSG_PANEL_0368)"
   progress_begin 4
   case "$F_PKG_MGR" in
     apt)
@@ -244,19 +244,19 @@ panels_docker_install() {
 
   progress_step "$(_tr MSG_DOCKER_STAGES_4)"
   if command -v docker &>/dev/null; then
-    msg_ok "Docker 安装完成: $(docker --version 2>/dev/null)"
+    msg_ok "$(L MSG_PANEL_0369 "$(docker --version 2>/dev/null)")"
     docker compose version 2>/dev/null | xargs -I{} msg_ok "Docker Compose: {}"
-    _log_write "Docker 已安装"
+    _log_write "$(L MSG_PANEL_0370)"
   fi
   progress_end
 }
 
 panels_docker_ps() {
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker 未安装"
+    msg_err "$(L MSG_PANEL_0371)"
     return
   fi
-  msg_title "Docker 容器"
+  msg_title "$(L MSG_PANEL_0372)"
   msg ""
   docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | while read -r line; do
     msg "  $line"
@@ -266,10 +266,10 @@ panels_docker_ps() {
 
 panels_docker_images() {
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker 未安装"
+    msg_err "$(L MSG_PANEL_0371)"
     return
   fi
-  msg_title "Docker 镜像"
+  msg_title "$(L MSG_PANEL_0373)"
   msg ""
   docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" 2>/dev/null | while read -r line; do
     msg "  $line"
@@ -279,12 +279,12 @@ panels_docker_images() {
 
 panels_docker_prune() {
   _require_root
-  if ! confirm "是否清理未使用的 Docker 资源？"; then
+  if ! confirm "$(L MSG_PANEL_0374)"; then
     return
   fi
   docker system prune -a -f --volumes 2>/dev/null
-  msg_ok "Docker 清理完成"
-  _log_write "Docker 已清理"
+  msg_ok "$(L MSG_PANEL_0375)"
+  _log_write "$(L MSG_PANEL_0376)"
   pause
 }
 
@@ -295,20 +295,20 @@ panels_docker_compose() {
   mkdir -p "$compose_dir"
 
   if [[ -z "$project" ]]; then
-    msg_title "Docker Compose 项目"
+    msg_title "$(L MSG_PANEL_0377)"
     msg ""
     find "$compose_dir" -name "docker-compose.yml" -o -name "compose.yaml" 2>/dev/null | while read -r f; do
       msg "  $(dirname "$f" | xargs basename)"
     done
 
     msg ""
-    msg "  1) 创建新项目"
-    msg "  2) 部署现有项目"
-    read -p "请选择: " comp_choice
+    msg "$(L MSG_PANEL_0378)"
+    msg "$(L MSG_PANEL_0379)"
+    read -p "$(L MSG_PANEL_0380)" comp_choice
 
     case "$comp_choice" in
       1)
-        read -p "请输入项目名: " project
+        read -p "$(L MSG_PANEL_0381)" project
         if [[ -n "$project" ]]; then
           local proj_dir="$compose_dir/$project"
           mkdir -p "$proj_dir"
@@ -326,23 +326,23 @@ services:
 YEOF
           chmod 600 "$proj_dir/docker-compose.yml"
           mkdir -p "$proj_dir/html"
-          echo "由 FusionBox 部署" > "$proj_dir/html/index.html"
-          msg_ok "项目 '$project' 已创建于 $proj_dir"
+          echo "$(L MSG_PANEL_0382)" > "$proj_dir/html/index.html"
+          msg_ok "$(L MSG_PANEL_0383 "$project" "$proj_dir")"
         fi
         ;;
       2)
-        msg_info "正在自动部署所有项目..."
+        msg_info "$(L MSG_PANEL_0384)"
         for f in "$compose_dir"/*/docker-compose.yml; do
-          [[ -f "$f" ]] && docker compose -f "$f" up -d 2>/dev/null && msg_info "  已部署: $(basename "$(dirname "$f")")"
+          [[ -f "$f" ]] && docker compose -f "$f" up -d 2>/dev/null && msg_info "$(L MSG_PANEL_0385 "$(basename "$(dirname "$f")")")"
         done
         ;;
     esac
   else
     local proj_file="$compose_dir/$project/docker-compose.yml"
     if [[ -f "$proj_file" ]]; then
-      docker compose -f "$proj_file" up -d 2>/dev/null && msg_ok "$project 已部署" || msg_err "部署失败"
+      docker compose -f "$proj_file" up -d 2>/dev/null && msg_ok "$(L MSG_PANEL_0386 "$project")" || msg_err "$(L MSG_PANEL_0387)"
     else
-      msg_err "未找到项目: $project"
+      msg_err "$(L MSG_PANEL_0388 "$project")"
     fi
   fi
   pause
@@ -350,8 +350,8 @@ YEOF
 
 # ---- Docker 端口访问控制 ----
 panels_docker_port_control() {
-  msg_err "旧端口开关已禁用：DOCKER-USER 的目标端口已经过 DNAT，不能按宿主端口安全匹配。"
-  msg_warn "请在 Compose ports 中明确绑定宿主 IP（本机使用 127.0.0.1），重新部署并验证；现有规则需人工审查。容器+原始目标地址规则尚未实现。"
+  msg_err "$(L MSG_PANEL_0389)"
+  msg_warn "$(L MSG_PANEL_0390)"
   return 1
 }
 
@@ -359,14 +359,14 @@ panels_docker_port_control() {
 panels_docker_ipv6() {
   _require_root
   local daemon_json="/etc/docker/daemon.json"
-  msg_title "Docker IPv6 网络配置"
+  msg_title "$(L MSG_PANEL_0391)"
   msg ""
 
-  msg "  1) 启用 Docker IPv6"
-  msg "  2) 禁用 Docker IPv6"
-  msg "  3) 创建 IPv6 网络"
-  msg "  0) 返回"
-  read -p "请选择: " ipv6_choice
+  msg "$(L MSG_PANEL_0392)"
+  msg "$(L MSG_PANEL_0393)"
+  msg "$(L MSG_PANEL_0394)"
+  msg "$(L MSG_PANEL_0395)"
+  read -p "$(L MSG_PANEL_0380)" ipv6_choice
 
   case "$ipv6_choice" in
     1)
@@ -383,8 +383,8 @@ with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
         echo '{"ipv6": true, "fixed-cidr-v6": "fd00::/80"}' > "$daemon_json"
       fi
       systemctl restart docker 2>/dev/null
-      msg_ok "Docker IPv6 已启用"
-      _log_write "Docker IPv6 已启用"
+      msg_ok "$(L MSG_PANEL_0396)"
+      _log_write "$(L MSG_PANEL_0396)"
       ;;
     2)
       if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
@@ -396,15 +396,15 @@ cfg.pop('fixed-cidr-v6', None)
 with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
 " 2>/dev/null
         systemctl restart docker 2>/dev/null
-        msg_ok "Docker IPv6 已禁用"
+        msg_ok "$(L MSG_PANEL_0397)"
       fi
       ;;
     3)
-      read -p "网络名称: " net_name
-      read -p "IPv6 子网 (如 fd00:1::/64): " ipv6_subnet
+      read -p "$(L MSG_PANEL_0398)" net_name
+      read -p "$(L MSG_PANEL_0399)" ipv6_subnet
       if [[ -n "$net_name" && -n "$ipv6_subnet" ]]; then
         docker network create --ipv6 --subnet "$ipv6_subnet" "$net_name" 2>/dev/null && \
-          msg_ok "IPv6 网络 '$net_name' 已创建" || msg_err "创建失败"
+          msg_ok "$(L MSG_PANEL_0400 "$net_name")" || msg_err "$(L MSG_PANEL_0401)"
       fi
       ;;
   esac
@@ -418,13 +418,13 @@ _panels_pb_mark() { printf 'fb-port-block:%s:%s:%s' "$1" "$2" "$3"; }
 
 _panels_pb_validate() {
   local container="$1" proto="$2" port="$3"
-  [[ "$container" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$ ]] || { msg_err "容器名无效: $container"; return 1; }
-  [[ "$proto" == "tcp" || "$proto" == "udp" ]] || { msg_err "协议仅支持 tcp/udp: $proto"; return 1; }
-  [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || { msg_err "端口必须是 1-65535: $port"; return 1; }
+  [[ "$container" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$ ]] || { msg_err "$(L MSG_PANEL_0402 "$container")"; return 1; }
+  [[ "$proto" == "tcp" || "$proto" == "udp" ]] || { msg_err "$(L MSG_PANEL_0403 "$proto")"; return 1; }
+  [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || { msg_err "$(L MSG_PANEL_0404 "$port")"; return 1; }
 }
 
 _panels_pb_chain_ok() {
-  iptables -nL DOCKER-USER &>/dev/null || { msg_err "iptables DOCKER-USER 链不可用（Docker 未安装或过旧，或当前 nftables 环境不支持）；不做任何更改"; return 1; }
+  iptables -nL DOCKER-USER &>/dev/null || { msg_err "$(L MSG_PANEL_0405)"; return 1; }
 }
 
 _panels_pb_container_ips() {
@@ -453,24 +453,24 @@ panels_docker_port_block() {
       local rules
       rules=$(_panels_pb_rules_from_save "fb-port-block:")
       if [[ -n "$rules" ]]; then
-        msg "  ${F_BOLD}FusionBox 受管 DOCKER-USER 规则:${F_RESET}"
+        msg "$(L MSG_PANEL_0406 "${F_BOLD}" "${F_RESET}")"
         printf '  %s\n' "$rules"
       else
-        msg "  当前无 FusionBox 受管的容器端口封禁规则"
+        msg "$(L MSG_PANEL_0407)"
       fi
       ;;
     add)
       shift
       local container="${1:-}" proto="${2:-tcp}" port="${3:-}" ip rc=0
-      [[ $# -eq 3 ]] || { msg_err "用法: fusionbox panels docker port-block add <容器名> <tcp|udp> <端口>"; return 2; }
+      [[ $# -eq 3 ]] || { msg_err "$(L MSG_PANEL_0408)"; return 2; }
       _panels_pb_validate "$container" "$proto" "$port" || return 1
-      command -v docker &>/dev/null || { msg_err "Docker 未安装"; return 1; }
+      command -v docker &>/dev/null || { msg_err "$(L MSG_PANEL_0371)"; return 1; }
       _panels_pb_chain_ok || return 1
       local ips; ips=$(_panels_pb_container_ips "$container")
-      [[ -n "$ips" ]] || { msg_err "容器不存在或没有 IPv4 地址: $container"; return 1; }
-      msg_info "将封禁 容器=$container 协议=$proto 容器端口=$port 目标 IP: $(echo $ips | tr '\n' ' ')"
-      msg_warn "规则不持久（重启后失效）；不支持 IPv6；容器重建后 IP 变化需先 del 旧规则"
-      confirm "确认在 DOCKER-USER 插入 DROP 规则？" || { msg_info "已取消"; return 1; }
+      [[ -n "$ips" ]] || { msg_err "$(L MSG_PANEL_0409 "$container")"; return 1; }
+      msg_info "$(L MSG_PANEL_0410 "$container" "$proto" "$port" "$(echo $ips | tr '\n' ' ')")"
+      msg_warn "$(L MSG_PANEL_0411)"
+      confirm "$(L MSG_PANEL_0412)" || { msg_info "$(L MSG_PANEL_0413)"; return 1; }
       local mark; mark=$(_panels_pb_mark "$container" "$proto" "$port")
       local -a rules_added=()
       for ip in $ips; do
@@ -478,7 +478,7 @@ panels_docker_port_block() {
              -m comment --comment "$mark" -j DROP; then
           rules_added+=("$ip")
         else
-          msg_err "iptables 插入失败（IP: $ip）"
+          msg_err "$(L MSG_PANEL_0414 "$ip")"
           rc=1
           break
         fi
@@ -488,16 +488,16 @@ panels_docker_port_block() {
           iptables -D DOCKER-USER -p "$proto" -d "$ip" --dport "$port" \
             -m comment --comment "$mark" -j DROP 2>/dev/null || true
         done
-        msg_err "已回滚本次已插入的规则"
+        msg_err "$(L MSG_PANEL_0415)"
         return 1
       fi
-      msg_ok "封禁规则已插入 DOCKER-USER 顶部"
-      _log_write "Docker 端口封禁: $container $proto $port ($ips)"
+      msg_ok "$(L MSG_PANEL_0416)"
+      _log_write "$(L MSG_PANEL_0417 "$container" "$proto" "$port" "$ips")"
       ;;
     del)
       shift
       local container="${1:-}" proto="${2:-tcp}" port="${3:-}" mark spec removed=0
-      [[ $# -eq 3 ]] || { msg_err "用法: fusionbox panels docker port-block del <容器名> <tcp|udp> <端口>"; return 2; }
+      [[ $# -eq 3 ]] || { msg_err "$(L MSG_PANEL_0418)"; return 2; }
       _panels_pb_validate "$container" "$proto" "$port" || return 1
       _panels_pb_chain_ok || return 1
       mark=$(_panels_pb_mark "$container" "$proto" "$port")
@@ -508,25 +508,25 @@ panels_docker_port_block() {
         fi
       done < <(_panels_pb_rules_from_save "$mark")
       if [[ $removed -eq 0 ]]; then
-        msg_err "未找到匹配的受管规则（容器 IP 可能已变化；用 port-block list 查看现存规则）"
+        msg_err "$(L MSG_PANEL_0419)"
         return 1
       fi
-      msg_ok "已删除 $removed 条规则"
-      _log_write "Docker 端口解封: $container $proto $port"
+      msg_ok "$(L MSG_PANEL_0420 "$removed")"
+      _log_write "$(L MSG_PANEL_0421 "$container" "$proto" "$port")"
       ;;
     menu)
       panels_docker_port_block list
       msg ""
-      msg "  1) 封禁容器端口"
-      msg "  2) 解封容器端口"
-      msg "  0) 返回"
-      read -p "请选择: " pb_choice || { msg ""; return; }
+      msg "$(L MSG_PANEL_0422)"
+      msg "$(L MSG_PANEL_0423)"
+      msg "$(L MSG_PANEL_0395)"
+      read -p "$(L MSG_PANEL_0380)" pb_choice || { msg ""; return; }
       case "$pb_choice" in
         1|2)
           local pb_c pb_pr pb_po
-          read -r -p "容器名: " pb_c
-          read -r -p "协议 tcp/udp: " pb_pr
-          read -r -p "端口: " pb_po
+          read -r -p "$(L MSG_PANEL_0424)" pb_c
+          read -r -p "$(L MSG_PANEL_0425)" pb_pr
+          read -r -p "$(L MSG_PANEL_0426)" pb_po
           if [[ "$pb_choice" == 1 ]]; then
             panels_docker_port_block add "$pb_c" "$pb_pr" "$pb_po"
           else
@@ -536,7 +536,7 @@ panels_docker_port_block() {
       esac
       ;;
     *)
-      msg_err "未知子命令: $action（可用: list/menu/add/del）"; return 2 ;;
+      msg_err "$(L MSG_PANEL_0427 "$action")"; return 2 ;;
   esac
 }
 
@@ -549,49 +549,49 @@ _panels_docker_pkgs() {
 
 panels_docker_uninstall() {
   _require_root
-  command -v docker &>/dev/null || { msg_err "未安装 Docker"; return 1; }
-  command -v systemctl &>/dev/null || { msg_err "仅支持 systemd 环境"; return 1; }
+  command -v docker &>/dev/null || { msg_err "$(L MSG_PANEL_0428)"; return 1; }
+  command -v systemctl &>/dev/null || { msg_err "$(L MSG_PANEL_0429)"; return 1; }
 
-  msg_title "Docker 一键卸载"
+  msg_title "$(L MSG_PANEL_0430)"
   msg ""
   # 只读统计先行；失败不伪装为零
   local c i v n du_stat
   c=$(docker ps -aq 2>/dev/null | wc -l); i=$(docker images -aq 2>/dev/null | wc -l)
   v=$(docker volume ls -q 2>/dev/null | wc -l); n=$(docker network ls -q 2>/dev/null | wc -l)
   du_stat=$(du -sh /var/lib/docker 2>/dev/null | awk '{print $1}')
-  msg "  将删除的资源统计（当前）："
-  msg "    容器: $c    镜像: $i    卷: $v    自定义网络: $n"
-  msg "    数据目录 /var/lib/docker: ${du_stat:-未知或不存在}"
-  [[ -f /etc/docker/daemon.json ]] && msg "    /etc/docker/daemon.json 存在（将随卸载删除）"
+  msg "$(L MSG_PANEL_0431)"
+  msg "$(L MSG_PANEL_0432 "$c" "$i" "$v" "$n")"
+  msg "$(L MSG_PANEL_0433 "${du_stat:-未知或不存在}")"
+  [[ -f /etc/docker/daemon.json ]] && msg "$(L MSG_PANEL_0434)"
   msg ""
-  msg_warn "无论容器/镜像/卷由谁创建（包括 FusionBox 市场、Compose 项目、手工部署），全部删除且数据不可恢复"
-  msg_warn "依赖 Docker 的业务将立即中断；containerd 同时停用会影响本机其他容器运行时（如 Kubernetes）"
-  msg_info "如需保留数据，请先备份：fusionbox panels docker backup / compose-backup / market managed"
-  confirm "确认继续卸载 Docker？" || { msg_info "已取消"; return 1; }
+  msg_warn "$(L MSG_PANEL_0435)"
+  msg_warn "$(L MSG_PANEL_0436)"
+  msg_info "$(L MSG_PANEL_0437)"
+  confirm "$(L MSG_PANEL_0438)" || { msg_info "$(L MSG_PANEL_0413)"; return 1; }
   local ans
-  read -r -p "请输入 YES 确认（其他输入取消）: " ans || { msg_info "已取消"; return 1; }
-  [[ "$ans" == "YES" ]] || { msg_info "已取消"; return 1; }
+  read -r -p "$(L MSG_PANEL_0439)" ans || { msg_info "$(L MSG_PANEL_0413)"; return 1; }
+  [[ "$ans" == "YES" ]] || { msg_info "$(L MSG_PANEL_0413)"; return 1; }
 
   local wipe="yes"
-  read -r -p "是否删除数据目录 /var/lib/docker /var/lib/containerd /etc/docker？[yes/keep，默认 yes]: " ans || ans="yes"
+  read -r -p "$(L MSG_PANEL_0440)" ans || ans="yes"
   [[ "$ans" == "keep" ]] && wipe="no"
 
-  msg_info "停止并删除全部容器..."
+  msg_info "$(L MSG_PANEL_0441)"
   local ids; ids=$(docker ps -aq 2>/dev/null)
   [[ -n "$ids" ]] && docker stop $ids >/dev/null 2>&1
   [[ -n "$ids" ]] && docker rm -f $ids >/dev/null 2>&1
-  msg_info "清理网络/卷/镜像..."
+  msg_info "$(L MSG_PANEL_0442)"
   docker network prune -f >/dev/null 2>&1
   docker volume prune -af >/dev/null 2>&1
   ids=$(docker images -aq 2>/dev/null)
   [[ -n "$ids" ]] && docker rmi -f $ids >/dev/null 2>&1
   docker system prune -af >/dev/null 2>&1
 
-  msg_info "停用 docker / docker.socket 服务..."
+  msg_info "$(L MSG_PANEL_0443)"
   systemctl disable --now docker.service docker.socket >/dev/null 2>&1
   systemctl disable --now containerd.service >/dev/null 2>&1
 
-  msg_info "按包管理器卸载软件包..."
+  msg_info "$(L MSG_PANEL_0444)"
   local p
   local -a installed_pkgs=()
   while IFS= read -r p; do
@@ -604,57 +604,57 @@ panels_docker_uninstall() {
   done < <(_panels_docker_pkgs)
   if [[ ${#installed_pkgs[@]} -gt 0 ]]; then
     case "$F_PKG_MGR" in
-      apt)    apt-get purge -y "${installed_pkgs[@]}" || { msg_err "软件包卸载失败"; return 1; } ;;
-      yum)    yum remove -y "${installed_pkgs[@]}" || { msg_err "软件包卸载失败"; return 1; } ;;
-      apk)    apk del "${installed_pkgs[@]}" || { msg_err "软件包卸载失败"; return 1; } ;;
-      zypper) zypper remove -y "${installed_pkgs[@]}" || { msg_err "软件包卸载失败"; return 1; } ;;
-      *)      msg_err "未知包管理器，请手动卸载软件包"; return 1 ;;
+      apt)    apt-get purge -y "${installed_pkgs[@]}" || { msg_err "$(L MSG_PANEL_0445)"; return 1; } ;;
+      yum)    yum remove -y "${installed_pkgs[@]}" || { msg_err "$(L MSG_PANEL_0445)"; return 1; } ;;
+      apk)    apk del "${installed_pkgs[@]}" || { msg_err "$(L MSG_PANEL_0445)"; return 1; } ;;
+      zypper) zypper remove -y "${installed_pkgs[@]}" || { msg_err "$(L MSG_PANEL_0445)"; return 1; } ;;
+      *)      msg_err "$(L MSG_PANEL_0446)"; return 1 ;;
     esac
   else
-    msg_warn "未检测到已安装的 Docker 相关软件包"
+    msg_warn "$(L MSG_PANEL_0447)"
   fi
 
   if [[ "$wipe" == "yes" ]]; then
-    msg_info "删除数据目录..."
+    msg_info "$(L MSG_PANEL_0448)"
     rm -rf /var/lib/docker /var/lib/containerd /etc/docker
   else
-    msg_warn "数据目录已保留：/var/lib/docker /var/lib/containerd /etc/docker（重装后可能恢复）"
+    msg_warn "$(L MSG_PANEL_0449)"
   fi
 
   if command -v docker &>/dev/null; then
-    msg_warn "docker 命令仍存在，卸载可能不完整"
+    msg_warn "$(L MSG_PANEL_0450)"
     return 1
   fi
-  msg_ok "Docker 已卸载"
-  _log_write "Docker 已卸载 (wipe=$wipe)"
+  msg_ok "$(L MSG_PANEL_0451)"
+  _log_write "$(L MSG_PANEL_0452 "$wipe")"
 }
 
 # ---- Docker daemon.json 编辑 ----
 panels_docker_daemon() {
   _require_root
   local daemon_json="/etc/docker/daemon.json"
-  msg_title "Docker daemon.json 配置"
+  msg_title "$(L MSG_PANEL_0453)"
   msg ""
 
   if [[ -f "$daemon_json" ]]; then
-    msg "  ${F_BOLD}当前配置:${F_RESET}"
+    msg "$(L MSG_PANEL_0454 "${F_BOLD}" "${F_RESET}")"
     cat "$daemon_json" 2>/dev/null
   else
-    msg "  当前使用默认配置"
+    msg "$(L MSG_PANEL_0455)"
   fi
 
   msg ""
-  msg "  1) 配置镜像加速"
-  msg "  2) 配置日志限制"
-  msg "  3) 配置 DNS"
-  msg "  4) 手动编辑 daemon.json"
-  msg "  5) 重置为默认"
-  msg "  0) 返回"
-  read -p "请选择: " dm_choice
+  msg "$(L MSG_PANEL_0456)"
+  msg "$(L MSG_PANEL_0457)"
+  msg "$(L MSG_PANEL_0458)"
+  msg "$(L MSG_PANEL_0459)"
+  msg "$(L MSG_PANEL_0460)"
+  msg "$(L MSG_PANEL_0395)"
+  read -p "$(L MSG_PANEL_0380)" dm_choice
 
   case "$dm_choice" in
     1)
-      read -p "请输入镜像加速地址: " mirror_url
+      read -p "$(L MSG_PANEL_0461)" mirror_url
       if [[ -n "$mirror_url" ]]; then
         mkdir -p /etc/docker
         if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
@@ -670,7 +670,7 @@ with open(path, "w") as f: json.dump(cfg, f, indent=2)
           echo "{\"registry-mirrors\": [\"$mirror_url\"]}" > "$daemon_json"
         fi
         systemctl restart docker 2>/dev/null
-        msg_ok "镜像加速已配置"
+        msg_ok "$(L MSG_PANEL_0462)"
       fi
       ;;
     2)
@@ -686,10 +686,10 @@ with open('$daemon_json','w') as f: json.dump(cfg, f, indent=2)
         echo '{"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "3"}}' > "$daemon_json"
       fi
       systemctl restart docker 2>/dev/null
-      msg_ok "日志限制已配置 (10MB x 3)"
+      msg_ok "$(L MSG_PANEL_0463)"
       ;;
     3)
-      read -p "DNS 服务器 (如 8.8.8.8): " dns_server
+      read -p "$(L MSG_PANEL_0464)" dns_server
       if [[ -n "$dns_server" ]]; then
         if [[ -f "$daemon_json" ]] && command -v python3 &>/dev/null; then
           FB_DOCKER_JSON="$daemon_json" FB_DNS="$dns_server" python3 -c '
@@ -702,7 +702,7 @@ with open(path, "w") as f: json.dump(cfg, f, indent=2)
 ' 2>/dev/null
         fi
         systemctl restart docker 2>/dev/null
-        msg_ok "DNS 已设为 $dns_server"
+        msg_ok "$(L MSG_PANEL_0465 "$dns_server")"
       fi
       ;;
     4)
@@ -710,10 +710,10 @@ with open(path, "w") as f: json.dump(cfg, f, indent=2)
       systemctl restart docker 2>/dev/null
       ;;
     5)
-      if confirm "确认重置 daemon.json？"; then
+      if confirm "$(L MSG_PANEL_0466)"; then
         rm -f "$daemon_json"
         systemctl restart docker 2>/dev/null
-        msg_ok "已重置为默认配置"
+        msg_ok "$(L MSG_PANEL_0467)"
       fi
       ;;
   esac
@@ -724,11 +724,11 @@ with open(path, "w") as f: json.dump(cfg, f, indent=2)
 # 预设镜像源 数据表，字段: 名称|URL
 # 特殊占位: __official__ = 清空 registry-mirrors 恢复官方, __aliyun__ = 需输入阿里云 ID, __custom__ = 手动输入
 PANELS_DOCKER_MIRRORS=(
-  "官方(清空)|__official__"
-  "DaoCloud(需自行验证)|https://docker.m.daocloud.io"
-  "1ms(需自行验证)|https://docker.1ms.run"
-  "阿里云(需输入ID)|__aliyun__"
-  "自定义 URL|__custom__"
+  "$(L MSG_PANEL_0468)"
+  "$(L MSG_PANEL_0469)"
+  "$(L MSG_PANEL_0470)"
+  "$(L MSG_PANEL_0471)"
+  "$(L MSG_PANEL_0472)"
 )
 
 # 检测可用的 JSON 处理工具
@@ -758,9 +758,9 @@ _panels_docker_mirror_show_current() {
   local daemon_json="/etc/docker/daemon.json"
   local tool; tool=$(_panels_docker_json_tool)
 
-  msg "  ${F_BOLD}当前配置 (${daemon_json}):${F_RESET}"
+  msg "$(L MSG_PANEL_0473 "${F_BOLD}" "${daemon_json}" "${F_RESET}")"
   if [[ ! -f "$daemon_json" ]]; then
-    msg "    ${F_YELLOW}未配置${F_RESET} - daemon.json 不存在，使用 Docker 官方仓库"
+    msg "$(L MSG_PANEL_0474 "${F_YELLOW}" "${F_RESET}")"
     return
   fi
 
@@ -782,7 +782,7 @@ for m in cfg.get("registry-mirrors") or []:
   fi
 
   if [[ -z "$mirrors" ]]; then
-    msg "    ${F_YELLOW}未配置${F_RESET} - 使用 Docker 官方仓库"
+    msg "$(L MSG_PANEL_0475 "${F_YELLOW}" "${F_RESET}")"
   else
     echo "$mirrors" | while IFS= read -r m; do
       [[ -n "$m" ]] && msg "    ${F_GREEN}${m}${F_RESET}"
@@ -793,14 +793,14 @@ for m in cfg.get("registry-mirrors") or []:
 # 列出可选镜像源
 _panels_docker_mirror_list() {
   local item name url shown num i=0
-  msg "  ${F_BOLD}可选镜像源:${F_RESET}"
+  msg "$(L MSG_PANEL_0476 "${F_BOLD}" "${F_RESET}")"
   for item in "${PANELS_DOCKER_MIRRORS[@]}"; do
     IFS='|' read -r name url <<< "$item"
     i=$((i + 1))
     case "$url" in
-      __official__) shown="清空 registry-mirrors，恢复 Docker 官方仓库" ;;
-      __aliyun__)   shown="需输入你的阿里云 ID，生成专属加速地址" ;;
-      __custom__)   shown="手动输入镜像源 URL" ;;
+      __official__) shown="$(L MSG_PANEL_0477)" ;;
+      __aliyun__)   shown="$(L MSG_PANEL_0478)" ;;
+      __custom__)   shown="$(L MSG_PANEL_0479)" ;;
       *)            shown="$url" ;;
     esac
     printf -v num '%2d' "$i"
@@ -815,10 +815,10 @@ _panels_docker_mirror_rollback() {
   local daemon_json="/etc/docker/daemon.json"
   if [[ "$existed" -eq 1 && -f "$bak_file" ]]; then
     cp -a "$bak_file" "$daemon_json"
-    msg_info "已回滚到备份: $bak_file"
+    msg_info "$(L MSG_PANEL_0480 "$bak_file")"
   else
     rm -f "$daemon_json"
-    msg_info "已删除新建的 daemon.json，恢复到未配置状态"
+    msg_info "$(L MSG_PANEL_0481)"
   fi
   systemctl restart docker 2>/dev/null
 }
@@ -865,21 +865,21 @@ _panels_docker_mirror_apply() {
 
   local tool; tool=$(_panels_docker_json_tool)
   if [[ -z "$tool" ]]; then
-    msg_err "未找到 jq 或 python3，无法安全修改 JSON 配置"
-    msg_info "请先安装: fusionbox market install jq"
+    msg_err "$(L MSG_PANEL_0482)"
+    msg_info "$(L MSG_PANEL_0483)"
     pause
     return 1
   fi
 
   # 1) 备份现有配置
-  mkdir -p /etc/docker || { msg_err "无法创建 /etc/docker"; pause; return 1; }
-  mkdir -p "$bak_dir" || { msg_err "无法创建备份目录: $bak_dir"; pause; return 1; }
+  mkdir -p /etc/docker || { msg_err "$(L MSG_PANEL_0484)"; pause; return 1; }
+  mkdir -p "$bak_dir" || { msg_err "$(L MSG_PANEL_0485 "$bak_dir")"; pause; return 1; }
   if [[ -f "$daemon_json" ]]; then
-    cp -a "$daemon_json" "$bak_file" || { msg_err "备份失败: $daemon_json"; pause; return 1; }
+    cp -a "$daemon_json" "$bak_file" || { msg_err "$(L MSG_PANEL_0486 "$daemon_json")"; pause; return 1; }
     existed=1
-    msg_info "已备份: $daemon_json -> $bak_file"
+    msg_info "$(L MSG_PANEL_0487 "$daemon_json" "$bak_file")"
   else
-    msg_info "未发现 daemon.json，将新建（备份目录: $bak_dir）"
+    msg_info "$(L MSG_PANEL_0488 "$bak_dir")"
   fi
 
   # 2) 合并 registry-mirrors
@@ -887,7 +887,7 @@ _panels_docker_mirror_apply() {
   local new_json; new_json=$(mktemp)
   if [[ "$existed" -eq 1 ]]; then cp "$daemon_json" "$src"; else echo '{}' > "$src"; fi
   if ! _panels_docker_json_valid "$src" "$tool"; then
-    msg_err "现有 daemon.json 非法，拒绝覆盖"
+    msg_err "$(L MSG_PANEL_0489)"
     rm -f "$src" "$new_json"
     return 1
   fi
@@ -900,7 +900,7 @@ _panels_docker_mirror_apply() {
 
   # 3) JSON 校验通过后才落盘
   if ! _panels_docker_json_valid "$new_json" "$tool"; then
-    msg_err "生成的配置不是合法 JSON，已放弃写入（原配置未改动）"
+    msg_err "$(L MSG_PANEL_0490)"
     rm -f "$src" "$new_json"
     pause
     return 1
@@ -908,11 +908,11 @@ _panels_docker_mirror_apply() {
   cat "$new_json" > "$daemon_json"
   chmod 600 "$daemon_json"
   rm -f "$src" "$new_json"
-  msg_info "已写入 $daemon_json（权限 600）"
+  msg_info "$(L MSG_PANEL_0491 "$daemon_json")"
 
   # 4) 重启并验证
   if ! systemctl restart docker 2>/dev/null; then
-    msg_err "systemctl restart docker 失败，正在回滚配置"
+    msg_err "$(L MSG_PANEL_0492)"
     _panels_docker_mirror_rollback "$bak_file" "$existed"
     pause
     return 1
@@ -921,7 +921,7 @@ _panels_docker_mirror_apply() {
   sleep 1
   local info_raw; info_raw=$(docker info 2>/dev/null)
   if [[ -z "$info_raw" ]]; then
-    msg_err "docker info 无输出（守护进程可能未正常启动），正在回滚配置"
+    msg_err "$(L MSG_PANEL_0493)"
     _panels_docker_mirror_rollback "$bak_file" "$existed"
     pause
     return 1
@@ -930,37 +930,37 @@ _panels_docker_mirror_apply() {
   msg ""
   local mirrors; mirrors=$(echo "$info_raw" | grep -A5 "Registry Mirrors")
   if [[ -n "$mirrors" ]]; then
-    msg_ok "镜像源已生效:"
+    msg_ok "$(L MSG_PANEL_0494)"
     echo "$mirrors" | while IFS= read -r l; do msg "  $l"; done
   else
-    msg_ok "镜像源已清空，Docker 将使用官方仓库"
+    msg_ok "$(L MSG_PANEL_0495)"
   fi
-  _log_write "Docker 镜像源已更新: ${label} ${url:-（清空）}"
+  _log_write "$(L MSG_PANEL_0496 "${label}" "${url:-（清空）}")"
   pause
   return 0
 }
 
 # 清空镜像源（恢复官方）
 panels_docker_mirror_clear() {
-  if confirm "确认清空镜像源（恢复 Docker 官方仓库）？"; then
-    _panels_docker_mirror_apply clear "官方(清空)"
+  if confirm "$(L MSG_PANEL_0497)"; then
+    _panels_docker_mirror_apply clear "$(L MSG_PANEL_0498)"
   fi
 }
 
 # 测试拉取
 panels_docker_mirror_test() {
-  msg_info "正在通过当前镜像源拉取 hello-world 镜像（最长等待 30 秒）..."
+  msg_info "$(L MSG_PANEL_0499)"
   local out; out=$(timeout 30 docker pull hello-world 2>&1)
   local rc=$?
   msg ""
   if [[ $rc -eq 0 ]]; then
-    msg_ok "拉取成功，当前镜像源工作正常"
+    msg_ok "$(L MSG_PANEL_0500)"
     echo "$out" | tail -2 | while IFS= read -r l; do msg "  $l"; done
   elif [[ $rc -eq 124 ]]; then
-    msg_warn "拉取超时（30 秒），当前镜像源较慢或不可用"
-    msg_info "可返回上一级切换其他镜像源"
+    msg_warn "$(L MSG_PANEL_0501)"
+    msg_info "$(L MSG_PANEL_0502)"
   else
-    msg_err "拉取失败（退出码 $rc），当前镜像源可能不可用"
+    msg_err "$(L MSG_PANEL_0503 "$rc")"
     echo "$out" | tail -3 | while IFS= read -r l; do msg "  $l"; done
   fi
   pause
@@ -978,22 +978,22 @@ _panels_docker_mirror_apply_preset() {
         panels_docker_mirror_clear
         ;;
       __aliyun__)
-        local aliyun_id; aliyun_id=$(read_input "请输入阿里云加速器 ID (形如 abcd1234)")
+        local aliyun_id; aliyun_id=$(read_input "$(L MSG_PANEL_0504)")
         if [[ ! "$aliyun_id" =~ ^[a-zA-Z0-9]+$ ]]; then
-          msg_err "无效的阿里云 ID（仅允许字母与数字）: $aliyun_id"
+          msg_err "$(L MSG_PANEL_0505 "$aliyun_id")"
           pause
           return 1
         fi
-        _panels_docker_mirror_apply set "阿里云" "https://${aliyun_id}.mirror.aliyuncs.com"
+        _panels_docker_mirror_apply set "$(L MSG_PANEL_0506)" "https://${aliyun_id}.mirror.aliyuncs.com"
         ;;
       __custom__)
-        local custom_url; custom_url=$(read_input "请输入镜像源 URL (https:// 开头)")
+        local custom_url; custom_url=$(read_input "$(L MSG_PANEL_0507)")
         if [[ "$custom_url" != https://* ]]; then
-          msg_err "仅支持 https:// 开头的地址: $custom_url"
+          msg_err "$(L MSG_PANEL_0508 "$custom_url")"
           pause
           return 1
         fi
-        _panels_docker_mirror_apply set "自定义" "$custom_url"
+        _panels_docker_mirror_apply set "$(L MSG_PANEL_0509)" "$custom_url"
         ;;
       *)
         _panels_docker_mirror_apply set "$name" "$url"
@@ -1001,7 +1001,7 @@ _panels_docker_mirror_apply_preset() {
     esac
     return $?
   done
-  msg_err "未找到镜像源: $want（可用序号或名称）"
+  msg_err "$(L MSG_PANEL_0510 "$want")"
   pause
   return 1
 }
@@ -1011,7 +1011,7 @@ panels_docker_mirror() {
   local action="${1:-}"
 
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker 未安装，请先执行: fusionbox panels docker install"
+    msg_err "$(L MSG_PANEL_0511)"
     pause
     return 1
   fi
@@ -1027,14 +1027,14 @@ panels_docker_mirror() {
   while true; do
     clear
     _print_banner
-    msg_title "Docker 镜像加速 / 换源"
+    msg_title "$(L MSG_PANEL_0512)"
     msg ""
     _panels_docker_mirror_show_current
     msg ""
     _panels_docker_mirror_list
-    msg "  ${F_GREEN} t${F_RESET}) 测试拉取 hello-world  ${F_GREEN}c${F_RESET}) 清空镜像源（恢复官方）  ${F_GREEN}0${F_RESET}) 返回"
+    msg "$(L MSG_PANEL_0513 "${F_GREEN}" "${F_RESET}" "${F_GREEN}" "${F_RESET}" "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "请选择: " m_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_PANEL_0380)" m_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$m_choice" in
       ""|0) break ;;
       t|T)  panels_docker_mirror_test ;;
@@ -1051,35 +1051,35 @@ _panels_docker_archive() (
   local target="$1" operation="$2"; shift 2
   local directory stage
   directory=$(dirname "$target")
-  [[ -d "$directory" && ! -L "$directory" && ! -e "$target" && ! -L "$target" ]] || { msg_err "归档目标冲突或目录无效"; return 1; }
+  [[ -d "$directory" && ! -L "$directory" && ! -e "$target" && ! -L "$target" ]] || { msg_err "$(L MSG_PANEL_0514)"; return 1; }
   stage=$(mktemp -d "$directory/.fusionbox-export.XXXXXX") || return 1
   trap 'rm -rf -- "$stage"' EXIT
   if ! docker "$operation" "$@" > "$stage/archive.tar" || [[ ! -s "$stage/archive.tar" ]]; then
-    msg_err "Docker 导出失败；未发布归档"
+    msg_err "$(L MSG_PANEL_0515)"
     return 1
   fi
-  tar -tf "$stage/archive.tar" >/dev/null 2>&1 || { msg_err "归档校验失败"; return 1; }
-  ln -- "$stage/archive.tar" "$target" || { msg_err "归档发布失败；旧目标保留"; return 1; }
+  tar -tf "$stage/archive.tar" >/dev/null 2>&1 || { msg_err "$(L MSG_PANEL_0516)"; return 1; }
+  ln -- "$stage/archive.tar" "$target" || { msg_err "$(L MSG_PANEL_0517)"; return 1; }
 )
 
 panels_docker_backup() {
   _require_root
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker 未安装"; pause; return
+    msg_err "$(L MSG_PANEL_0371)"; pause; return
   fi
 
-  msg_title "Docker 备份/迁移/恢复"
+  msg_title "$(L MSG_PANEL_0518)"
   msg ""
-  msg "  1) 完整迁移 bundle 导出/verify（inspect + 镜像 + 本地卷/bind 冷备，不恢复）"
-  msg "  2) 导出所有容器文件系统（旧 export；不含卷/运行配置）"
-  msg "  3) 导出指定容器文件系统（旧 export；不含卷/运行配置）"
-  msg "  4) 备份所有镜像"
-  msg "  5) 受管 Compose 登记/具名卷备份/原项目恢复"
-  msg "  6) 导入文件系统镜像/加载镜像"
-  msg "  7) 传输容器文件系统（旧 export，不是完整迁移）"
-  msg_warn "docker export 不包含卷、挂载数据、网络或运行配置，不能用于完整应用恢复。"
-  msg "  0) 返回"
-  read -p "请选择: " dbk_choice
+  msg "$(L MSG_PANEL_0519)"
+  msg "$(L MSG_PANEL_0520)"
+  msg "$(L MSG_PANEL_0521)"
+  msg "$(L MSG_PANEL_0522)"
+  msg "$(L MSG_PANEL_0523)"
+  msg "$(L MSG_PANEL_0524)"
+  msg "$(L MSG_PANEL_0525)"
+  msg_warn "$(L MSG_PANEL_0526)"
+  msg "$(L MSG_PANEL_0395)"
+  read -p "$(L MSG_PANEL_0380)" dbk_choice
 
   local backup_dir="/root/docker_backups"
   (umask 077; mkdir -p "$backup_dir") || return 1
@@ -1087,81 +1087,81 @@ panels_docker_backup() {
 
   case "$dbk_choice" in
     1)
-      msg_warn "迁移导出会停止选中的 Docker 容器；宿主进程、其他运行时或网络存储写入者必须由你在外部冻结。"
-      msg_warn "文件级导出不提供跨文件事务快照；数据库必须先做原生 dump/一致性停写。bundle 含环境变量等秘密。"
+      msg_warn "$(L MSG_PANEL_0527)"
+      msg_warn "$(L MSG_PANEL_0528)"
       python3 "$FUSION_SRC/lib/docker_migration.py" --help
       msg "CLI: fusionbox panels docker migration export BUNDLE (--container NAME ... | --compose-project PROJECT) --confirm-stop-writers [--bind ABS_SOURCE=LOGICAL --confirm-bind ABS_SOURCE]"
-      msg "只读预检: fusionbox panels docker migration preflight BUNDLE [--bind-target LOGICAL=ABS_TARGET]"
-      msg "干净目标恢复: fusionbox panels docker migration restore BUNDLE --confirm-clean-target [--bind-target LOGICAL=ABS_TARGET]"
-      msg "事务恢复: fusionbox panels docker migration rollback|resume TRANSACTION_ID"
-      msg "校验: fusionbox panels docker migration verify BUNDLE"
+      msg "$(L MSG_PANEL_0529)"
+      msg "$(L MSG_PANEL_0530)"
+      msg "$(L MSG_PANEL_0531)"
+      msg "$(L MSG_PANEL_0532)"
       ;;
     2)
       local containers container
-      containers=$(docker ps -a --format '{{.Names}}') || { msg_err "容器列表读取失败"; return 1; }
+      containers=$(docker ps -a --format '{{.Names}}') || { msg_err "$(L MSG_PANEL_0533)"; return 1; }
       for container in $containers; do
         [[ "$container" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 1
         _panels_docker_archive "$backup_dir/${container}_${date_str}.tar" export "$container" || return 1
       done
-      msg_ok "列出的容器文件系统已导出到 $backup_dir（不含卷/运行配置）"
+      msg_ok "$(L MSG_PANEL_0534 "$backup_dir")"
       ;;
     3)
-      read -r -p "容器名称: " c
+      read -r -p "$(L MSG_PANEL_0535)" c
       [[ "$c" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 1
       _panels_docker_archive "$backup_dir/${c}_${date_str}.tar" export "$c" || return 1
-      msg_ok "容器文件系统已导出（不含卷/运行配置）"
+      msg_ok "$(L MSG_PANEL_0536)"
       ;;
     4)
       local images
-      images=$(docker images -q) || { msg_err "镜像列表读取失败"; return 1; }
-      [[ -n "$images" ]] || { msg_err "没有镜像可导出"; return 1; }
+      images=$(docker images -q) || { msg_err "$(L MSG_PANEL_0537)"; return 1; }
+      [[ -n "$images" ]] || { msg_err "$(L MSG_PANEL_0538)"; return 1; }
       local -a image_ids
       mapfile -t image_ids <<< "$images"
       _panels_docker_archive "$backup_dir/all_images_${date_str}.tar" save "${image_ids[@]}" || return 1
-      msg_ok "镜像归档已发布"
+      msg_ok "$(L MSG_PANEL_0539)"
       ;;
     5)
       local action project source
-      msg_warn "仅本机已创建的单 Compose 文件项目、本地具名卷；拒绝 bind/external/匿名卷。归档含私密元数据，请妥善保管。"
-      read -r -p "操作 register / backup / restore: " action
-      read -r -p "Compose 项目名: " project
-      read -r -p "Compose 文件（登记）或归档绝对路径: " source
+      msg_warn "$(L MSG_PANEL_0540)"
+      read -r -p "$(L MSG_PANEL_0541)" action
+      read -r -p "$(L MSG_PANEL_0542)" project
+      read -r -p "$(L MSG_PANEL_0543)" source
       case "$action" in
         register)
-          confirm "确认拥有该项目并授权导入管理？" || return 1
+          confirm "$(L MSG_PANEL_0544)" || return 1
           python3 "$FUSION_SRC/lib/compose_backup.py" register "$project" "$source" --confirm-owned-import || return 1 ;;
         backup|restore)
-          confirm "确认允许停机且所有外部写入者已停止？仅停止本项目原运行容器；恢复与回滚双重失败保持停止并需人工恢复" || return 1
+          confirm "$(L MSG_PANEL_0545)" || return 1
           python3 "$FUSION_SRC/lib/compose_backup.py" "$action" "$project" "$source" --confirm-stop-writers || return 1 ;;
         *) return 1 ;;
       esac
       ;;
     6)
       ls -lh "$backup_dir"/*.tar "$backup_dir"/*.tar.gz 2>/dev/null
-      read -p "输入备份文件名: " backup_file
+      read -p "$(L MSG_PANEL_0546)" backup_file
       if [[ -f "$backup_dir/$backup_file" ]]; then
         if [[ "$backup_file" == *images*.tar ]]; then
-          docker load -i "$backup_dir/$backup_file" 2>/dev/null && msg_ok "镜像已恢复"
+          docker load -i "$backup_dir/$backup_file" 2>/dev/null && msg_ok "$(L MSG_PANEL_0547)"
         elif [[ "$backup_file" == *.tar.gz ]]; then
-          msg_err "旧 Compose 归档没有安全清单/卷元数据；拒绝向 / 解压，请在隔离目录人工审查。"
+          msg_err "$(L MSG_PANEL_0548)"
           return 1
         else
-          read -p "新容器名称: " new_name
-          docker import "$backup_dir/$backup_file" "$new_name" 2>/dev/null && msg_ok "已导入: $new_name"
+          read -p "$(L MSG_PANEL_0549)" new_name
+          docker import "$backup_dir/$backup_file" "$new_name" 2>/dev/null && msg_ok "$(L MSG_PANEL_0550 "$new_name")"
         fi
       fi
       ;;
     7)
-      read -p "容器名称: " c
-      read -p "远程主机 (user@host): " remote_host
+      read -p "$(L MSG_PANEL_0535)" c
+      read -p "$(L MSG_PANEL_0551)" remote_host
       [[ "$c" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 1
-      [[ "$remote_host" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { msg_err "远程地址必须为 user@host"; return 1; }
+      [[ "$remote_host" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { msg_err "$(L MSG_PANEL_0552)"; return 1; }
       local img_file="$backup_dir/${c}_${date_str}.tar"
       _panels_docker_archive "$img_file" export "$c" || return 1
       # Strict host checking; no transfer is attempted after a failed export.
-      scp -o StrictHostKeyChecking=yes -- "$img_file" "${remote_host}:/tmp/" || { msg_err "传输失败；本地归档保留"; return 1; }
-      msg_ok "文件系统归档已传输（不是完整备份/迁移）"
-      msg "在远程审查后运行: docker import /tmp/$(basename "$img_file") $c"
+      scp -o StrictHostKeyChecking=yes -- "$img_file" "${remote_host}:/tmp/" || { msg_err "$(L MSG_PANEL_0553)"; return 1; }
+      msg_ok "$(L MSG_PANEL_0554)"
+      msg "$(L MSG_PANEL_0555 "$(basename "$img_file")" "$c")"
       ;;
   esac
   pause
@@ -1171,52 +1171,52 @@ panels_docker_backup() {
 panels_docker_container_mgmt() {
   _require_root
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker 未安装"; pause; return
+    msg_err "$(L MSG_PANEL_0371)"; pause; return
   fi
 
-  msg_title "容器管理"
+  msg_title "$(L MSG_PANEL_0556)"
   msg ""
   docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" 2>/dev/null | while read -r line; do
     msg "  $line"
   done
 
   msg ""
-  msg "  1) 启动容器"
-  msg "  2) 停止容器"
-  msg "  3) 重启容器"
-  msg "  4) 删除容器"
-  msg "  5) 查看容器日志"
-  msg "  6) 进入容器终端"
-  msg "  7) 查看资源占用"
-  msg "  8) 设置自动重启"
-  msg "  9) 只读容器详情（环境变量隐藏）"
-  msg "  0) 返回"
-  read -p "请选择: " cm_choice
+  msg "$(L MSG_PANEL_0557)"
+  msg "$(L MSG_PANEL_0558)"
+  msg "$(L MSG_PANEL_0559)"
+  msg "$(L MSG_PANEL_0560)"
+  msg "$(L MSG_PANEL_0561)"
+  msg "$(L MSG_PANEL_0562)"
+  msg "$(L MSG_PANEL_0563)"
+  msg "$(L MSG_PANEL_0564)"
+  msg "$(L MSG_PANEL_0565)"
+  msg "$(L MSG_PANEL_0395)"
+  read -p "$(L MSG_PANEL_0380)" cm_choice
 
   case "$cm_choice" in
-    1) read -p "容器名称: " c; docker start "$c" 2>/dev/null && msg_ok "已启动: $c" ;;
-    2) read -p "容器名称: " c; docker stop "$c" 2>/dev/null && msg_ok "已停止: $c" ;;
-    3) read -p "容器名称: " c; docker restart "$c" 2>/dev/null && msg_ok "已重启: $c" ;;
+    1) read -p "$(L MSG_PANEL_0535)" c; docker start "$c" 2>/dev/null && msg_ok "$(L MSG_PANEL_0566 "$c")" ;;
+    2) read -p "$(L MSG_PANEL_0535)" c; docker stop "$c" 2>/dev/null && msg_ok "$(L MSG_PANEL_0567 "$c")" ;;
+    3) read -p "$(L MSG_PANEL_0535)" c; docker restart "$c" 2>/dev/null && msg_ok "$(L MSG_PANEL_0568 "$c")" ;;
     4)
-      read -p "容器名称: " c
-      if confirm "确认删除容器 $c？"; then
-        docker stop "$c" 2>/dev/null; docker rm "$c" 2>/dev/null && msg_ok "已删除: $c"
+      read -p "$(L MSG_PANEL_0535)" c
+      if confirm "$(L MSG_PANEL_0569 "$c")"; then
+        docker stop "$c" 2>/dev/null; docker rm "$c" 2>/dev/null && msg_ok "$(L MSG_PANEL_0570 "$c")"
       fi
       ;;
-    5) read -p "容器名称: " c; read -p "行数 (默认50): " n; docker logs --tail "${n:-50}" "$c" 2>/dev/null ;;
-    6) read -p "容器名称: " c; docker exec -it "$c" /bin/bash 2>/dev/null || docker exec -it "$c" /bin/sh 2>/dev/null ;;
+    5) read -p "$(L MSG_PANEL_0535)" c; read -p "$(L MSG_PANEL_0571)" n; docker logs --tail "${n:-50}" "$c" 2>/dev/null ;;
+    6) read -p "$(L MSG_PANEL_0535)" c; docker exec -it "$c" /bin/bash 2>/dev/null || docker exec -it "$c" /bin/sh 2>/dev/null ;;
     7) docker stats --no-stream 2>/dev/null ;;
-    9) read -r -p "容器名称或 ID: " c; panels_docker_detail "$c" || return $? ;;
+    9) read -r -p "$(L MSG_PANEL_0572)" c; panels_docker_detail "$c" || return $? ;;
     8)
-      read -p "容器名称: " c
-      msg "  可选重启策略: no / on-failure / always / unless-stopped"
-      read -p "请输入重启策略: " r
+      read -p "$(L MSG_PANEL_0535)" c
+      msg "$(L MSG_PANEL_0573)"
+      read -p "$(L MSG_PANEL_0574)" r
       case "$r" in
         no|on-failure|always|unless-stopped)
-          docker update --restart="$r" "$c" 2>/dev/null && msg_ok "重启策略已设为 $r" || msg_err "设置失败"
+          docker update --restart="$r" "$c" 2>/dev/null && msg_ok "$(L MSG_PANEL_0575 "$r")" || msg_err "$(L MSG_PANEL_0576)"
           ;;
         *)
-          msg_err "无效的重启策略: $r"
+          msg_err "$(L MSG_PANEL_0577 "$r")"
           ;;
       esac
       ;;
@@ -1228,42 +1228,42 @@ panels_docker_container_mgmt() {
 panels_docker_network() {
   _require_root
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker 未安装"; pause; return
+    msg_err "$(L MSG_PANEL_0371)"; pause; return
   fi
 
-  msg_title "Docker 网络管理"
+  msg_title "$(L MSG_PANEL_0578)"
   msg ""
   docker network ls 2>/dev/null | while read -r line; do
     msg "  $line"
   done
 
   msg ""
-  msg "  1) 创建网络"
-  msg "  2) 查看网络详情"
-  msg "  3) 连接容器到网络"
-  msg "  4) 删除网络"
-  msg "  0) 返回"
-  read -p "请选择: " net_choice
+  msg "$(L MSG_PANEL_0579)"
+  msg "$(L MSG_PANEL_0580)"
+  msg "$(L MSG_PANEL_0581)"
+  msg "$(L MSG_PANEL_0582)"
+  msg "$(L MSG_PANEL_0395)"
+  read -p "$(L MSG_PANEL_0380)" net_choice
 
   case "$net_choice" in
     1)
-      read -p "网络名称: " net_name
-      read -p "子网 (如 172.20.0.0/16，可留空): " subnet
+      read -p "$(L MSG_PANEL_0398)" net_name
+      read -p "$(L MSG_PANEL_0583)" subnet
       if [[ -n "$net_name" ]]; then
         if [[ -n "$subnet" ]]; then
           docker network create --subnet "$subnet" "$net_name" 2>/dev/null
         else
           docker network create "$net_name" 2>/dev/null
         fi
-        msg_ok "网络 '$net_name' 已创建"
+        msg_ok "$(L MSG_PANEL_0584 "$net_name")"
       fi
       ;;
-    2) read -p "网络名称: " n; docker network inspect "$n" 2>/dev/null ;;
+    2) read -p "$(L MSG_PANEL_0398)" n; docker network inspect "$n" 2>/dev/null ;;
     3)
-      read -p "网络名称: " n; read -p "容器名称: " c
-      docker network connect "$n" "$c" 2>/dev/null && msg_ok "已连接"
+      read -p "$(L MSG_PANEL_0398)" n; read -p "$(L MSG_PANEL_0535)" c
+      docker network connect "$n" "$c" 2>/dev/null && msg_ok "$(L MSG_PANEL_0585)"
       ;;
-    4) read -p "网络名称: " n; confirm "确认删除？" && docker network rm "$n" 2>/dev/null && msg_ok "已删除" ;;
+    4) read -p "$(L MSG_PANEL_0398)" n; confirm "$(L MSG_PANEL_0586)" && docker network rm "$n" 2>/dev/null && msg_ok "$(L MSG_PANEL_0587)" ;;
   esac
   pause
 }
@@ -1272,28 +1272,28 @@ panels_docker_network() {
 panels_docker_volumes() {
   _require_root
   if ! command -v docker &>/dev/null; then
-    msg_err "Docker 未安装"; pause; return
+    msg_err "$(L MSG_PANEL_0371)"; pause; return
   fi
 
-  msg_title "Docker 卷管理"
+  msg_title "$(L MSG_PANEL_0588)"
   msg ""
   docker volume ls 2>/dev/null | while read -r line; do
     msg "  $line"
   done
 
   msg ""
-  msg "  1) 创建卷"
-  msg "  2) 查看卷详情"
-  msg "  3) 删除卷"
-  msg "  4) 清理未使用卷"
-  msg "  0) 返回"
-  read -p "请选择: " vol_choice
+  msg "$(L MSG_PANEL_0589)"
+  msg "$(L MSG_PANEL_0590)"
+  msg "$(L MSG_PANEL_0591)"
+  msg "$(L MSG_PANEL_0592)"
+  msg "$(L MSG_PANEL_0395)"
+  read -p "$(L MSG_PANEL_0380)" vol_choice
 
   case "$vol_choice" in
-    1) read -p "卷名称: " v; docker volume create "$v" 2>/dev/null && msg_ok "卷 '$v' 已创建" ;;
-    2) read -p "卷名称: " v; docker volume inspect "$v" 2>/dev/null ;;
-    3) read -p "卷名称: " v; confirm "确认删除？" && docker volume rm "$v" 2>/dev/null && msg_ok "已删除" ;;
-    4) confirm "清理所有未使用的卷？" && docker volume prune -f 2>/dev/null && msg_ok "已清理" ;;
+    1) read -p "$(L MSG_PANEL_0593)" v; docker volume create "$v" 2>/dev/null && msg_ok "$(L MSG_PANEL_0594 "$v")" ;;
+    2) read -p "$(L MSG_PANEL_0593)" v; docker volume inspect "$v" 2>/dev/null ;;
+    3) read -p "$(L MSG_PANEL_0593)" v; confirm "$(L MSG_PANEL_0586)" && docker volume rm "$v" 2>/dev/null && msg_ok "$(L MSG_PANEL_0587)" ;;
+    4) confirm "$(L MSG_PANEL_0595)" && docker volume prune -f 2>/dev/null && msg_ok "$(L MSG_PANEL_0596)" ;;
   esac
   pause
 }
@@ -1301,7 +1301,7 @@ panels_docker_volumes() {
 panels_docker_menu() {
   while true; do
     clear
-    msg_title "Docker 管理"
+    msg_title "$(L MSG_PANEL_0597)"
     msg ""
     if command -v docker &>/dev/null; then
       msg "  Docker: $(docker --version 2>/dev/null)"
@@ -1309,33 +1309,33 @@ panels_docker_menu() {
       if counts=$(_panels_docker_read info --format 'Containers={{.Containers}} Running={{.ContainersRunning}} Paused={{.ContainersPaused}} Stopped={{.ContainersStopped}}'); then
         printf '  %s\n' "$counts"
       else
-        msg "  容器计数不可用（不是零）"
+        msg "$(L MSG_PANEL_0598)"
       fi
     else
-      msg "  Docker 未安装"
+      msg "$(L MSG_PANEL_0599)"
     fi
     msg ""
-    msg "  ${F_GREEN} 1${F_RESET}) 安装 Docker"
-    msg "  ${F_GREEN} 2${F_RESET}) 列出容器"
-    msg "  ${F_GREEN} 3${F_RESET}) 列出镜像"
-    msg "  ${F_GREEN} 4${F_RESET}) Docker Compose / 项目"
-    msg "  ${F_GREEN} 5${F_RESET}) 清理 (prune)"
-    msg "  ${F_GREEN} 6${F_RESET}) 容器端口访问控制"
-    msg "  ${F_GREEN} 7${F_RESET}) Docker IPv6 网络配置"
-    msg "  ${F_GREEN} 8${F_RESET}) 编辑 daemon.json"
-    msg "  ${F_GREEN} 9${F_RESET}) Docker 备份/迁移/恢复"
-    msg "  ${F_GREEN}10${F_RESET}) 容器管理 (启动/停止/重启/删除)"
-    msg "  ${F_GREEN}11${F_RESET}) 网络管理"
-    msg "  ${F_GREEN}12${F_RESET}) 卷管理"
-    msg "  ${F_GREEN}13${F_RESET}) 镜像加速 / 换源"
-    msg "  ${F_GREEN}14${F_RESET}) 只读全局总览（含完整资源列表）"
-    msg "  ${F_GREEN}15${F_RESET}) 只读容器详情（环境变量隐藏）"
-    msg "  ${F_GREEN}16${F_RESET}) 容器端口封禁（DOCKER-USER 按容器）"
-    msg "  ${F_GREEN}17${F_RESET}) Docker 一键卸载（YES 门禁）"
-    msg "  ${F_GREEN}18${F_RESET}) 完整迁移 bundle 导出/预检/恢复/回滚帮助"
-    msg "  ${F_GREEN} 0${F_RESET}) 返回"
+    msg "$(L MSG_PANEL_0600 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0601 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0602 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0603 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0604 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0605 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0606 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0607 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0608 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0609 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0610 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0611 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0612 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0613 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0614 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0615 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0616 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0617 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_PANEL_0618 "${F_GREEN}" "${F_RESET}")"
     msg ""
-    read -p "请选择 [0-18]: " dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_PANEL_0619)" dk_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$dk_choice" in
       1) panels_docker_install; pause ;;
       2) panels_docker_ps ;;
@@ -1351,7 +1351,7 @@ panels_docker_menu() {
       12) panels_docker_volumes ;;
       13) panels_docker_mirror ;;
       14) panels_docker_summary --all; pause ;;
-      15) local target; read -r -p "容器名称或 ID: " target; panels_docker_detail "$target"; pause ;;
+      15) local target; read -r -p "$(L MSG_PANEL_0572)" target; panels_docker_detail "$target"; pause ;;
       16) panels_docker_port_block menu ;;
       17) panels_docker_uninstall; pause ;;
       18) python3 "$FUSION_SRC/lib/docker_migration.py" --help; pause ;;
@@ -1363,26 +1363,26 @@ panels_docker_menu() {
 # ---- Baota Panel ----
 panels_bt() {
   _require_root
-  msg_title "安装宝塔面板"
+  msg_title "$(L MSG_PANEL_0620)"
   msg ""
-  msg_warn "宝塔面板是第三方服务器管理面板。"
+  msg_warn "$(L MSG_PANEL_0621)"
   if [[ -d "/www/server/panel" ]] || command -v bt &>/dev/null; then
-    msg_warn "检测到宝塔面板已安装，跳过重复安装"
+    msg_warn "$(L MSG_PANEL_0622)"
     pause; return
   fi
-  if confirm "确认继续安装？"; then
+  if confirm "$(L MSG_PANEL_0623)"; then
     case "$F_PKG_MGR" in
       apt|yum)
         local bt_sh; bt_sh=$(mktemp)
         if _download "https://download.bt.cn/install/install_panel.sh" "$bt_sh"; then
-          bash "$bt_sh" || msg_err "宝塔面板安装失败"
+          bash "$bt_sh" || msg_err "$(L MSG_PANEL_0624)"
         else
-          msg_err "宝塔安装脚本下载失败"
+          msg_err "$(L MSG_PANEL_0625)"
         fi
         rm -f "$bt_sh"
         ;;
       *)
-        msg_err "宝塔面板仅支持 apt/yum 系统"
+        msg_err "$(L MSG_PANEL_0626)"
         ;;
     esac
   fi
@@ -1392,17 +1392,17 @@ panels_bt() {
 # ---- Aapanel ----
 panels_aa() {
   _require_root
-  msg_title "安装 Aapanel"
+  msg_title "$(L MSG_PANEL_0627)"
   if [[ -d "/usr/local/aapanel" ]]; then
-    msg_warn "检测到 Aapanel 已安装，跳过重复安装"
+    msg_warn "$(L MSG_PANEL_0628)"
     pause; return
   fi
-  if confirm "确认继续安装？"; then
+  if confirm "$(L MSG_PANEL_0623)"; then
     local aa_sh; aa_sh=$(mktemp)
     if _download "https://www.aapanel.com/script/install_7.0_en.sh" "$aa_sh"; then
-      bash "$aa_sh" || msg_err "Aapanel 安装失败"
+      bash "$aa_sh" || msg_err "$(L MSG_PANEL_0629)"
     else
-      msg_err "Aapanel 安装脚本下载失败"
+      msg_err "$(L MSG_PANEL_0630)"
     fi
     rm -f "$aa_sh"
   fi
@@ -1412,9 +1412,9 @@ panels_aa() {
 # ---- X-UI ----
 panels_xui() {
   _require_root
-  msg_title "安装 X-UI 面板"
+  msg_title "$(L MSG_PANEL_0631)"
   msg ""
-  if confirm "将执行第三方安装脚本安装 X-UI (xray 面板)，确认继续？"; then
+  if confirm "$(L MSG_PANEL_0632)"; then
     local xui_sh; xui_sh=$(mktemp)
     if _download "https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh" "$xui_sh" && \
       bash "$xui_sh" 2>/dev/null; then
@@ -1426,11 +1426,11 @@ panels_xui() {
         bash "$xui_sh" 2>/dev/null; then
         :
       else
-        msg_err "X-UI 安装失败"
+        msg_err "$(L MSG_PANEL_0633)"
       fi
     fi
     rm -f "$xui_sh"
-    _log_write "X-UI 已安装"
+    _log_write "$(L MSG_PANEL_0634)"
   fi
   pause
 }
@@ -1438,7 +1438,7 @@ panels_xui() {
 # ---- Aria2 ----
 panels_aria2() {
   _require_root
-  msg_title "安装 Aria2"
+  msg_title "$(L MSG_PANEL_0635)"
   msg ""
   case "$F_PKG_MGR" in
     apt|yum|apk)
@@ -1457,12 +1457,12 @@ rpc-secret=${rpc_secret}
 AEOF
       chmod 600 /etc/aria2/aria2.conf
       mkdir -p /var/ftp
-      msg_ok "Aria2 安装完成。RPC 密钥: ${rpc_secret}（请妥善保存）"
-      msg_info "配置文件: /etc/aria2/aria2.conf"
-      _log_write "Aria2 已安装"
+      msg_ok "$(L MSG_PANEL_0636 "${rpc_secret}")"
+      msg_info "$(L MSG_PANEL_0637)"
+      _log_write "$(L MSG_PANEL_0638)"
       ;;
     *)
-      msg_err "不支持的包管理器"
+      msg_err "$(L MSG_PANEL_0639)"
       ;;
   esac
   pause
@@ -1471,10 +1471,10 @@ AEOF
 # ---- Rclone ----
 panels_rclone() {
   _require_root
-  msg_title "配置 Rclone"
+  msg_title "$(L MSG_PANEL_0640)"
   msg ""
   if ! command -v rclone &>/dev/null; then
-    msg_info "正在安装 rclone..."
+    msg_info "$(L MSG_PANEL_0641)"
     local rc_sh; rc_sh=$(mktemp)
     if _download "https://rclone.org/install.sh" "$rc_sh" && bash "$rc_sh"; then
       :
@@ -1485,16 +1485,16 @@ panels_rclone() {
   fi
 
   if command -v rclone &>/dev/null; then
-    msg_ok "rclone 已安装: $(rclone version --client 2>/dev/null | head -1)"
+    msg_ok "$(L MSG_PANEL_0642 "$(rclone version --client 2>/dev/null | head -1)")"
     msg ""
-    msg "  1) 配置新远程存储（交互式）"
-    msg "  2) 列出已配置的远程存储"
-    read -p "请选择: " rc_choice
+    msg "$(L MSG_PANEL_0643)"
+    msg "$(L MSG_PANEL_0644)"
+    read -p "$(L MSG_PANEL_0380)" rc_choice
     case "$rc_choice" in
       1) rclone config ;;
       2) rclone listremotes 2>/dev/null | while read -r r; do msg "    $r"; done ;;
     esac
-    _log_write "Rclone 已配置"
+    _log_write "$(L MSG_PANEL_0645)"
   fi
   pause
 }
@@ -1502,11 +1502,11 @@ panels_rclone() {
 # ---- FRP ----
 panels_frp() {
   _require_root
-  msg_title "安装 FRP (内网穿透)"
+  msg_title "$(L MSG_PANEL_0646)"
   msg ""
-  msg "  1) 安装 FRP 服务端"
-  msg "  2) 安装 FRP 客户端"
-  read -p "请选择: " frp_choice
+  msg "$(L MSG_PANEL_0647)"
+  msg "$(L MSG_PANEL_0648)"
+  read -p "$(L MSG_PANEL_0380)" frp_choice
 
   local frp_ver="0.58.0"
   local arch="amd64"
@@ -1515,9 +1515,9 @@ panels_frp() {
   local tmpdir=$(mktemp -d)
   local dl_url="https://github.com/fatedier/frp/releases/download/v${frp_ver}/frp_${frp_ver}_linux_${arch}.tar.gz"
 
-  msg_info "正在下载 FRP v${frp_ver}..."
+  msg_info "$(L MSG_PANEL_0649 "${frp_ver}")"
   _download "$dl_url" "$tmpdir/frp.tar.gz" || {
-    msg_err "下载失败"
+    msg_err "$(L MSG_PANEL_0650)"
     rm -rf "$tmpdir"
     pause; return
   }
@@ -1543,7 +1543,7 @@ WantedBy=multi-user.target
 FE1
       systemctl daemon-reload 2>/dev/null
       systemctl enable --now frps 2>/dev/null
-      msg_ok "FRP 服务端已安装"
+      msg_ok "$(L MSG_PANEL_0651)"
       ;;
     2)
       cp "$frp_dir/frpc" /usr/local/bin/
@@ -1562,28 +1562,28 @@ WantedBy=multi-user.target
 FE2
       systemctl daemon-reload 2>/dev/null
       systemctl enable --now frpc 2>/dev/null
-      msg_ok "FRP 客户端已安装"
+      msg_ok "$(L MSG_PANEL_0652)"
       ;;
   esac
   rm -rf "$tmpdir"
-  _log_write "FRP 已安装 (类型: $frp_choice)"
+  _log_write "$(L MSG_PANEL_0653 "$frp_choice")"
   pause
 }
 
 # ---- Nezha Monitoring ----
 panels_nezha() {
   _require_root
-  msg_title "安装哪吒监控 Agent"
+  msg_title "$(L MSG_PANEL_0654)"
   msg ""
   if ! command -v curl &>/dev/null; then
     _install_pkg curl
   fi
 
-  msg_info "正在安装哪吒监控 Agent..."
-  msg_info "需要先运行哪吒监控服务端。"
+  msg_info "$(L MSG_PANEL_0655)"
+  msg_info "$(L MSG_PANEL_0656)"
   msg ""
-  read -p "服务端地址（如 example.com:8008）: " nezha_server
-  read -p "客户端密钥: " nezha_secret
+  read -p "$(L MSG_PANEL_0657)" nezha_server
+  read -p "$(L MSG_PANEL_0658)" nezha_secret
 
   if [[ -n "$nezha_server" && -n "$nezha_secret" ]]; then
     local nz_sh; nz_sh=$(mktemp)
@@ -1591,34 +1591,34 @@ panels_nezha() {
       bash "$nz_sh" -s "$nezha_server" -p "$nezha_secret" 2>/dev/null; then
       :
     else
-      msg_err "安装失败"
+      msg_err "$(L MSG_PANEL_0659)"
     fi
     rm -f "$nz_sh"
-    _log_write "哪吒监控 Agent 已配置"
+    _log_write "$(L MSG_PANEL_0660)"
   fi
   pause
 }
 
 # ---- Help ----
 panels_help() {
-  msg_title "面板与工具 帮助"
+  msg_title "$(L MSG_PANEL_0661)"
   msg ""
-  msg "  fusionbox panels compose-backup   受管 Compose register/backup/restore（--help）"
-  msg "  fusionbox panels docker-migration --help  Docker 离线迁移导出/校验/只读预检/恢复/回滚/续跑"
-  msg "  fusionbox panels docker           Docker 管理"
-  msg "  fusionbox panels docker summary [--all]  只读计数/磁盘用量；--all 完整列表"
-  msg "  fusionbox panels docker detail NAME_OR_ID  只读详情/限额/占用；环境变量隐藏"
-  msg "  fusionbox panels docker mirror    Docker 镜像加速 / 换源"
-  msg "  fusionbox panels mirror           Docker 镜像加速 / 换源"
-  msg "  fusionbox panels mirror test      测试拉取 hello-world"
-  msg "  fusionbox panels mirror clear     清空镜像源（恢复官方）"
-  msg "  fusionbox panels bt               安装宝塔面板"
-  msg "  fusionbox panels aa               安装 Aapanel"
-  msg "  fusionbox panels xui              安装 X-UI"
-  msg "  fusionbox panels aria2            安装 Aria2"
-  msg "  fusionbox panels rclone           配置 Rclone"
-  msg "  fusionbox panels frp              安装 FRP"
-  msg "  fusionbox panels nezha            安装哪吒监控 Agent"
+  msg "$(L MSG_PANEL_0662)"
+  msg "$(L MSG_PANEL_0663)"
+  msg "$(L MSG_PANEL_0664)"
+  msg "$(L MSG_PANEL_0665)"
+  msg "$(L MSG_PANEL_0666)"
+  msg "$(L MSG_PANEL_0667)"
+  msg "$(L MSG_PANEL_0668)"
+  msg "$(L MSG_PANEL_0669)"
+  msg "$(L MSG_PANEL_0670)"
+  msg "$(L MSG_PANEL_0671)"
+  msg "$(L MSG_PANEL_0672)"
+  msg "$(L MSG_PANEL_0673)"
+  msg "$(L MSG_PANEL_0674)"
+  msg "$(L MSG_PANEL_0675)"
+  msg "$(L MSG_PANEL_0676)"
+  msg "$(L MSG_PANEL_0677)"
   msg ""
 }
 
@@ -1627,19 +1627,19 @@ panels_menu() {
   while true; do
     clear
     _print_banner
-    msg_title "面板与工具"
+    msg_title "$(L MSG_PANEL_0678)"
     msg ""
-    msg "  1) Docker 管理"
-    msg "  2) 安装宝塔面板"
-    msg "  3) 安装 Aapanel"
-    msg "  4) 安装 X-UI"
-    msg "  5) 安装 Aria2"
-    msg "  6) 配置 Rclone"
-    msg "  7) 安装 FRP"
-    msg "  8) 安装哪吒监控 Agent"
-    msg "  0) 返回主菜单"
+    msg "$(L MSG_PANEL_0679)"
+    msg "$(L MSG_PANEL_0680)"
+    msg "$(L MSG_PANEL_0681)"
+    msg "$(L MSG_PANEL_0682)"
+    msg "$(L MSG_PANEL_0683)"
+    msg "$(L MSG_PANEL_0684)"
+    msg "$(L MSG_PANEL_0685)"
+    msg "$(L MSG_PANEL_0686)"
+    msg "$(L MSG_PANEL_0687)"
     msg ""
-    read -p "请选择 [0-8]: " choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
+    read -p "$(L MSG_PANEL_0688)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
     case "$choice" in
       1) panels_docker;;
       2) panels_bt ;;

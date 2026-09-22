@@ -195,10 +195,11 @@ test "所有模块菜单入口函数存在" \
 echo ""
 echo "--- 3. 时区预设 ---"
 PRESET_BLOCK="$(sed -n '/^SYSTEM_TZ_PRESETS=(/,/^)/p' src/modules/system.sh)"
-TZ_COUNT="$(printf '%s\n' "$PRESET_BLOCK" | grep -cE '^  "[^|]+\|[^|]+\|[^|]+"$')"
+# 文案已走语言包：源码数调用点，三字段格式在语言包里校验
+TZ_COUNT="$(printf '%s\n' "$PRESET_BLOCK" | grep -cE '^  "\$\(L MSG_SYS_[0-9]+\)"$')"
 test "时区预设数量 >= 20 (实际 $TZ_COUNT)" "$([[ "$TZ_COUNT" -ge 20 ]] && echo 0 || echo 1)"
-TZ_BAD="$(printf '%s\n' "$PRESET_BLOCK" | grep -vE '^(SYSTEM_TZ_PRESETS=\(|\)|  "[^|]+\|[^|]+\|[^|]+")$' | grep -c .)"
-test "时区预设全部为 区域|标识|名称 三字段 (异常 $TZ_BAD)" "$([[ "$TZ_BAD" -eq 0 ]] && echo 0 || echo 1)"
+TZ_PACK="$(grep -cE '^MSG_SYS_[0-9]+="[^|]+\|[^|]+\|[^|]+"$' src/i18n/zh_CN.sh)"
+test "时区预设全部为 区域|标识|名称 三字段 (语言包 $TZ_PACK 条)" "$([[ "$TZ_PACK" -ge 20 ]] && echo 0 || echo 1)"
 test "存在 _system_tz_apply 校验函数" \
   "$(grep -q '^_system_tz_apply()' src/modules/system.sh && echo 0 || echo 1)"
 

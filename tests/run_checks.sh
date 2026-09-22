@@ -192,8 +192,10 @@ if grep -q '受管 Nginx / ntfy' "$SRC/modules/market.sh"; then
 else
   ok "菜单文案不再写死 Nginx/ntfy"
 fi
-check_contains "菜单文案改为「受管应用生命周期」" "受管应用生命周期" \
-  grep -F "受管应用生命周期" "$SRC/modules/market.sh"
+check_contains "菜单文案改为「受管应用生命周期」（语言包）" "受管应用生命周期" \
+  grep -F "受管应用生命周期" "$SRC/i18n/zh_CN.sh"
+check_contains "market 菜单文案已走语言包" '$(L MSG_MARKET_' \
+  grep -F '$(L MSG_MARKET_' "$SRC/modules/market.sh"
 
 # ---------------------------------------------------------------------------
 section "7. P3: i18n 英文环境无中文依赖自检"
@@ -239,7 +241,7 @@ check_contains "槽位 w3 -> w3" "w3" \
 check_contains "槽位 work3 -> w3" "w3" \
   bash -c 'source "'"$SRC"'/lib/common.sh"; source "'"$SRC"'/modules/workspace.sh"; _ws_work_name work3'
 check_contains "槽位 11 越界被拒" "1-10" \
-  bash -c 'source "'"$SRC"'/lib/common.sh"; source "'"$SRC"'/modules/workspace.sh"; _ws_work_name 11'
+  bash -c 'FUSION_SRC="'"$SRC"'"; . "$FUSION_SRC/lib/common.sh"; . "$FUSION_SRC/modules/workspace.sh"; _i18n_init; _ws_work_name 11'
 
 # ---------------------------------------------------------------------------
 section "10. 依赖守卫存在性覆盖"
@@ -346,7 +348,8 @@ check_contains "ws 支持 ensure 动作" "ensure|resume)" \
   grep -F 'ensure|resume)' "$SRC/modules/workspace.sh"
 check_contains "ws 支持 ssh 动作" "ssh)" \
   grep -F '    ssh)' "$SRC/modules/workspace.sh"
-if grep -q '不存在，正在创建' "$SRC/modules/workspace.sh"; then
+if grep -q '不存在，正在创建' "$SRC/i18n/zh_CN.sh" \
+   && grep -qF '_ws_slot_ensure' "$SRC/modules/workspace.sh"; then
   ok "直接 ws w<n> 不存在时自动创建"
 else
   bad "直接 ws w<n> 不存在时自动创建"
@@ -504,12 +507,13 @@ else
   bad "general.color=false 清空 ANSI 变量"
 fi
 
-# 16.10 G07 时区预设
-tz_count="$(sed -n '/^SYSTEM_TZ_PRESETS=(/,/^)/p' "$SRC/modules/system.sh" | grep -cE '^  "[^|]+\|[^|]+\|[^|]+"$')"
-if (( tz_count >= 20 )); then
-  ok "时区预设 $tz_count >= 20"
+# 16.10 G07 时区预设（条目已走语言包：源码数调用点，语言包数文案）
+tz_count="$(sed -n '/^SYSTEM_TZ_PRESETS=(/,/^)/p' "$SRC/modules/system.sh" | grep -cE '^  "')"
+tz_pack="$(grep -cE '^MSG_SYS_[0-9]+="[^|]+\|[^|]+\|[^|]+"' "$SRC/i18n/zh_CN.sh")"
+if (( tz_count >= 20 )) && (( tz_pack >= 20 )); then
+  ok "时区预设 $tz_count >= 20（语言包 $tz_pack 条）"
 else
-  bad "时区预设 $tz_count >= 20"
+  bad "时区预设 $tz_count >= 20（语言包 $tz_pack 条）"
 fi
 check_contains "时区校验函数存在（防路径穿越）" "_system_tz_apply()" \
   grep -n '^_system_tz_apply()' "$SRC/modules/system.sh"
@@ -656,8 +660,10 @@ check_contains "server 覆盖时放行保留 TLD（生产守卫不变）" \
 check_contains "自定义 LE 目录时 certbot 显式切换 config/work/logs" \
   '--config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs"' cat "$SRC/modules/web.sh"
 
-check_contains "非 https 的 --server 被拒绝" \
-  '"--server 必须是 https:// ACME 目录 URL"' cat "$SRC/modules/web.sh"
+check_contains "非 https 的 --server 被拒绝（文案在语言包）" \
+  "server 必须是 https:// ACME 目录 URL" grep -F "server 必须是 https:// ACME 目录 URL" "$SRC/i18n/zh_CN.sh"
+check_contains "web.sh 的 --server 校验分支走语言包" \
+  'WEB_ACME_SERVER" == https://* ]] || { msg_err "$(L MSG_WEB_' cat "$SRC/modules/web.sh"
 
 for script in acme_pebble.sh acme_staging.sh; do
   if [[ -f "$REPO_ROOT/tests/acceptance/$script" ]] \
@@ -729,18 +735,26 @@ else
   python3 "$REPO_ROOT/scripts/i18n_audit.py" 2>&1 | tail -8 | sed 's/^/       | /'
 fi
 
-# 核心层必须已 100% 抽取（模块层按批次推进，用棘轮防止回退）
+# 全仓（核心层 + 9 个模块）必须已 100% 抽取，防止后续回退
 if REPO_ROOT="$REPO_ROOT" python3 - <<'PYEOF' >/dev/null 2>&1
 import sys, os
 sys.path.insert(0, os.environ['REPO_ROOT'] + '/scripts')
 import i18n_audit
-rows, total = i18n_audit.count_untranslated(i18n_audit.CORE_FILES)
+rows, total = i18n_audit.count_untranslated(i18n_audit.ALL_FILES)
 sys.exit(0 if total == 0 else 1)
 PYEOF
 then
-  ok "核心层（主菜单/全局帮助/通用提示/安装器）已全部走语言包"
+  ok "全仓文案（主菜单/帮助/通用提示/安装器/9 个模块）已全部走语言包"
 else
-  bad "核心层（主菜单/全局帮助/通用提示/安装器）已全部走语言包"
+  bad "全仓文案（主菜单/帮助/通用提示/安装器/9 个模块）已全部走语言包"
+  REPO_ROOT="$REPO_ROOT" python3 - <<'PYEOF' 2>&1 | head -12 | sed 's/^/       | /'
+import sys, os
+sys.path.insert(0, os.environ['REPO_ROOT'] + '/scripts')
+import i18n_audit
+for rel, n in i18n_audit.count_untranslated(i18n_audit.ALL_FILES)[0]:
+    if n:
+        print('%s: 未抽取 %d 处' % (rel, n))
+PYEOF
 fi
 
 check_contains "i18n 核心独立成文件（门禁提示可提前本地化）" \
