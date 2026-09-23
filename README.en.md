@@ -6,7 +6,7 @@
 
 9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.43.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.1-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -170,21 +170,13 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.0** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.43.1** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
-<!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
-
-- **Bilingual support closed out (second batch: module layer 100% bilingual)**: all 9 modules now go through the language packs, **3248 keys** (Chinese and English equal key for key) - in Chinese mode the output is **byte-for-byte identical** to v1.42.0 (diff=0 across 30 read-only scenarios), and in English mode the help, menus and entry output contain **0 Chinese characters**
-- **The extractor covers every user-facing output site**: besides the output functions it also handles interactive arguments such as `read -p`/`confirm`/`select_option`, the `_log_write`/`_require_*` guards, variable assignments (status labels), and the menus and data tables (74 application-catalog entries, 13 benchmark-matrix rows, 29 timezone presets)
-- **Zero unextracted strings left in the whole repo**: section 22 of `run_checks.sh` is upgraded to repository-wide enforcement, so a new Chinese literal output site turns the gate red immediately
-- **Measured numbers**: on real hardware (Ubuntu 22.04) the gate is **193/193** (root and non-root), the full suite is bash **229** items + Python **764** items (34 modules) with zero failures; the Chinese comparison matches v1.42.0, the English output has zero Chinese
-- **The repo keeps only shipping artifacts**: `tests/` is no longer committed (the full tests stay locally and on the verification server), CI is narrowed to static checks - syntax / Python artifacts / i18n bilingual contract audit / version consistency across five places; release packaging unchanged
-
-
-- **B4 closed out (the Cloudflare half)**: minimal-privilege API Token verified with real credentials - `fusionbox-cf-guard` load-adaptive shield 8/8 on real hardware (security_level really flips to under_attack, falls back to the baseline when load drops, idempotent), `fusionbox-cf-ban` ban / unban / idempotency all pass on real hardware; new real-machine acceptance script `tests/acceptance/cloudflare_guard.sh` (21/21, restores the security_level baseline and cleans up test rules on every exit path)
-- **Fixed by measuring on real hardware**: the CF API returns pretty JSON (space after the colon in `"success": true`), so the compact-format assertions in cf-ban/cf-guard were all relaxed to tolerate whitespace - static tests could not catch this, it showed up on the first real run
-- **New feature**: Cloudflare integration config accepts a pasted Global API Key - it lists the Zones of the account, mints on the spot a minimal-privilege Token scoped to the selected Zone only (Zone Settings + Firewall Services, 14 day validity), and the Global Key itself is never written to disk; end-to-end verified with a real Key (mint -> verify active -> read security_level)
-- **The Telegram half stands as before**: real send verification of `system notify` still needs a bot token, and the explicit refusal when credentials are missing is unchanged
+<!-- Release slot
+- **Fix**: the last hardcoded entry (Warp) in the application catalog `MARKET_APPS` now goes through the language pack, so that row no longer shows English text in Chinese mode; language packs go **3247 -> 3248 keys** (Chinese and English equal key for key)
+- **Audit blind spot closed**: `i18n_audit` gains a data-array extraction ratchet - any literal entry in the 5 arrays that are by convention fully keyed fails the check **regardless of language**, plus a fallback rule for array entries containing Chinese without a key. Such gaps were completely invisible to `--coverage` before
+- **Docs and homepage**: added `README.en.md` full English translation, structure aligned by `docs_readme_gate.py`; homepage numbers are derived and verified from source by `site_facts.py`, so hand-typed figures cannot rot
+- **Verification scope**: this release changes only strings and tooling and did **not re-run real-machine acceptance**; the real-machine standing remains the v1.43.0 Ubuntu 22.04 result (gate 193/193, full suite bash 229 + Python 764 items)
 
 ---
 
