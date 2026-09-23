@@ -2,7 +2,7 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
-## 未发布 · 修补：应用市场目录仍有 1 条文案未走语言包
+## v1.43.1 修补：应用市场最后一条硬编码文案 + 审计器补数据数组棘轮
 
 - `src/modules/market.sh` 的 `MARKET_APPS` 里，`"utility:Warp:cloudflare-warp:Cloudflare WARP VPN"`
   是 75 条中唯一一条硬编码（其余 74 条均为 `$(L MSG_MARKET_xxxx)`），中文模式下这一行的说明会显示英文

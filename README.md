@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.1-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -169,21 +169,13 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.1** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
-<!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
-
-- **双语支持收口（第二批：模块层 100% 双语）**：9 个模块全部走语言包，语言包 **3248 键**（中英逐键对等）——中文模式与 v1.42.0 输出**逐字节一致**（30 个只读场景 diff=0），英文模式下帮助、菜单与入口输出 **0 中文**
-- **抽取器覆盖全部文案出口**：除输出函数外，还处理 `read -p`/`confirm`/`select_option` 等交互参数、`_log_write`/`_require_*` 守卫、变量赋值（状态标签）、以及菜单与数据表（应用目录 74 条、评测矩阵 13 条、时区预设 29 条）
-- **全仓未抽取文案归零**：`run_checks.sh` 第 22 节升级为「全仓」强制，新增中文字面量出口会让闸门直接变红
-- **实测口径**：真机（Ubuntu 22.04）闸门 **193/193**（root 与非 root），完整套件 bash **229** 项 + Python **764** 项（34 模块）零失败；中文对照 v1.42.0 一致、英文零中文
-- **仓库只保留可用成品**：`tests/` 不再入库（本地与验证服务器保留完整测试），CI 收敛为静态检查——语法 / Python 产物 / i18n 双语契约审计 / 五处版本一致性；发布包口径不变
-
-
-- **B4 收口（Cloudflare 半边）**：最小权限 API Token 真实凭据验证完成——`fusionbox-cf-guard` 负载自适应开盾真机 8/8（security_level 真实切到 under_attack + 负载回落恢复基线 + 幂等），`fusionbox-cf-ban` 封禁/解封/幂等真机全过；新增真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，任何退出路径恢复 security_level 基线并清理测试规则）
-- **实测修复**：CF API 会返回 pretty JSON（`"success": true` 冒号带空格），cf-ban/cf-guard 的紧凑格式断言全部改为空白容忍——静态测试抓不到、真机首跑即现形
-- **新功能**：Cloudflare 联动配置支持直接粘贴 Global API Key——自动列出账户 Zone、现场铸造仅限所选 Zone 的最小权限 Token（Zone Settings + Firewall Services，14 天有效期），Global Key 本身绝不落盘；真实 Key 端到端验证通过（铸造 → verify active → 读取 security_level）
-- **TG 半边维持**：`system notify` 真实发送验证仍需 bot token，凭据缺失时显式拒绝的姿势保持不变
+<!-- 发布槽位
+- **修补**：应用市场目录 `MARKET_APPS` 的最后一条硬编码文案（Warp）改走语言包，中文模式下该行不再显示英文说明；语言包 **3247 → 3248 键**（中英逐键对等）
+- **审计补盲**：`i18n_audit` 新增数据数组抽取棘轮——5 个约定全量键式的表出现任何字面量条目即失败，**与语种无关**；另加「数组条目含中文且未走语言包」兜底。此前这类缺口对 `--coverage` 完全隐形
+- **文档与主页**：新增 `README.en.md` 全文英译，中英结构由 `docs_readme_gate.py` 强制对齐；主页数字改由 `site_facts.py` 从源码派生校验，杜绝手写数字腐烂
+- **验证口径**：本版只动文案与工具链，**未重跑真机验收**；真机口径仍为 v1.43.0 的 Ubuntu 22.04 结果（闸门 193/193、完整套件 bash 229 + Python 764 项）
 
 ---
 
