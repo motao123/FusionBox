@@ -123,6 +123,23 @@ def cjk_residue(lines):
     return bad
 
 
+def unclosed_comment(text):
+    """返回首个未配对 `<!--` 的起始行号，全部闭合则返回 None。
+
+    Markdown 渲染器会把未闭合注释之后的整篇正文当注释吞掉，而两份文件同病时
+    结构对比恒等相等、本闸门原本看不见（v1.43.1 的发布槽位就是这么坏掉的）。
+    """
+    pos = 0
+    while True:
+        start = text.find("<!--", pos)
+        if start < 0:
+            return None
+        end = text.find("-->", start + 4)
+        if end < 0:
+            return text.count("\n", 0, start) + 1
+        pos = end + 3
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true", help="打印逐节结构对照")
@@ -215,6 +232,16 @@ def main():
         fails.append("README.md 缺少指向 README.en.md 的语言切换链接")
     if not re.search(r"\]\((\./)?README\.md\)", "\n".join(en_lines)):
         fails.append("README.en.md 缺少指向 README.md 的语言切换链接")
+
+    broken = []
+    for name, lines in ((zh_path.name, zh_lines), (en_path.name, en_lines)):
+        at = unclosed_comment("\n".join(lines))
+        if at:
+            broken.append(f"{name}:{at} 有未闭合的 HTML 注释，其后的正文在渲染时会被整体吞掉")
+    if broken:
+        fails.extend(broken)
+    else:
+        notes.append("两份 README 的 HTML 注释成对闭合")
 
     for n in notes:
         print(f"  ok  {n}")

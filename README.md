@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.1-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.2-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -169,13 +169,15 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.1** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.2** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
-<!-- 发布槽位
-- **修补**：应用市场目录 `MARKET_APPS` 的最后一条硬编码文案（Warp）改走语言包，中文模式下该行不再显示英文说明；语言包 **3247 → 3248 键**（中英逐键对等）
-- **审计补盲**：`i18n_audit` 新增数据数组抽取棘轮——5 个约定全量键式的表出现任何字面量条目即失败，**与语种无关**；另加「数组条目含中文且未走语言包」兜底。此前这类缺口对 `--coverage` 完全隐形
-- **文档与主页**：新增 `README.en.md` 全文英译，中英结构由 `docs_readme_gate.py` 强制对齐；主页数字改由 `site_facts.py` 从源码派生校验，杜绝手写数字腐烂
-- **验证口径**：本版只动文案与工具链，**未重跑真机验收**；真机口径仍为 v1.43.0 的 Ubuntu 22.04 结果（闸门 193/193、完整套件 bash 229 + Python 764 项）
+<!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
+
+- **安全加固（对扫描结果的逐条复核与修复）**：遥测 Worker 的请求体改为带上限的流式读取（分块与 HTTP/2 请求原先会先整体缓冲再判 4096 字节上限）；写入端点不再向浏览器来源开放跨域，通配 CORS 收窄至两个公开只读端点；`version` 字段数值段限长。监控栈模板 `monitoring.yml` 取消内置的 Grafana 管理员口令（缺失时在启动前即失败），面板与 Prometheus 绑定收敛到 127.0.0.1。`web` 模块生成的站点、反向代理与 ACME TLS 配置补齐 `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` 三类安全响应头
+- **默认暴露面收敛**：一键部署中"首个访问者即可获得管理员或完成初始化"的 6 个应用（Halo、KodExplorer、LinkStack、Uptime Kuma、Vaultwarden、Memos）默认只绑定 127.0.0.1，提示语同步给出反向代理与 SSH 隧道两条对外路径；Vaultwarden 默认关闭公开注册
+- **新增交付物断言**：`scripts/deploy_exposure_audit.py` 要求交付的 compose 编排中每个已发布端口要么绑定回环地址、要么就地加一行 `# fb-expose` 注释写明理由，口令类环境变量必须为运行时取值。扫描器只报出 1 处，该断言在仓库内定位到 25 处并已全部显式表态
+- **缺陷修复**：`web` 模块的苹果 CMS 部署原先无条件以回落编排覆盖主编排，专用镜像 `maccms` 从未生效；现改为仅在 `docker compose up` 失败时回落
+- **验证口径**：遥测 Worker 套件 **8/8** 与 `tsc --noEmit` 通过；静态闸门（i18n 3248 键逐键对等、README 双语同步、主页数字派生、端口与凭据棘轮、语法与 Python 产物）本地全绿。**本轮未重跑真机验收**，端口绑定与 nginx 配置变更需在验证服务器确认
 
 ---
 
