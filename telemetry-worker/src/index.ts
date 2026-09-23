@@ -24,18 +24,20 @@ interface TelemetryEvent {
   arch: (typeof ARCHITECTURES)[number];
 }
 
-const corsHeaders = {
+// 通配 CORS 只给公开只读端点：写入端点一旦被浏览器放行，任意网页就能借访问者的
+// IP 额度提交事件（限流按 CF-Connecting-IP 计数），而 CLI 客户端本就不需要 CORS。
+const publicCorsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Access-Control-Max-Age": "86400",
 };
+const PUBLIC_READ_PATHS = new Set(["/v1/public/summary", "/v1/public/badge"]);
 
 function json(data: unknown, status = 200, extraHeaders: HeadersInit = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
-      ...corsHeaders,
       "Content-Type": "application/json; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
       ...extraHeaders,
@@ -56,7 +58,8 @@ export function validateEvent(value: unknown): TelemetryEvent | null {
   }
   if (input.schema_version !== 1 || !isOneOf(input.event, EVENTS)) return null;
   if (typeof input.installation_id !== "string" || !/^[0-9a-f]{32}$/i.test(input.installation_id)) return null;
-  if (typeof input.version !== "string" || !/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]{1,32})?$/.test(input.version)) return null;
+  // 数值段限长：无界 \d+ 会让 version 成为可被撑到请求体上限的数据库主键片段
+  if (typeof input.version !== "string" || !/^v?\d{1,10}\.\d{1,10}\.\d{1,10}(?:[-+][0-9A-Za-z.-]{1,32})?$/.test(input.version)) return null;
   if (!isOneOf(input.os, OPERATING_SYSTEMS) || !isOneOf(input.arch, ARCHITECTURES)) return null;
   return input as unknown as TelemetryEvent;
 }
@@ -78,8 +81,34 @@ async function readBody(request: Request): Promise<unknown> {
   if (declaredLength !== null && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > MAX_BODY_BYTES)) {
     throw new Response(null, { status: 413 });
   }
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > MAX_BODY_BYTES) throw new Response(null, { status: 413 });
+  // 分块传输与 HTTP/2 不带 Content-Length，上面那道头检会被整体跳过；
+  // 这里按块累计，超上限立即取消流，避免先缓冲整个请求体再判大小。
+  const stream = request.body;
+  if (stream === null) throw new Response(null, { status: 400 });
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value === undefined) continue;
+      received += value.byteLength;
+      if (received > MAX_BODY_BYTES) {
+        await reader.cancel();
+        throw new Response(null, { status: 413 });
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
   try {
     return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes));
   } catch {
@@ -125,6 +154,9 @@ export async function takeRateLimits(
 }
 
 async function acceptEvent(request: Request, env: Env): Promise<Response> {
+  // 采集端只服务 CLI：curl 不发 Origin，浏览器跨域请求必发。拒掉带 Origin 的写入，
+  // 任意网页就无法借访客的出口 IP 消耗其 source 限流额度并伪造遥测。
+  if (request.headers.has("Origin")) return json({ error: "origin_not_allowed" }, 403);
   if (!request.headers.get("Content-Type")?.toLowerCase().startsWith("application/json")) {
     return json({ error: "content_type_must_be_application_json" }, 415);
   }
@@ -213,9 +245,9 @@ async function cachedPublic(request: Request, env: Env, badge: boolean): Promise
     const valueWidth = Math.max(48, value.length * 8 + 16);
     const width = labelWidth + valueWidth;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="20" role="img" aria-label="${label}: ${value}"><title>${label}: ${value}</title><linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#fff" stop-opacity=".7"/><stop offset=".1" stop-opacity=".1"/><stop offset=".9" stop-opacity=".3"/><stop offset="1" stop-opacity=".5"/></linearGradient><clipPath id="r"><rect width="${width}" height="20" rx="3"/></clipPath><g clip-path="url(#r)"><rect width="${labelWidth}" height="20" fill="#555"/><rect x="${labelWidth}" width="${valueWidth}" height="20" fill="#16803a"/><rect width="${width}" height="20" fill="url(#s)"/></g><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,sans-serif" font-size="11"><text x="${labelWidth / 2}" y="15">${label}</text><text x="${labelWidth + valueWidth / 2}" y="15">${value}</text></g></svg>`;
-    response = new Response(svg, { headers: { ...corsHeaders, "Content-Type": "image/svg+xml; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": `public, max-age=${CACHE_SECONDS}` } });
+    response = new Response(svg, { headers: { ...publicCorsHeaders, "Content-Type": "image/svg+xml; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": `public, max-age=${CACHE_SECONDS}` } });
   } else {
-    response = json(summary, 200, { "Cache-Control": `public, max-age=${CACHE_SECONDS}` });
+    response = json(summary, 200, { ...publicCorsHeaders, "Cache-Control": `public, max-age=${CACHE_SECONDS}` });
   }
   await cache.put(cacheKey, response.clone());
   return response;
@@ -224,7 +256,9 @@ async function cachedPublic(request: Request, env: Env, badge: boolean): Promise
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: PUBLIC_READ_PATHS.has(url.pathname) ? publicCorsHeaders : {} });
+    }
     if (url.pathname === "/v1/event" && request.method === "POST") return acceptEvent(request, env);
     if (url.pathname === "/v1/public/summary" && request.method === "GET") return cachedPublic(request, env, false);
     if (url.pathname === "/v1/public/badge" && request.method === "GET") return cachedPublic(request, env, true);

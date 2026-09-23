@@ -78,6 +78,8 @@ describe("event schema", () => {
     expect(validateEvent({ ...validEvent, event: "command" })).toBeNull();
     expect(validateEvent({ ...validEvent, extra: true })).toBeNull();
     expect(validateEvent({ ...validEvent, installation_id: "device-1" })).toBeNull();
+    expect(validateEvent({ ...validEvent, version: `1.${"9".repeat(4000)}.0` })).toBeNull();
+    expect(validateEvent({ ...validEvent, version: "1.24.0" })).not.toBeNull();
   });
 });
 
@@ -128,9 +130,49 @@ describe("HTTP boundary", () => {
     expect((await worker.fetch(request(`{"padding":"${"x".repeat(4096)}"}`), unusedEnv)).status).toBe(413);
   });
 
-  it("handles CORS preflight", async () => {
-    const response = await worker.fetch(new Request("https://telemetry.example/v1/event", { method: "OPTIONS" }), unusedEnv);
-    expect(response.status).toBe(204);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  it("caps an oversized body that carries no Content-Length", async () => {
+    const encoded = new TextEncoder().encode("x".repeat(8192));
+    let pushed = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pushed > 1 << 20) {
+          controller.close();
+          return;
+        }
+        pushed += encoded.byteLength;
+        controller.enqueue(encoded);
+      },
+    });
+    const chunked = new Request("https://telemetry.example/v1/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    // 前置条件本身也要成立：没有 Content-Length，声明式头检会被跳过
+    expect(chunked.headers.get("Content-Length")).toBe(null);
+    expect((await worker.fetch(chunked, unusedEnv)).status).toBe(413);
+    // 判别性断言：先缓冲再判大的实现会把整条流吸完（>1 MiB），带上限的读取只会越过上限一块就停
+    expect(pushed).toBeLessThanOrEqual(2 * encoded.byteLength);
+  });
+
+  it("serves browser cross-origin reads but refuses browser writes", async () => {
+    const preflight = await worker.fetch(
+      new Request("https://telemetry.example/v1/public/summary", { method: "OPTIONS" }),
+      unusedEnv,
+    );
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(preflight.headers.get("Access-Control-Allow-Methods")).not.toContain("POST");
+
+    const eventPreflight = await worker.fetch(
+      new Request("https://telemetry.example/v1/event", { method: "OPTIONS" }),
+      unusedEnv,
+    );
+    expect(eventPreflight.headers.get("Access-Control-Allow-Origin")).toBe(null);
+    expect((await worker.fetch(request(JSON.stringify(validEvent), { "Content-Type": "application/json", Origin: "https://evil.example" }), unusedEnv)).status).toBe(403);
+    const writeResponse = await worker.fetch(request(JSON.stringify(validEvent), { "Content-Type": "text/plain" }), unusedEnv);
+    expect(writeResponse.status).toBe(415);
+    expect(writeResponse.headers.get("Access-Control-Allow-Origin")).toBe(null);
   });
 });
