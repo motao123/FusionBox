@@ -47,13 +47,39 @@ done
 base_somaxconn="$(cur net.core.somaxconn)"
 ok "11 个键的运行值已记录（somaxconn=$base_somaxconn）"
 
+# sysctl -n 对多值键用 tab 分隔，比较前统一归一化空白
+norm() { cur "$1" | tr -s '[:space:]' ' ' | sed 's/[[:space:]]*$//'; }
+
+# 100M-1G 档的目标值（必须与 src/modules/system.sh 的档位 2 一致）
+declare -A TIER2=(
+  [net.core.rmem_max]=16777216 [net.core.wmem_max]=16777216
+  [net.core.rmem_default]=1048576 [net.core.wmem_default]=1048576
+  [net.ipv4.tcp_rmem]='4096 87380 16777216' [net.ipv4.tcp_wmem]='4096 65536 16777216'
+  [net.core.somaxconn]=4096 [net.core.netdev_max_backlog]=4096
+  [net.ipv4.ip_local_port_range]='1024 65535'
+  [net.ipv4.tcp_fastopen]=3 [net.ipv4.tcp_tw_reuse]=1
+)
+
 step "2. 真实应用 100M-1G 档"
 printf '2\ny\n\n0\n' | "$FUSION" system netopt >/tmp/fb-netopt-apply.log 2>&1
 check "菜单应用退出" "$?"
 [[ -f "$FILE" ]]; check "优化文件已生成" "$?"
-new_somaxconn="$(cur net.core.somaxconn)"
-check "运行值真实改变（somaxconn: $base_somaxconn → $new_somaxconn）" \
-  "$([[ "$new_somaxconn" != "$base_somaxconn" ]] && echo 0 || echo 1)"
+# 强断言：运行时值必须等于档位目标（不看基线，任何系统默认值下都成立）
+target_bad=0
+for k in "${!TIER2[@]}"; do
+  if [[ "$(norm "$k")" != "${TIER2[$k]}" ]]; then
+    target_bad=1
+    echo "    未生效: $k=$(norm "$k") 目标=${TIER2[$k]}"
+  fi
+done
+check "11 个键运行时值全部等于档位目标（真实生效）" "$target_bad"
+# 弱断言：至少一个键相对基线发生变化（证明确有可观测改动，兼容默认值恰好相同的键）
+changed=0
+for k in "${!TIER2[@]}"; do
+  [[ "$(norm "$k")" != "$(cat /tmp/fb-netopt-base-"$k" | tr -s '[:space:]' ' ' | sed 's/[[:space:]]*$//')" ]] && changed=$((changed + 1))
+done
+check "至少一个键相对基线真实改变（实测 $changed/11 个）" \
+  "$([[ $changed -gt 0 ]] && echo 0 || echo 1)"
 [[ -f "$SNAP" ]]; check "首次应用前快照已保存" "$?"
 snap_ok=0
 while IFS= read -r line; do

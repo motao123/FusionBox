@@ -254,14 +254,14 @@
 
 **一次夹具覆盖 5 项**：G15（SSH 出站真实目标）、G16（rsync 远端）、G29（A4 的编排验证）、G61（灾备传输）、G63（批量任务真实执行）。
 
-### B4 TG / Cloudflare 真实凭据 — 唯一需要你提供的东西
+### B4 TG / Cloudflare 真实凭据 — Cloudflare 半边已完成（v1.41.0）
 
-| 需要 | 用途 | 建议 |
+| 凭据 | 状态 | 说明 |
 |---|---|---|
-| Telegram bot token + chat id | 验证 `system notify` 与 `system login-alert` 的真实发送 | 专用测试 bot，不要用生产群 |
-| Cloudflare API Token | 验证 G44 的 `under_attack` 与封 IP | **权限最小化**：只给测试 Zone 的对应权限 |
+| Cloudflare API 凭据 | ✅ **2026-09-21 完成** | 用户提供 Global API Key，按「最小权限」方案现场铸造仅限测试 Zone（endgo.top）的 Token（Zone Read + Zone Settings Read/Write + Firewall Services Write，14 天有效期）。真机验收 `cloudflare_guard.sh` 21/21：under_attack 真实切换/恢复/幂等、封禁/解封/幂等、缺凭据三路显式拒绝。实测修复：CF API pretty JSON（冒号带空格）导致紧凑断言全部失效——静态测试抓不到，真机首跑即现形。新增功能：联动配置可直接粘贴 Global Key 自动铸造最小权限 Token（Global Key 不落盘），真实 Key 端到端验证通过 |
+| Telegram bot token + chat id | ⏳ 待提供 | 验证 `system notify` 与 `system login-alert` 的真实发送；建议专用测试 bot，不要用生产群 |
 
-在拿到凭据之前，正确做法是**把「凭据缺失」做成显式拒绝 + 明确提示**，而不是让 mock 通过后声称已验证。
+在拿到 TG 凭据之前，正确做法是**把「凭据缺失」做成显式拒绝 + 明确提示**，而不是让 mock 通过后声称已验证——这条已经做到。
 
 ### B5 其余受限项
 

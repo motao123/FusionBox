@@ -1,85 +1,222 @@
+<div align="center">
+
 # FusionBox
 
-![version](https://img.shields.io/badge/version-1.40.0-blue)
-![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)
-![License](https://img.shields.io/badge/license-MIT-green)
-![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)
-![GitHub 主包下载量](https://img.shields.io/endpoint?url=https%3A%2F%2Fmotao123.github.io%2FFusionBox%2Fgenerated%2Fgithub-downloads-shield.json)
-![GitHub Stars](https://img.shields.io/github/stars/motao123/FusionBox)
+**一条命令，接管整台 Linux 服务器**
 
-> 一站式 Linux 服务器全能管理工具箱：9 大模块 + 受管应用市场，Bash 为主、受控 Python 辅助，
-> 采用暂存、备份、校验和回滚；各功能的本地测试、Linux 隔离验证与外部服务验收范围分别记录。
+9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-## 两分钟上手
+[![version](https://img.shields.io/badge/version-1.43.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
+[![GitHub 主包下载量](https://img.shields.io/endpoint?url=https%3A%2F%2Fmotao123.github.io%2FFusionBox%2Fgenerated%2Fgithub-downloads-shield.json)](https://github.com/motao123/FusionBox/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/motao123/FusionBox)](https://github.com/motao123/FusionBox/stargazers)
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
 ```
 
-安装后运行 `fusionbox` 进入主菜单，或直接使用模块命令。三条代表性命令：
+<sub>Debian · Ubuntu · CentOS · RHEL · Fedora · Alpine　｜　amd64 / arm64　｜　需要 root　｜　Bash 为主，受控 Python 辅助</sub>
 
-```bash
-fusionbox system tools                # 系统工具箱（SSH/防火墙/磁盘/用户管理/加固向导）
-fusionbox market managed catalog      # 受管应用市场（模板数动态读取，一键部署/备份/卸载）
-fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路由等）
-```
-
-## 功能总览
-
-| 模块 | 命令 | 功能 |
-|------|------|------|
-| 代理管理 | `fusionbox proxy` | 多后端代理 (Xray/v2ray/233boy sing-box/Clash.Meta) |
-| 系统管理 | `fusionbox system` | BBR/基准测试/备份/SSH/防火墙/定时任务/磁盘/时区/回收站/救援指引 |
-| 网络工具 | `fusionbox network` | IP查询/流媒体检测/测速/DNS/路由追踪/端口检测 |
-| 网站部署 | `fusionbox web` | LNMP/SSL/17种应用部署/反向代理/L4转发/站点备份 |
-| 面板工具 | `fusionbox panels` | Docker完整管理/宝塔/Aapanel/FRP/Aria2 |
-| 应用市场 | `fusionbox market` | 80+应用一键安装 (10个分类) |
-| WARP管理 | `fusionbox warp` | Cloudflare WARP 安装/Proxy模式/流媒体解锁 |
-| 后台工作区 | `fusionbox workspace` | 编号工作区 w1-w10 (tmux/screen 自动选择) |
-| 集群控制 | `fusionbox cluster` | 多服务器批量管理/游戏服务端/OCI只读识别/k命令/中文速查表 |
+</div>
 
 ---
 
-### 受管应用市场（`fusionbox market managed`）
+## 目录
 
-数据驱动 Compose 生命周期：digest 固定镜像、localhost 发布、内存/CPU/PID 限额、真实健康检查、
-磁盘预检、安装/更新/备份/卸载/重装全流程，逐项真机验证。
+| | |
+|---|---|
+| [为什么用它](#为什么用它) | [受管应用市场](#受管应用市场) |
+| [30 秒上手](#30-秒上手) | [真机验证](#真机验证) |
+| [能力地图](#能力地图) | [命令参考](#命令参考) |
+| [最近更新](#最近更新) | [诚实边界](#诚实边界) |
+
+---
+
+## 为什么用它
+
+一键脚本到处都是，FusionBox 的差别在于**它不假装自己什么都验证过了**：
+
+- **每一步都可回滚。** 改配置先暂存、再备份、写后校验，失败自动回滚——不留下「改了一半」的机器。
+- **拼错命令不会把你关进菜单。** 未知子命令直接给出可执行的下一步并以退出码 2 结束；菜单只在交互终端里出现，脚本和 CI 里不会挂死。
+- **受管应用是数据驱动的，不是一堆散装 docker run。** 镜像 digest 固定、只发布到 localhost、内存/CPU/PID 限额、真实健康检查、磁盘预检；安装/更新/备份/卸载/重装全流程可测。
+- **只声明会被读取的配置。** `config.yaml` 里每个键都能对应到真实读取点，避免「改了开关却没生效」。
+- **验证结论分档记录。** 本地 mock / 隔离夹具 / 真机实测 / 未验证，四档分开标注，不做「应该能行」的承诺。
+
+---
+
+## 30 秒上手
+
+```bash
+# 1. 安装（自动补齐缺失依赖）
+bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
+
+# 2. 进入主菜单，或直接调用模块命令
+fusionbox
+```
+
+三条能立刻感受到差异的命令：
+
+```bash
+fusionbox system tools                # 系统工具箱（SSH/防火墙/磁盘/用户管理/加固向导）
+fusionbox market managed catalog      # 受管应用市场（模板动态读取，一键部署/备份/卸载）
+fusionbox network bench               # VPS 评测矩阵（YABS/Bench/回程路由等）
+```
+
+帮助体系是只读的，**非 root 也能查**；`fusionbox help system` 与 `fusionbox system help` 输出正文逐字相同：
+
+```bash
+fusionbox lang en                     # 切换界面语言（zh_CN / en / auto）
+fusionbox help                        # 总帮助：9 大模块 + 全局命令
+fusionbox help system                 # 模块详细帮助（含命令清单 + 本机实时状态行）
+fusionbox system help                 # 等价写法，正文相同
+fusionbox help sys                    # 别名同样可用（p/net/w/tools/m/ws/cl ...）
+fusionbox panels docker help          # 子分发也能取帮助
+```
+
+> 末行「本机状态」是对宿主机器的实时只读探测（Docker 是否响应、装了哪些组件），探测上限 3 秒；
+> 同一台机器两次调用这一行可能合法地不同，帮助正文不会。
+
+---
+
+## 能力地图
+
+| 模块 | 命令 | 一句话 |
+|------|------|------|
+| 代理管理 | `fusionbox proxy` | 多后端代理（Xray / v2ray / 233boy sing-box / Clash.Meta） |
+| 系统管理 | `fusionbox system` | BBR、基准测试、备份、SSH、防火墙、定时任务、磁盘、时区、回收站、救援指引 |
+| 网络工具 | `fusionbox network` | IP 查询、流媒体检测、测速、DNS、路由追踪、端口检测 |
+| 网站部署 | `fusionbox web` | LNMP、SSL、17 种应用部署、反向代理、L4 转发、站点备份 |
+| 面板工具 | `fusionbox panels` | Docker 完整管理、宝塔 / Aapanel / FRP / Aria2 / 哪吒 |
+| 应用市场 | `fusionbox market` | 70+ 软件一键安装（10 个分类）+ 受管模板生命周期 |
+| WARP 管理 | `fusionbox warp` | Cloudflare WARP 安装、Proxy 模式、流媒体解锁 |
+| 后台工作区 | `fusionbox workspace` | 编号工作区 w1–w10（tmux / screen 自动选择） |
+| 集群控制 | `fusionbox cluster` | 多机批量管理、游戏服务端、OCI 只读识别、k 命令、中文速查表 |
+
+<details>
+<summary><strong>展开：各模块的详细能力</strong></summary>
+
+| 模块 | 详细能力 |
+|---|---|
+| `proxy` | Xray-core / v2ray-core / **233boy sing-box（推荐）** / Clash.Meta；协议 VLESS（含 Reality）、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5；传输 TCP / WebSocket / gRPC / HTTPUpgrade；多配置自动合并、分享链接生成、按后端校验协议组合 |
+| `system` | 系统信息、BBR（含 BBR2 / BBRplus / 魔改 / Lotserver / xanmod）、CPU 与磁盘基准、网络测速、实时监控、备份恢复、系统清理；工具箱含 SSH 密钥、防火墙（UFW/iptables/Fail2Ban）、cron、磁盘分区与挂载、29 城市时区一键切换 + IANA 自定义 + NTP、回收站、文件管理器、rsync 同步任务 |
+| `network` | IPv4/IPv6 与 ISP 信息、Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili 解锁检测、上下行测速、多 DNS 解析对比、Traceroute、端口探测、网卡管理 |
+| `web` | LNMP / LAMP 一键安装、站点创建与 Nginx 虚拟主机、certbot 自动签发（支持本地 Pebble 与 LE staging 两条验证路线）、数据库与用户权限、17 种应用内置部署、反代与负载均衡、Stream L4 转发、站点克隆、站点数据备份、调优档位与 brotli |
+| `panels` | Docker 安装与完整管理（容器/镜像/Compose/网络/卷/清理/备份迁移/daemon.json）、容器端口封禁（DOCKER-USER）、宝塔 / Aapanel / X-UI、Aria2 / Rclone / FRP / 哪吒监控 |
+| `market` | 70+ 软件、10 个分类；`managed` 子命令为数据驱动 Compose 生命周期（见下节） |
+| `warp` | WARP 安装卸载、Proxy 模式（不断 SSH）、IP 与解锁状态检测、出站配置示例 |
+| `workspace` | 编号工作区 w1–w10，tmux / screen 自动选择，支持命令注入 |
+| `cluster` | 节点增删、批量执行、文件同步、SSH 出站收藏；游戏服务端（Minecraft Java/Bedrock、Terraria、Palworld）；OCI 只读识别与保活状态；`k` 命令快捷方式 |
+
+</details>
+
+---
+
+## 受管应用市场
+
+`fusionbox market managed` 是一套数据驱动的 Compose 生命周期：digest 固定镜像、localhost 发布、
+内存/CPU/PID 限额、真实健康检查、磁盘预检，安装 / 更新 / 备份 / 卸载 / 重装全流程**逐项真机验证**。
 
 | 模板 | 分类 | localhost 端口 | 一句话 |
 |------|------|------|------|
 | nginx | Web 服务 | 8080 | 静态站点（只读内容卷，支持域名映射） |
 | ntfy | 通知服务 | 8081 | 本机通知（SQLite 缓存，无认证） |
-| uptime-kuma | 监控面板 | 8082 | 拨测/状态页 |
+| uptime-kuma | 监控面板 | 8082 | 拨测 / 状态页 |
 | ddns-go | DDNS | 8083 | 动态域名解析 |
 | new-api | AI 网关 | 8084 | LLM API 网关与计费（首启无认证，先设管理员） |
-| lobe-chat | AI 对话 | 8085 | 聚合 ChatGPT/Claude/Gemini/Ollama |
-| open-webui | AI 对话 | 8086 | Ollama/OpenAI 自托管前端 |
+| lobe-chat | AI 对话 | 8085 | 聚合 ChatGPT / Claude / Gemini / Ollama |
+| open-webui | AI 对话 | 8086 | Ollama / OpenAI 自托管前端 |
 | n8n | 自动化 | 8087 | 工作流自动化 |
-| openlist | 网盘/WebDAV | 8088 | 多存储文件列表（Alist 分支） |
+| openlist | 网盘 / WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
-| umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（懒依赖 db 健康后才启动；复用数据重装、按服务换镜像） |
+| umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（db 健康后才启动；支持复用数据重装、按服务换镜像） |
 
-## 最近更新（v1.40.0）
+> 模板清单以 `fusionbox market managed catalog` 实际输出为准；声明式目录与高权限边界见 [docs/market-catalog.md](docs/market-catalog.md)。
+
+---
+
+## 真机验证
+
+在一台**全新安装的 Ubuntu 22.04**（Docker CE 29.8.1 + Compose v5.5.1，无任何历史环境）上从零跑通：
+
+| 层 | 项目 | 结果 |
+|---|---|---|
+| 静态门禁 | `bash tests/run_checks.sh` | **193 / 193**（root 与非 root 双跑都过） |
+| 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **764** 项（34 模块），零失败 |
+| 真实自装 | 官方 `install.sh` | Release 资产下载 + SHA256 校验 → 安装 → `fusionbox help` / 模块帮助 / 非 root 拒绝 / 未知子命令退出码 2 全部符合预期 |
+| 真机验收 | `tests/acceptance/` 9 个脚本 | **9 / 9 通过**（见下表） |
+
+| 真机验收脚本 | 覆盖 | 计数 |
+|---|---|---|
+| `container_lifecycle.sh` | 容器完整生命周期 | 17 / 17 |
+| `market_app_expansion.sh` | 受管模板安装 → HTTP → 卸载保留卷 → 数据复用重装 | 11 / 11 |
+| `market_multicontainer.sh` | 多容器（umami + PostgreSQL）：依赖顺序、换镜像、回滚、数据复用 | 34 / 34 |
+| `two_host.sh` | 两主机编排、rsync、灾备传输（第二台主机由容器扮演） | 29 / 29 |
+| `openssh_switch.sh` | OpenSSH 候选切换与回滚（容器扮演生产，断言宿主配置未变） | 32 / 32 |
+| `acme_pebble.sh` | 本地 Pebble：签发 → 受管 TLS 装配 → 真实续期 → 失败回滚 | 25 / 25 |
+| `acme_staging.sh` | Let's Encrypt staging：真实 DNS + 真实 HTTP-01 签发 | 16 / 16 |
+| `netopt_sysctl.sh` | 内核网络参数真实改值 + 快照恢复零漂移 | 11 / 11 |
+| `cloudflare_guard.sh` | CF 负载自适应开盾 + API 封 IP（最小权限 Token） | 21 / 21 |
+
+> 上表为本地测试资产的验证结论；`tests/` 不入库，完整回归在本地与验证服务器执行。
+
+CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径：`syntax`（脚本语法 + Python 产物 + i18n 双语契约审计 + 五处版本一致性）→ `release`（仅 tag 触发，产出校验过的发布包）。**测试资产不入库**：`tests/` 只存本地与验证服务器（`.gitignore` 屏蔽 + `.gitattributes` 的 `export-ignore` 双保险，发布包本就不含测试），完整回归在本地与真机执行。
+
+---
+
+## 最近更新
+
+> 当前版本 **v1.43.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **roadmap 批次 4 完成**（P3，按判定收尾）：
-- **A6 首批扩容**：`vocechat` 入内置目录（digest 固定、单容器、256m 内存上限），真机验收 `market_app_expansion.sh` 全过（安装 → HTTP → 卸载保留卷 → reuse-data 重装）；**实测边界**：Webtop（linuxserver s6）在 `cap_drop ALL` 下无法运行，如实记为与受管加固模型不兼容
-- **A7 设计稿**：[docs/harness-design.md](docs/harness-design.md)——容器化、凭据文件化（0600 卷内 + stdin 输入）、L1–L4 分层验收；真实对话（L3）需模型 API 凭据，未就位前只允许实现到 L2 并如实标注
-- **B5 真机执行**：`netopt_sysctl.sh` 真实改值 + 快照恢复（11 个 sysctl 键逐键与基线比对，零漂移）——G18/G67 的「真实改参数」缺口就此收口
-- **A3/A5 判定收口**：一键 DD 维持「明确拒绝 + 带外恢复」设计；Oracle 三件套在无真实 OCI 实例前只做「拒绝的姿势」——均为设计决策而非欠账
+- **双语支持收口（第二批：模块层 100% 双语）**：9 个模块全部走语言包，语言包 **3247 键**（中英逐键对等）——中文模式与 v1.42.0 输出**逐字节一致**（30 个只读场景 diff=0），英文模式下帮助、菜单与入口输出 **0 中文**
+- **抽取器覆盖全部文案出口**：除输出函数外，还处理 `read -p`/`confirm`/`select_option` 等交互参数、`_log_write`/`_require_*` 守卫、变量赋值（状态标签）、以及菜单与数据表（应用目录 74 条、评测矩阵 13 条、时区预设 29 条）
+- **全仓未抽取文案归零**：`run_checks.sh` 第 22 节升级为「全仓」强制，新增中文字面量出口会让闸门直接变红
+- **实测口径**：真机（Ubuntu 22.04）闸门 **193/193**（root 与非 root），完整套件 bash **229** 项 + Python **764** 项（34 模块）零失败；中文对照 v1.42.0 一致、英文零中文
+- **仓库只保留可用成品**：`tests/` 不再入库（本地与验证服务器保留完整测试），CI 收敛为静态检查——语法 / Python 产物 / i18n 双语契约审计 / 五处版本一致性；发布包口径不变
 
-完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
-完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
-完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
-完整版本历史（含全部细节）：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+
+- **B4 收口（Cloudflare 半边）**：最小权限 API Token 真实凭据验证完成——`fusionbox-cf-guard` 负载自适应开盾真机 8/8（security_level 真实切到 under_attack + 负载回落恢复基线 + 幂等），`fusionbox-cf-ban` 封禁/解封/幂等真机全过；新增真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，任何退出路径恢复 security_level 基线并清理测试规则）
+- **实测修复**：CF API 会返回 pretty JSON（`"success": true` 冒号带空格），cf-ban/cf-guard 的紧凑格式断言全部改为空白容忍——静态测试抓不到、真机首跑即现形
+- **新功能**：Cloudflare 联动配置支持直接粘贴 Global API Key——自动列出账户 Zone、现场铸造仅限所选 Zone 的最小权限 Token（Zone Settings + Firewall Services，14 天有效期），Global Key 本身绝不落盘；真实 Key 端到端验证通过（铸造 → verify active → 读取 security_level）
+- **TG 半边维持**：`system notify` 真实发送验证仍需 bot token，凭据缺失时显式拒绝的姿势保持不变
+
+---
 
 ## 命令参考
 
 以下按模块折叠，全部命令与说明逐字保留（展开查看）：
 
 <details>
-<summary><strong>1. 代理管理 (`fusionbox proxy`)</strong></summary>
+<summary><strong>跨模块常用命令速查</strong></summary>
+
+```bash
+fusionbox system users           # 用户管理 (list/add/del/sudo/unsudo/passwd)
+fusionbox system hardening       # SSH 加固：新建密钥用户并收紧 root 登录
+fusionbox system fail2ban        # Fail2Ban 面板 (状态/解封/日志/参数/卸载)
+fusionbox system env             # 环境变量管理 (list/show/check/edit)
+fusionbox system rsync           # rsync 同步任务 (add/list/run/cron)
+fusionbox system file            # 文件管理器 (ls/cat/cp/mv/del/tar/send)
+fusionbox panels docker port-block  # 容器端口封禁 (DOCKER-USER, list/add/del)
+fusionbox panels docker uninstall   # Docker 一键卸载 (YES 门禁)
+fusionbox workspace work            # 编号工作区 (tmux w1-w10, 命令注入)
+fusionbox cluster sshout            # SSH 出站收藏 (add/list/rm/connect)
+fusionbox market managed install uptime-kuma / ddns-go   # 受管模板扩容
+fusionbox market managed install new-api                 # LLM API 网关受管模板
+fusionbox market managed install lobe-chat/open-webui/n8n/openlist/navidrome  # 五款新模板
+fusionbox web tune                  # 调优档位 (standard/high/restore)
+fusionbox web brotli                # brotli 压缩开关
+fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
+fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)
+fusionbox update --cron on|off      # 自动更新开关 (每周)
+```
+
+</details>
+
+<details>
+<summary><strong>1. 代理管理 (<code>fusionbox proxy</code>)</strong></summary>
 
 多后端通用代理管理，支持一键安装和配置：
 
@@ -108,7 +245,7 @@ fusionbox proxy bbr              # 启用 BBR 加速
 </details>
 
 <details>
-<summary><strong>2. 系统管理 (`fusionbox system`)</strong></summary>
+<summary><strong>2. 系统管理 (<code>fusionbox system</code>)</strong></summary>
 
 全面的系统运维工具：
 
@@ -137,24 +274,6 @@ fusionbox system backup          # 备份系统配置
 fusionbox system update          # 更新系统软件包
 fusionbox system clean           # 系统清理
 fusionbox system tools           # 系统工具子菜单
-fusionbox system users           # 用户管理 (list/add/del/sudo/unsudo/passwd)
-fusionbox system hardening       # SSH 加固：新建密钥用户并收紧 root 登录
-fusionbox system fail2ban        # Fail2Ban 面板 (状态/解封/日志/参数/卸载)
-fusionbox system env             # 环境变量管理 (list/show/check/edit)
-fusionbox panels docker port-block  # 容器端口封禁 (DOCKER-USER, list/add/del)
-fusionbox panels docker uninstall   # Docker 一键卸载 (YES 门禁)
-fusionbox workspace work            # 编号工作区 (tmux w1-w10, 命令注入)
-fusionbox cluster sshout            # SSH 出站收藏 (add/list/rm/connect)
-fusionbox market managed install uptime-kuma / ddns-go   # 受管模板扩容
-fusionbox web tune                      # 调优档位 (standard/high/restore)
-fusionbox web brotli                    # brotli 压缩开关
-fusionbox system rsync                  # rsync 同步任务 (add/list/run/cron)
-fusionbox update --cron on|off          # 自动更新开关 (每周)
-fusionbox market managed install new-api  # LLM API 网关受管模板
-fusionbox market managed install lobe-chat/open-webui/n8n/openlist/navidrome  # 五款新模板
-fusionbox system file                   # 文件管理器 (ls/cat/cp/mv/del/tar/send)
-fusionbox web clone                 # 站点克隆 (目录+配置+可选 WP 库)
-fusionbox web uninstall-lnmp        # 卸载 LNMP (YES 门禁+配置备份)
 fusionbox system sshkey          # SSH 密钥管理
 fusionbox system firewall        # 防火墙管理
 fusionbox system cron            # 定时任务管理
@@ -166,7 +285,7 @@ fusionbox system trash           # 回收站管理
 </details>
 
 <details>
-<summary><strong>3. 网络工具 (`fusionbox network`)</strong></summary>
+<summary><strong>3. 网络工具 (<code>fusionbox network</code>)</strong></summary>
 
 实用的网络诊断和测试工具：
 
@@ -192,7 +311,7 @@ fusionbox network port <ip> <端口> # 端口检测
 </details>
 
 <details>
-<summary><strong>4. 网站部署 (`fusionbox web`)</strong></summary>
+<summary><strong>4. 网站部署 (<code>fusionbox web</code>)</strong></summary>
 
 一键搭建 Web 运行环境和应用部署：
 
@@ -238,7 +357,7 @@ fusionbox web sitedata           # 站点数据管理
 </details>
 
 <details>
-<summary><strong>5. 面板与工具 (`fusionbox panels`)</strong></summary>
+<summary><strong>5. 面板与工具 (<code>fusionbox panels</code>)</strong></summary>
 
 服务器面板和常用工具管理：
 
@@ -267,9 +386,9 @@ fusionbox panels nezha           # 安装哪吒监控
 </details>
 
 <details>
-<summary><strong>6. 应用市场 (`fusionbox market`)</strong></summary>
+<summary><strong>6. 应用市场 (<code>fusionbox market</code>)</strong></summary>
 
-80+ 常用软件一键安装，覆盖十大分类：
+70+ 常用软件一键安装，覆盖十大分类（数量以 `fusionbox market list` 实际输出为准）：
 
 | 分类 | 应用 |
 |------|------|
@@ -295,7 +414,7 @@ fusionbox market category        # 按分类浏览
 </details>
 
 <details>
-<summary><strong>7. WARP 管理 (`fusionbox warp`)</strong></summary>
+<summary><strong>7. WARP 管理 (<code>fusionbox warp</code>)</strong></summary>
 
 Cloudflare WARP 管理，用于代理出站流量解锁流媒体：
 
@@ -317,7 +436,7 @@ fusionbox warp proxy             # 代理配置说明
 </details>
 
 <details>
-<summary><strong>8. 后台工作区 (`fusionbox workspace`)</strong></summary>
+<summary><strong>8. 后台工作区 (<code>fusionbox workspace</code>)</strong></summary>
 
 终端会话管理：
 
@@ -333,7 +452,7 @@ fusionbox workspace list         # 列出所有后台会话
 </details>
 
 <details>
-<summary><strong>9. 集群控制与工具 (`fusionbox cluster`)</strong></summary>
+<summary><strong>9. 集群控制与工具 (<code>fusionbox cluster</code>)</strong></summary>
 
 多服务器管理和实用工具：
 
@@ -361,40 +480,102 @@ fusionbox cluster oracle status  # 受管/旧保活状态
 fusionbox cluster kcmd           # 配置 k 命令快捷方式
 ```
 
----
-
 </details>
+
+---
 
 ## 诚实边界
 
-- 测试结论严格区分：**本地 mock / 隔离夹具 / 真机实测 / 未验证**，发布说明随版本附带精确范围
-- CI 分两层且两个仓库共用同一份资产：`bash tests/run_checks.sh`（快速闸门，不需要 root/Docker/网络，GitHub 与 CNB 两条流水线都跑）与 `bash tests/comprehensive_test.sh`（完整套件，bash 217 项 + Python 697 项，GitHub 侧以 root 运行）。测试资产经 `.gitattributes` 的 `export-ignore` 不进入发布包
-- 待真实凭据/环境才能验证：ACME 公网域名签发、Cloudflare API 联动、Telegram 送达、真实多节点集群；OCI G32 仅完成只读识别，lookbusy 负载、oci-helper（G33）和 root/IPv6（G34）仍未实现
-- 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见下方实施跟踪文档
+- 测试结论严格区分四档：**本地 mock / 隔离夹具 / 真机实测 / 未验证**，发布说明随版本附带精确范围
+- 当前真机口径（v1.43.0，Ubuntu 22.04 全新环境）：快速闸门 **193/193**（root 与非 root 双跑）、完整套件 bash **229** 项 + Python **764** 项（34 模块）零失败、9 个真机验收脚本全部通过
+- **已收口的凭据依赖项**：Cloudflare 联动（v1.41.0，最小权限 Token 真机验证）、ACME 签发两条路线（v1.39.0，本地 Pebble + Let's Encrypt staging 真实 HTTP-01）
+- **仍需真实条件才能验证**：Telegram 送达（需要 bot token）、真实 OCI 实例（Oracle 三件套）、真机关机分支；OCI G32 仅完成只读识别，lookbusy 负载、oci-helper（G33）与 root/IPv6（G34）尚未实现
+- 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
-- 统计 Worker 已部署并使用 Cloudflare D1 聚合；匿名统计仍默认关闭，只有用户明确同意后才发送事件，Pages 显示的是去重后的累计匿名装机数
+- 统计 Worker 已部署并使用 Cloudflare D1 聚合；Pages 显示的是去重后的累计匿名装机数
+- **双语口径**：核心层（主菜单/全局帮助/通用提示/安装器）为两套完整语言包，英文模式无中文；
+  模块层菜单与提示仍在分批抽取（约 2500 条），进度与约定见 [docs/i18n.md](docs/i18n.md)
+- 第三方工具（docker/certbot/apt）的原始输出与品牌专有名词不做翻译
 - 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围
 
 完整对账与待办：[docs/implementation-status.md](docs/implementation-status.md)；**未完成项的具体做法与验收口径**：[docs/roadmap.md](docs/roadmap.md)
+
+---
 
 ## 附录
 
 <details>
 <summary><strong>系统要求</strong></summary>
 
-## 系统要求
-
-- **操作系统**：Debian/Ubuntu/CentOS/RHEL/Fedora/Alpine
-- **架构**：amd64(x86_64) / arm64(aarch64)
+- **操作系统**：Debian / Ubuntu / CentOS / RHEL / Fedora / Alpine
+- **架构**：amd64 (x86_64) / arm64 (aarch64)
 - **权限**：需要 root 权限运行
-- **依赖**：bash、curl（安装脚本会自动安装缺失依赖）
+- **依赖**：bash、curl（安装脚本会自动补齐缺失依赖；受管应用市场与 Compose 备份/迁移需要 Docker + `docker compose` v2）
+
+</details>
+
+<details>
+<summary><strong>使用方法与退出码</strong></summary>
+
+```bash
+# 主菜单（无参数运行）
+fusionbox
+
+# 模块命令
+fusionbox proxy       # 代理管理
+fusionbox system      # 系统管理
+fusionbox network     # 网络工具
+fusionbox web         # 网站部署
+fusionbox panels      # 面板与工具
+fusionbox market      # 应用市场
+fusionbox warp        # WARP 管理
+fusionbox workspace   # 后台工作区
+fusionbox cluster     # 集群控制
+
+# 系统命令
+fusionbox status      # 系统状态概览
+fusionbox version     # 查看版本
+fusionbox update      # 更新 FusionBox
+fusionbox privacy status|on|off|reset-id  # 匿名统计（默认关闭）
+fusionbox lang zh_CN|en|auto             # 界面语言（可随时切换，非 root 可查看）
+fusionbox uninstall   # 卸载 FusionBox 本体（不动各模块安装的服务）
+```
+
+未知命令的退出码约定：
+
+```bash
+fusionbox network bogus
+# [ERROR] 未知子命令: bogus
+# [INFO]  用法: fusionbox network help      查看该模块全部命令
+# [INFO]        fusionbox help network      查看该模块详细帮助
+# [INFO]        fusionbox network           进入交互菜单
+# 退出码 2（成功为 0，未知模块为 1）
+```
+
+设计意图：拼错命令时给出可执行的下一步，并且**不进入交互菜单**——菜单在脚本/CI 里会阻塞。
+
+</details>
+
+<details>
+<summary><strong>配置文件</strong></summary>
+
+`~/.config/fusionbox/config.yaml` 只声明**会被实际读取**的键，避免「改了开关却没生效」：
+
+| 键 | 作用 |
+|---|---|
+| `general.lang` | 输出语言 `auto` / `zh_CN` / `en` |
+| `general.stats` | 匿名统计（默认关闭，等同 `fusionbox privacy`） |
+| `general.color` | `false` 关闭全部 ANSI 颜色（适合日志重定向） |
+| `system.monitor_interval` | `fusionbox system monitor` 刷新间隔（秒） |
+| `system.backup_dir` | `fusionbox system backup\|restore` 默认目录 |
+| `network.speedtest_server` | 测速节点：`auto` 或数值节点 ID |
+
+自动更新等不在此文件的设置，请在文件末尾的说明中找到它们的真实归属。
 
 </details>
 
 <details>
 <summary><strong>项目结构</strong></summary>
-
-## 项目结构
 
 ```
 FusionBox/
@@ -424,92 +605,29 @@ FusionBox/
 ├── templates/
 │   ├── nginx/
 │   └── docker/
-├── .cnb.yml                   # CNB 流水线：语法/回归检查 + Tag 发布打包
-├── .github/workflows/         # GitHub Actions：发布与统计（install.sh 默认安装源）
-└── tests/                     # 回归检查与行为测试（全部随仓库发布；export-ignore 不进发布包）
+├── .cnb.yml                   # CNB 流水线：语法/静态检查 + Tag 发布打包
+└── .github/workflows/         # GitHub Actions：发布与统计（install.sh 默认安装源）
+
+> 回归检查与行为测试（`tests/`，含 9 个真机验收脚本）**不随仓库发布**：只存本地与验证服务器，
+> 完整回归在本地与真机执行；发布包口径不变（`export-ignore` 不进 tar.gz）。
 ```
 
 </details>
 
-## 快速安装与使用方法
-
-## 快速安装
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
-```
-
-## 使用方法
-
-```bash
-# 主菜单（无参数运行）
-fusionbox
-
-# 模块命令
-fusionbox proxy       # 代理管理
-fusionbox system      # 系统管理
-fusionbox network     # 网络工具
-fusionbox web         # 网站部署
-fusionbox panels      # 面板与工具
-fusionbox market      # 应用市场
-fusionbox warp        # WARP 管理
-fusionbox workspace   # 后台工作区
-fusionbox cluster     # 集群控制
-
-# 系统命令
-fusionbox status      # 系统状态概览
-fusionbox version     # 查看版本
-fusionbox update      # 更新 FusionBox
-fusionbox privacy status|on|off|reset-id  # 匿名统计（默认关闭）
-fusionbox uninstall   # 卸载 FusionBox 本体（不动各模块安装的服务）
-
-# 帮助（以下写法等价，都会输出该模块完整命令说明 + 本机安装状态；只读，无需 root）
-fusionbox help                  # 总帮助：9 大模块 + 全局命令
-fusionbox help system           # 系统管理模块详细帮助
-fusionbox system help           # 帮助正文完全相同的输出（末尾状态行是实时探测）
-fusionbox help sys              # 别名同样可用（p/net/w/tools/m/ws/cl ...）
-fusionbox panels docker help    # 子分发也可取帮助
-```
-
-> 末行「本机状态」是对宿主机的实时只读探测（例如 Docker 是否响应、装了哪些组件），
-> 探测有 3 秒上限；同一台机器两次调用这一行可能合法地不同，帮助正文不会。
-
-### 未知命令与退出码
-
-```bash
-fusionbox network bogus
-# [ERROR] 未知子命令: bogus
-# [INFO]  用法: fusionbox network help      查看该模块全部命令
-# [INFO]        fusionbox help network      查看该模块详细帮助
-# [INFO]        fusionbox network           进入交互菜单
-# 退出码 2（成功为 0，未知模块为 1）
-```
-
-设计意图：拼错命令时给出可执行的下一步，并且**不进入交互菜单**——菜单在脚本/CI 里会阻塞。
-
-### 配置文件
-
-`~/.config/fusionbox/config.yaml` 只声明**会被实际读取**的键，避免「改了开关却没生效」：
-
-| 键 | 作用 |
-|---|---|
-| `general.lang` | 输出语言 `auto` / `zh_CN` / `en` |
-| `general.stats` | 匿名统计（默认关闭，等同 `fusionbox privacy`） |
-| `general.color` | `false` 关闭全部 ANSI 颜色（适合日志重定向） |
-| `system.monitor_interval` | `fusionbox system monitor` 刷新间隔（秒） |
-| `system.backup_dir` | `fusionbox system backup\|restore` 默认目录 |
-| `network.speedtest_server` | 测速节点：`auto` 或数值节点 ID |
-
-自动更新等不在此文件的设置，请在文件末尾的说明中找到它们的真实归属。
-
-## 文档索引
+<details>
+<summary><strong>文档索引</strong></summary>
 
 - [实施范围与逐项对账（G 表）](docs/implementation-status.md)
 - [未完成项与可执行方案](docs/roadmap.md)
 - [匿名统计与隐私说明](docs/privacy.md)
 - [声明式应用目录与高权限边界](docs/market-catalog.md)
+- [界面语言与本地化约定](docs/i18n.md)
 - [完整变更历史](docs/CHANGELOG.md)
 - [项目主页（Pages）](https://motao123.github.io/FusionBox/)
+
+</details>
+
+---
 
 ## 鸣谢
 

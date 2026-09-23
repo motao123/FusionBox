@@ -192,8 +192,10 @@ if grep -q '受管 Nginx / ntfy' "$SRC/modules/market.sh"; then
 else
   ok "菜单文案不再写死 Nginx/ntfy"
 fi
-check_contains "菜单文案改为「受管应用生命周期」" "受管应用生命周期" \
-  grep -F "受管应用生命周期" "$SRC/modules/market.sh"
+check_contains "菜单文案改为「受管应用生命周期」（语言包）" "受管应用生命周期" \
+  grep -F "受管应用生命周期" "$SRC/i18n/zh_CN.sh"
+check_contains "market 菜单文案已走语言包" '$(L MSG_MARKET_' \
+  grep -F '$(L MSG_MARKET_' "$SRC/modules/market.sh"
 
 # ---------------------------------------------------------------------------
 section "7. P3: i18n 英文环境无中文依赖自检"
@@ -239,7 +241,7 @@ check_contains "槽位 w3 -> w3" "w3" \
 check_contains "槽位 work3 -> w3" "w3" \
   bash -c 'source "'"$SRC"'/lib/common.sh"; source "'"$SRC"'/modules/workspace.sh"; _ws_work_name work3'
 check_contains "槽位 11 越界被拒" "1-10" \
-  bash -c 'source "'"$SRC"'/lib/common.sh"; source "'"$SRC"'/modules/workspace.sh"; _ws_work_name 11'
+  bash -c 'FUSION_SRC="'"$SRC"'"; . "$FUSION_SRC/lib/common.sh"; . "$FUSION_SRC/modules/workspace.sh"; _i18n_init; _ws_work_name 11'
 
 # ---------------------------------------------------------------------------
 section "10. 依赖守卫存在性覆盖"
@@ -265,7 +267,11 @@ section "11. A/B 档新入口"
 check_contains "fusion.sh 路由 log" "show_logs" grep -F 'show_logs' "$REPO_ROOT/fusion.sh"
 check_contains "system_rescue 存在" "system_rescue()" grep -F 'system_rescue()' "$SRC/modules/system.sh"
 check_contains "cluster alias 速查表入口" "cluster_k_alias()" grep -F 'cluster_k_alias()' "$SRC/modules/cluster.sh"
-check_contains "help 补充依赖说明" "依赖" grep -F '依赖:' "$REPO_ROOT/fusion.sh"
+# 文案已抽进语言包（v1.42.0）：断言改为语言包内容 + 调用点存在
+check_contains "help 补充依赖说明（语言包）" "依赖:" \
+  grep -F 'MSG_MAIN_0083=' "$SRC/i18n/zh_CN.sh"
+check_contains "help 依赖说明调用点存在" "MSG_MAIN_0083" \
+  grep -F 'MSG_MAIN_0083' "$REPO_ROOT/fusion.sh"
 
 # ---------------------------------------------------------------------------
 section "12. C 档: 更新后展示本次变更"
@@ -342,7 +348,8 @@ check_contains "ws 支持 ensure 动作" "ensure|resume)" \
   grep -F 'ensure|resume)' "$SRC/modules/workspace.sh"
 check_contains "ws 支持 ssh 动作" "ssh)" \
   grep -F '    ssh)' "$SRC/modules/workspace.sh"
-if grep -q '不存在，正在创建' "$SRC/modules/workspace.sh"; then
+if grep -q '不存在，正在创建' "$SRC/i18n/zh_CN.sh" \
+   && grep -qF '_ws_slot_ensure' "$SRC/modules/workspace.sh"; then
   ok "直接 ws w<n> 不存在时自动创建"
 else
   bad "直接 ws w<n> 不存在时自动创建"
@@ -500,12 +507,13 @@ else
   bad "general.color=false 清空 ANSI 变量"
 fi
 
-# 16.10 G07 时区预设
-tz_count="$(sed -n '/^SYSTEM_TZ_PRESETS=(/,/^)/p' "$SRC/modules/system.sh" | grep -cE '^  "[^|]+\|[^|]+\|[^|]+"$')"
-if (( tz_count >= 20 )); then
-  ok "时区预设 $tz_count >= 20"
+# 16.10 G07 时区预设（条目已走语言包：源码数调用点，语言包数文案）
+tz_count="$(sed -n '/^SYSTEM_TZ_PRESETS=(/,/^)/p' "$SRC/modules/system.sh" | grep -cE '^  "')"
+tz_pack="$(grep -cE '^MSG_SYS_[0-9]+="[^|]+\|[^|]+\|[^|]+"' "$SRC/i18n/zh_CN.sh")"
+if (( tz_count >= 20 )) && (( tz_pack >= 20 )); then
+  ok "时区预设 $tz_count >= 20（语言包 $tz_pack 条）"
 else
-  bad "时区预设 $tz_count >= 20"
+  bad "时区预设 $tz_count >= 20（语言包 $tz_pack 条）"
 fi
 check_contains "时区校验函数存在（防路径穿越）" "_system_tz_apply()" \
   grep -n '^_system_tz_apply()' "$SRC/modules/system.sh"
@@ -652,8 +660,10 @@ check_contains "server 覆盖时放行保留 TLD（生产守卫不变）" \
 check_contains "自定义 LE 目录时 certbot 显式切换 config/work/logs" \
   '--config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs"' cat "$SRC/modules/web.sh"
 
-check_contains "非 https 的 --server 被拒绝" \
-  '"--server 必须是 https:// ACME 目录 URL"' cat "$SRC/modules/web.sh"
+check_contains "非 https 的 --server 被拒绝（文案在语言包）" \
+  "server 必须是 https:// ACME 目录 URL" grep -F "server 必须是 https:// ACME 目录 URL" "$SRC/i18n/zh_CN.sh"
+check_contains "web.sh 的 --server 校验分支走语言包" \
+  'WEB_ACME_SERVER" == https://* ]] || { msg_err "$(L MSG_WEB_' cat "$SRC/modules/web.sh"
 
 for script in acme_pebble.sh acme_staging.sh; do
   if [[ -f "$REPO_ROOT/tests/acceptance/$script" ]] \
@@ -680,6 +690,81 @@ if [[ -f "$REPO_ROOT/tests/acceptance/market_app_expansion.sh" ]] \
 else
   bad "真机验收资产（app 扩容 + netopt）存在且语法正确"
 fi
+
+# ---------------------------------------------------------------------------
+section "21. Cloudflare 联动真机验证（v1.41.0）"
+
+if [[ -f "$REPO_ROOT/tests/acceptance/cloudflare_guard.sh" ]] \
+   && bash -n "$REPO_ROOT/tests/acceptance/cloudflare_guard.sh" 2>/dev/null; then
+  ok "真机验收资产 tests/acceptance/cloudflare_guard.sh 存在且语法正确"
+else
+  bad "真机验收资产 tests/acceptance/cloudflare_guard.sh 存在且语法正确"
+fi
+
+# cf-ban 的 JSON 断言必须兼容 pretty（冒号带空格）格式——真机实测教训
+check_contains "cf-ban find_rule_id 使用空白容忍 sed 提取" \
+  'sed -n' cat "$SRC/modules/web.sh"
+if grep -Eq '\[\[ "\$resp" =~ \\"success\\"' "$SRC/modules/web.sh" \
+   || grep -Eq '"success"\[\[:space:\]\]\*:\[\[:space:\]\]\*true' "$SRC/modules/web.sh"; then
+  ok "CF purge 响应断言空白容忍"
+else
+  bad "CF purge 响应断言空白容忍"
+fi
+if grep -Eq '"success"\[\[:space:\]\]\*:\[\[:space:\]\]\*true' "$SRC/modules/web.sh" \
+   && ! grep -Eq 'grep -q .\"success\":true' "$SRC/modules/web.sh"; then
+  ok "cf-ban 成功断言已无紧凑格式残留"
+else
+  bad "cf-ban 成功断言已无紧凑格式残留"
+fi
+
+# Global API Key 自动铸造：识别 37 位十六进制 + 权限组常量 + 现场铸造
+check_contains "Global Key 识别（37 位十六进制）" \
+  '^[a-f0-9]{37}$' cat "$SRC/modules/web.sh"
+check_contains "铸造 payload 含 Firewall Services Write 权限组" \
+  '43137f8d07884d3198dc0ee77ca6e79b' cat "$SRC/modules/web.sh"
+check_contains "Global Key 分支不直接写入原始 Key（先铸造）" \
+  'token=$minted' cat "$SRC/modules/web.sh"
+
+# ---------------------------------------------------------------------------
+section "22. 双语语言包契约（v1.42.0）"
+# ---------------------------------------------------------------------------
+if python3 "$REPO_ROOT/scripts/i18n_audit.py" --quiet >/dev/null 2>&1; then
+  ok "语言包审计通过（键/占位符一致、英文包无中文、安装器内置表同步）"
+else
+  bad "语言包审计通过（键/占位符一致、英文包无中文、安装器内置表同步）"
+  python3 "$REPO_ROOT/scripts/i18n_audit.py" 2>&1 | tail -8 | sed 's/^/       | /'
+fi
+
+# 全仓（核心层 + 9 个模块）必须已 100% 抽取，防止后续回退
+if REPO_ROOT="$REPO_ROOT" python3 - <<'PYEOF' >/dev/null 2>&1
+import sys, os
+sys.path.insert(0, os.environ['REPO_ROOT'] + '/scripts')
+import i18n_audit
+rows, total = i18n_audit.count_untranslated(i18n_audit.ALL_FILES)
+sys.exit(0 if total == 0 else 1)
+PYEOF
+then
+  ok "全仓文案（主菜单/帮助/通用提示/安装器/9 个模块）已全部走语言包"
+else
+  bad "全仓文案（主菜单/帮助/通用提示/安装器/9 个模块）已全部走语言包"
+  REPO_ROOT="$REPO_ROOT" python3 - <<'PYEOF' 2>&1 | head -12 | sed 's/^/       | /'
+import sys, os
+sys.path.insert(0, os.environ['REPO_ROOT'] + '/scripts')
+import i18n_audit
+for rel, n in i18n_audit.count_untranslated(i18n_audit.ALL_FILES)[0]:
+    if n:
+        print('%s: 未抽取 %d 处' % (rel, n))
+PYEOF
+fi
+
+check_contains "i18n 核心独立成文件（门禁提示可提前本地化）" \
+  '_i18n_init' cat "$SRC/lib/i18n.sh"
+check_contains "lang 子命令已接入路由" \
+  'lang_command' cat "$REPO_ROOT/fusion.sh"
+check_contains "非交互下 pause 不阻塞" \
+  '[[ -t 0 ]] || return 0' cat "$SRC/lib/common.sh"
+check_contains "语言包加载在根权限门禁之前" \
+  'i18n.sh' grep -F 'lib/i18n.sh' "$REPO_ROOT/fusion.sh"
 
 # ---------------------------------------------------------------------------
 printf '\n\033[1m== 结果 ==\033[0m\n'

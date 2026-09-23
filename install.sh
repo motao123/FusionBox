@@ -15,13 +15,86 @@ msg_ok()  { msg "${GREEN}[OK]${RESET} $*"; }
 msg_err() { msg "${RED}[ERROR]${RESET} $*"; }
 msg_info(){ msg "${CYAN}[INFO]${RESET} $*"; }
 
-[[ $EUID -ne 0 ]] && msg_err "请以 root 身份运行" && exit 1
+# ── 语言包（安装器双语文案）──────────────────────────────────────────────
+# 下载/解压之前仓库文件尚未就位，用内置表兜底；解压出 src/i18n 后切换为完整语言包。
+# 内置表由 scripts/i18n_extract.py 的同源数据生成，tests/test_i18n.py 会校验不漂移。
+case "${FUSION_LANG:-${LANG:-en}}" in
+  zh*) FUSION_ILANG=zh_CN ;;
+  *)   FUSION_ILANG=en ;;
+esac
+
+declare -A _IL_ZH=() _IL_EN=()
+_il_pack_loaded=0
+
+# 从目录加载完整语言包（幂等；两个语言包都载入，按 FUSION_ILANG 取用）
+_il_load_from() {
+  local dir="$1" v
+  [[ -f "$dir/zh_CN.sh" && -f "$dir/en.sh" ]] || return 1
+  . "$dir/zh_CN.sh" 2>/dev/null || return 1
+  while IFS= read -r v; do [[ -n "$v" ]] && _IL_ZH[$v]="${!v}"; done < <(compgen -v | grep -E "^MSG_[A-Z0-9_]+$")
+  for v in $(compgen -v | grep -E "^MSG_[A-Z0-9_]+$"); do unset "$v"; done
+  . "$dir/en.sh" 2>/dev/null || return 1
+  while IFS= read -r v; do [[ -n "$v" ]] && _IL_EN[$v]="${!v}"; done < <(compgen -v | grep -E "^MSG_[A-Z0-9_]+$")
+  for v in $(compgen -v | grep -E "^MSG_[A-Z0-9_]+$"); do unset "$v"; done
+  _il_pack_loaded=1
+  return 0
+}
+
+# L <key> [args...]：优先语言包，其次内置表
+L() {
+  local key="$1"; shift || true
+  local fmt=""
+  if [[ "$FUSION_ILANG" == "en" ]]; then
+    fmt="${_IL_EN[$key]:-${_IL_ZH[$key]:-}}"
+  else
+    fmt="${_IL_ZH[$key]:-${_IL_EN[$key]:-}}"
+  fi
+  [[ -n "$fmt" ]] || fmt="$key"
+  if (( $# )); then printf -- "$fmt" "$@"; else printf '%s' "$fmt"; fi
+}
+
+# 内置早期表（仅下载前会用到的条目）
+_IL_ZH[MSG_INST_0001]="请以 root 身份运行"
+_IL_ZH[MSG_INST_0002]="不支持的架构: %s"
+_IL_ZH[MSG_INST_0003]="  %sFusionBox 安装程序 %s%s"
+_IL_ZH[MSG_INST_0004]="  %sLinux 全能管理工具箱%s"
+_IL_ZH[MSG_INST_0005]="  %s一站式 Linux 服务器管理解决方案%s"
+_IL_ZH[MSG_INST_0006]="检测到: %s (%s)"
+_IL_ZH[MSG_INST_0010]="发现最新稳定版本 %s，正在下载已校验的 Release 包..."
+_IL_ZH[MSG_INST_0011]="%s[WARN]%s GitHub latest Release API 不可用或受限，回退到 main 分支快照。"
+_IL_ZH[MSG_INST_0012]="%s[WARN]%s main 快照没有 Release SHA256SUMS，无法提供发布资产级完整性校验。"
+_IL_ZH[MSG_INST_0013]="网络不可用且未找到本地文件"
+_IL_ZH[MSG_INST_0014]="正在安装缺少的依赖: %s..."
+_IL_ZH[MSG_INST_0015]="无法自动安装依赖 %s（未知系统: %s）"
+_IL_ZH[MSG_INST_0016]="依赖安装失败: %s"
+_IL_ZH[MSG_INST_0017]="正在下载 FusionBox..."
+_IL_ZH[MSG_INST_0018]="main 分支快照下载失败"
+_IL_ZH[MSG_INST_0019]="Release 资产下载或 SHA256 校验失败；为避免降级安装未校验内容，安装已停止"
+_IL_EN[MSG_INST_0001]="Please run as root"
+_IL_EN[MSG_INST_0002]="Unsupported architecture: %s"
+_IL_EN[MSG_INST_0003]="  %sFusionBox installer %s%s"
+_IL_EN[MSG_INST_0004]="  %sThe all-in-one Linux toolbox%s"
+_IL_EN[MSG_INST_0005]="  %sOne-stop Linux server management%s"
+_IL_EN[MSG_INST_0006]="Detected: %s (%s)"
+_IL_EN[MSG_INST_0010]="Latest stable release %s found; downloading the checksum-verified Release package..."
+_IL_EN[MSG_INST_0011]="%s[WARN]%s GitHub latest Release API unavailable or rate-limited; falling back to the main branch snapshot."
+_IL_EN[MSG_INST_0012]="%s[WARN]%s The main snapshot has no Release SHA256SUMS, so release-level integrity cannot be verified."
+_IL_EN[MSG_INST_0013]="Network unavailable and no local files found"
+_IL_EN[MSG_INST_0014]="Installing missing dependency: %s..."
+_IL_EN[MSG_INST_0015]="Cannot install dependency %s automatically (unknown system: %s)"
+_IL_EN[MSG_INST_0016]="Dependency install failed: %s"
+_IL_EN[MSG_INST_0017]="Downloading FusionBox..."
+_IL_EN[MSG_INST_0018]="Failed to download the main branch snapshot"
+_IL_EN[MSG_INST_0019]="Release asset download or SHA256 verification failed; installation stopped to avoid installing unverified content"
+
+
+[[ $EUID -ne 0 ]] && msg_err "$(L MSG_INST_0001)" && exit 1
 
 ARCH=$(uname -m)
 case "$ARCH" in
   x86_64|amd64) ARCH="amd64" ;;
   aarch64|arm64) ARCH="arm64" ;;
-  *) msg_err "不支持的架构: $ARCH"; exit 1 ;;
+  *) msg_err "$(L MSG_INST_0002 "$ARCH")"; exit 1 ;;
 esac
 
 if [[ -f /etc/os-release ]]; then
@@ -44,12 +117,12 @@ FB_VERSION="unknown"
 if [[ -r "$SCRIPT_DIR/version.txt" ]]; then
   FB_VERSION="$(tr -d '[:space:]' < "$SCRIPT_DIR/version.txt")"
 fi
-msg "  ${GREEN}FusionBox 安装程序 ${FB_VERSION}${RESET}"
-msg "  ${CYAN}Linux 全能管理工具箱${RESET}"
-msg "  ${YELLOW}一站式 Linux 服务器管理解决方案${RESET}"
+msg "$(L MSG_INST_0003 "${GREEN}" "${FB_VERSION}" "${RESET}")"
+msg "$(L MSG_INST_0004 "${CYAN}" "${RESET}")"
+msg "$(L MSG_INST_0005 "${YELLOW}" "${RESET}")"
 msg ""
 
-msg_info "检测到: $OS ($ARCH)"
+msg_info "$(L MSG_INST_0006 "$OS" "$ARCH")"
 
 INSTALL_HAD_CONFIG=0
 [[ -e "${HOME:-/root}/.config/fusionbox/config.yaml" || -L "${HOME:-/root}/.config/fusionbox/config.yaml" ]] && INSTALL_HAD_CONFIG=1
@@ -75,7 +148,7 @@ _finish_install_telemetry() {
   F_OS="$OS"
   _load_config
   if ! _telemetry_install_consent "$INSTALL_HAD_CONFIG"; then
-    msg "${YELLOW}[WARN]${RESET} 无法保存匿名统计选择，统计保持关闭。"
+    msg "$(L MSG_INST_0007 "${YELLOW}" "${RESET}")"
     CONFIG_general_stats=false
   fi
   _telemetry_event install || true
@@ -83,11 +156,12 @@ _finish_install_telemetry() {
 
 # Offline fallback: install from the directory this script lives in
 _do_local_install() {
-  _finalize_install "$SCRIPT_DIR"
+  _il_load_from "$SCRIPT_DIR/src/i18n" || true
+_finalize_install "$SCRIPT_DIR"
   msg ""
-  msg_ok "FusionBox 本地安装成功！"
+  msg_ok "$(L MSG_INST_0008)"
   _finish_install_telemetry
-  msg "  用法: fusionbox   （主菜单）   fusionbox help   （帮助）"
+  msg "$(L MSG_INST_0009)"
   exit 0
 }
 
@@ -137,7 +211,7 @@ _download_release() {
   asset="FusionBox-$tag.tar.gz"
   checksum_url="$FUSION_REPO/releases/download/$tag/SHA256SUMS"
 
-  msg_info "发现最新稳定版本 $tag，正在下载已校验的 Release 包..."
+  msg_info "$(L MSG_INST_0010 "$tag")"
   curl -fsSL --connect-timeout 10 --retry 2 \
     "$FUSION_REPO/releases/download/$tag/$asset" -o "$TMPDIR/fusionbox.tar.gz" || return 1
   curl -fsSL --connect-timeout 10 --retry 2 \
@@ -158,8 +232,8 @@ _download_release() {
 }
 
 _download_main_fallback() {
-  msg "${YELLOW}[WARN]${RESET} GitHub latest Release API 不可用或受限，回退到 main 分支快照。"
-  msg "${YELLOW}[WARN]${RESET} main 快照没有 Release SHA256SUMS，无法提供发布资产级完整性校验。"
+  msg "$(L MSG_INST_0011 "${YELLOW}" "${RESET}")"
+  msg "$(L MSG_INST_0012 "${YELLOW}" "${RESET}")"
   curl -fsSL --connect-timeout 10 --retry 2 \
     "$FUSION_REPO/archive/refs/heads/$FUSION_BRANCH.tar.gz" -o "$TMPDIR/fusionbox.tar.gz" || return 1
   DOWNLOAD_ROOT="FusionBox-$FUSION_BRANCH"
@@ -170,24 +244,24 @@ if ! curl -s --connect-timeout 5 https://github.com > /dev/null 2>&1; then
   if [[ -f "$SCRIPT_DIR/fusion.sh" ]]; then
     _do_local_install
   fi
-  msg_err "网络不可用且未找到本地文件"
+  msg_err "$(L MSG_INST_0013)"
   exit 1
 fi
 
 for dep in curl tar sha256sum sed grep; do
   command -v "$dep" &>/dev/null && continue
-  msg_info "正在安装缺少的依赖: $dep..."
+  msg_info "$(L MSG_INST_0014 "$dep")"
   case "$OS" in
     ubuntu|debian) apt-get install -y curl tar coreutils sed grep ;;
     centos|rhel|fedora) yum install -y curl tar coreutils sed grep ;;
     alpine) apk add curl tar coreutils sed grep ;;
-    *) msg_err "无法自动安装依赖 $dep（未知系统: $OS）"; exit 1 ;;
+    *) msg_err "$(L MSG_INST_0015 "$dep" "$OS")"; exit 1 ;;
   esac
-  command -v "$dep" &>/dev/null || { msg_err "依赖安装失败: $dep"; exit 1; }
+  command -v "$dep" &>/dev/null || { msg_err "$(L MSG_INST_0016 "$dep")"; exit 1; }
 done
 
 # 先下载解压到临时目录，全部成功后才替换现有安装（避免"先删后下"失败导致两空）
-msg_info "正在下载 FusionBox..."
+msg_info "$(L MSG_INST_0017)"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf -- "$TMPDIR"' EXIT
 trap 'exit 130' INT
@@ -199,41 +273,42 @@ if _download_release; then
 else
   download_status=$?
   if [[ $download_status -eq 2 ]]; then
-    _download_main_fallback || { msg_err "main 分支快照下载失败"; exit 1; }
+    _download_main_fallback || { msg_err "$(L MSG_INST_0018)"; exit 1; }
   else
-    msg_err "Release 资产下载或 SHA256 校验失败；为避免降级安装未校验内容，安装已停止"
+    msg_err "$(L MSG_INST_0019)"
     exit 1
   fi
 fi
 
 _validate_archive "$TMPDIR/fusionbox.tar.gz" "$DOWNLOAD_ROOT" || {
-  msg_err "归档结构或路径安全检查失败"
+  msg_err "$(L MSG_INST_0020)"
   exit 1
 }
 tar xzf "$TMPDIR/fusionbox.tar.gz" -C "$TMPDIR"
+_il_load_from "$TMPDIR/$DOWNLOAD_ROOT/src/i18n" || true
 [[ -f "$TMPDIR/$DOWNLOAD_ROOT/fusion.sh" && -f "$TMPDIR/$DOWNLOAD_ROOT/src/lib/deploy.sh" ]] || {
-  msg_err "解压后的 Release 结构无效"
+  msg_err "$(L MSG_INST_0021)"
   exit 1
 }
-msg_info "下载来源: $DOWNLOAD_SOURCE"
+msg_info "$(L MSG_INST_0022 "$DOWNLOAD_SOURCE")"
 
-msg_info "正在安装 FusionBox 到 $FUSION_BASE..."
+msg_info "$(L MSG_INST_0023 "$FUSION_BASE")"
 _finalize_install "$TMPDIR/$DOWNLOAD_ROOT"
 
 rm -rf "$TMPDIR"
 
 msg ""
-msg_ok "FusionBox 安装成功！"
+msg_ok "$(L MSG_INST_0024)"
 _finish_install_telemetry
 msg ""
-msg "  ${BOLD}用法:${RESET}"
-msg "  fusionbox              ${CYAN}主菜单${RESET}"
-msg "  fusionbox help         ${CYAN}显示帮助${RESET}"
-msg "  fusionbox proxy        ${CYAN}代理管理${RESET}"
-msg "  fusionbox system       ${CYAN}系统管理${RESET}"
-msg "  fusionbox network      ${CYAN}网络工具${RESET}"
-msg "  fusionbox web          ${CYAN}网站部署${RESET}"
-msg "  fusionbox panels       ${CYAN}面板与工具${RESET}"
-msg "  fusionbox market       ${CYAN}应用市场${RESET}"
+msg "$(L MSG_INST_0025 "${BOLD}" "${RESET}")"
+msg "$(L MSG_INST_0026 "${CYAN}" "${RESET}")"
+msg "$(L MSG_INST_0027 "${CYAN}" "${RESET}")"
+msg "$(L MSG_INST_0028 "${CYAN}" "${RESET}")"
+msg "$(L MSG_INST_0029 "${CYAN}" "${RESET}")"
+msg "$(L MSG_INST_0030 "${CYAN}" "${RESET}")"
+msg "$(L MSG_INST_0031 "${CYAN}" "${RESET}")"
+msg "$(L MSG_INST_0032 "${CYAN}" "${RESET}")"
+msg "$(L MSG_INST_0033 "${CYAN}" "${RESET}")"
 msg ""
 exit 0

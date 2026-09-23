@@ -2,6 +2,83 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.0 双语支持第二批：模块层 100% 双语（全仓文案收口）
+
+- **9 个模块全部双语化**：system / web / panels / cluster / network / market / workspace /
+  proxy / warp；语言包从 290 键扩到 **3247 键**，中英两套**逐键对等**（键集合、占位符数量与顺序
+  由 `tests/test_i18n.py` 与 `run_checks.sh` 第 22 节强制）
+- **抽取器覆盖全部文案出口**（不再只认 `msg/echo/printf`）：
+  - 交互与守卫：`read -p`、`confirm`、`read_input`、`select_option`、
+    `_fb_user_read_password`、`_require_python3/_docker/_docker_compose`、`shutdown -h +5`
+  - 日志：`_log_write`
+  - 变量赋值：`local status="${F_RED}离线${F_RESET}"`、`note="[FusionBox] 流量告警：…"`
+  - 数据表：应用市场目录（74 条 `分类:名称:包:描述`）、VPS 评测矩阵（13 条
+    `名称|分类|说明|URL|模式`）、时区预设（29 条）、Docker 镜像源、集群任务表
+  - 值表达式：`${x:-默认}` / `${#arr[@]}` / `${arr[$i]}` / `$((算术))` / `$(命令)` / `$1`
+    一律**整体作为参数透传**（同一行内求值时机与结果等价，语言包里因此不留变量）
+- **全仓未抽取文案归零**：`scripts/i18n_audit.py --coverage` 逐文件均为 0；
+  `run_checks.sh` 第 22 节由「核心层」升级为「全仓」强制——新增的中文字面量出口会让闸门直接变红
+- **顺带修掉一个真实产品缺陷**：`_env_backup` 两次调用 `date`（秒级精度），跨秒时返回给调用方的
+  备份路径与实际落盘文件名不一致，`system env edit` 的「编辑失败自动恢复」会**静默失效**；
+  现改为一次取时间戳，并补回归测试（mock date 复现跨秒场景）
+- 语言包取值统一做 shell 转义（`\`、`"`、`$`、反引号），避免 `.` 加载时被二次展开
+- 修掉 here-string（`<<<`）被误判为 heredoc、以及 `printf` 跨行格式串被跳过的两个抽取器缺陷
+- **仓库策略**：测试资产不再入库——`tests/` 进 `.gitignore`（本地与验证服务器保留完整测试），
+  CI 收敛为静态检查（语法 / Python 产物 / i18n 契约审计 / 版本一致性）；发布包口径不变
+  （`.gitattributes` 的 `export-ignore` 一直保证 tar.gz 不含测试）
+
+- 实测（真机，逐字节对比 v1.42.0）：中文输出**完全一致**；英文模式下 9 个模块的帮助、
+  菜单与入口输出 **0 中文**
+
+## v1.42.0 双语支持第一批：核心层 100% 双语 + 语言切换命令
+
+- i18n 核心独立为 `src/lib/i18n.sh`：两套**地位对等**的完整语言包
+  （`src/i18n/zh_CN.sh` / `en.sh`，各 290 键），按当前语言取值、缺键回落另一语言
+  并登记缺失；颜色与变量一律作为参数传入，语言包内不含转义码
+- 新增 `fusionbox lang [zh_CN|en|auto]`：查看/切换界面语言（写入
+  `config.yaml` 的 `general.lang`，非 root 可查看）；`FUSION_LANG` 仍可单次覆盖
+- **核心层完成**：主菜单、全局帮助、通用提示（暂停/确认/选择）、依赖守卫、
+  卸载流程、安装器全部走语言包；`fusionbox help` 新增 `lang` 一行
+- **顺带修掉脚本化缺陷**：只读命令在非交互场景不再卡在「按 Enter 键继续...」
+  （`pause` 在 stdin 非 TTY 时立即返回），管道与 CI 可直接消费输出
+- 工具与门禁：`scripts/i18n_extract.py`（抽取/改写，带两条防丢变量自检）、
+  `scripts/i18n_audit.py`（键与占位符一致性、英文包无中文、覆盖进度、安装器内置表漂移）、
+  `tests/test_i18n.py`（21 项契约测试）、`run_checks.sh` 第 22 节
+- 实测（全新 Ubuntu 22.04，逐字节对比 v1.41.0）：中文模式输出**完全一致**（仅新增 lang 帮助行）；
+  英文模式 `help` / `version` / `status` / `privacy` / 主菜单 **0 中文**
+- 模块层待续：system(911) / web(578) / panels(298) / cluster(230) / network(120) /
+  market(110) / workspace(98) / proxy(93) / warp(76) 共约 2514 条文案，已有工具链，
+  按模块分批推进，覆盖计数用棘轮约束只增不减
+
+## v1.41.0 Cloudflare 联动真实凭据验证与 Global Key 铸造（B4 收口）
+
+- **B4 收口（Cloudflare 半边）**：最小权限 API Token 真实凭据验证完成——`fusionbox-cf-guard` 负载自适应开盾真机 8/8（security_level 真实切到 under_attack + 负载回落恢复基线 + 幂等），`fusionbox-cf-ban` 封禁/解封/幂等真机全过；新增真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，任何退出路径恢复 security_level 基线并清理测试规则）
+- **实测修复**：CF API 会返回 pretty JSON（`"success": true` 冒号带空格），cf-ban/cf-guard 的紧凑格式断言全部改为空白容忍——静态测试抓不到、真机首跑即现形
+- **新功能**：Cloudflare 联动配置支持直接粘贴 Global API Key——自动列出账户 Zone、现场铸造仅限所选 Zone 的最小权限 Token（Zone Settings + Firewall Services，14 天有效期），Global Key 本身绝不落盘；真实 Key 端到端验证通过（铸造 → verify active → 读取 security_level）
+- **TG 半边维持**：`system notify` 真实发送验证仍需 bot token，凭据缺失时显式拒绝的姿势保持不变
+
+- B4 收口（Cloudflare 半边）：用户提供 Global API Key 后，按 roadmap 建议
+  现场铸造仅限测试 Zone（endgo.top）的最小权限 API Token
+  （Zone Read + Zone Settings Read/Write + Firewall Services Write，14 天
+  有效期），Global Key 本身不落盘
+- 真机验收 `tests/acceptance/cloudflare_guard.sh`（21/21，不进 CI）：
+  Token verify、security_level 基线、缺凭据显式拒绝（conf 缺失/Token 缺失/
+  非法 IP 三路全部退出 1）、封禁 → API 侧确认 → 幂等 → 解封 → 确认消失、
+  cf-guard 高负载档真实切到 under_attack + 幂等 + 负载回落恢复基线 medium +
+  state 文件断言；任何退出路径恢复 security_level 基线并清理测试规则
+  （默认测试 IP 192.0.2.1 TEST-NET-1，绝不误伤真实用户）
+- **实测修复（静态测试抓不到）**：CF API 返回 pretty JSON（`"success": true`
+  冒号带空格），cf-ban 的 `"success":true`/`"id":"..."` 紧凑断言与 cf 配置
+  purge 的同类断言全部改为空白容忍正则；find_rule_id 改 sed 提取
+- **新功能**：`web guard → Cloudflare 联动配置` 支持直接粘贴 Global API Key
+  （37 位十六进制识别）——验证邮箱 → 列出账户 Zone → 选择 → 现场铸造
+  仅限所选 Zone 的最小权限 Token 并写入配置；真实 Key 端到端验证通过
+  （菜单驱动 → 铸造 → verify active → 读取 security_level）
+- 单测：`test_notifications.py` 新增 cf-ban pretty/compact 双格式矩阵
+  （封禁/失败/幂等/解封七场景）与 Global Key 铸造流程（成功 + 失败显式
+  拒绝，绝不把 Global Key 写进配置）
+- TG 半边维持：`system notify` 真实发送仍待 bot token，凭据缺失显式拒绝
+
 ## v1.40.0 应用扩容、harness 设计与真实参数收尾（roadmap 批次 4）
 
 - A6 首批扩容：`vocechat` 入内置目录（digest 固定、单容器 256m、具名卷 data、

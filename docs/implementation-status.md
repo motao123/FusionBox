@@ -1,4 +1,6 @@
-# 当前实施状态（v1.40.0）
+# 当前实施状态（v1.43.0）
+
+2026-09-22 本轮（1.43.0）完成 **模块层双语收口**：9 个模块（system/web/panels/cluster/network/market/workspace/proxy/warp）共 2957 处文案改为键式取值，语言包扩到 3247 键（中英逐键对等）；抽取器新增四类出口（交互/日志函数参数、变量赋值、菜单与数据表、值表达式整体透传），全仓未抽取数归零并被闸门强制。回归与验收：闸门 193/193（root 与非 root）+ 完整套件 bash 229 项 + Python 764 项（34 模块）零失败；真机逐字节对照 v1.42.0 中文输出一致、英文模式零中文。环境限制未变：真实 OCI 实例、TG bot token、真机关机分支。
 
 2026-09-21 本轮（1.40.0，roadmap 批次 4）按判定收尾：`vocechat` 入内置目录并真机验收（`market_app_expansion.sh`：安装/HTTP/卸载保留卷/reuse-data 重装）；实测 Webtop（s6）与 `cap_drop ALL` 不兼容并如实记录；harness 管理器设计稿（docs/harness-design.md，L1–L4 分层验收）；`netopt_sysctl.sh` 真实改值 + 快照恢复（11 键零漂移）收口 G18/G67 的真实执行缺口；一键 DD 与 Oracle 三件套的判定收口（设计决策）。回归与验收：闸门 177/177（root 与非 root）+ 完整套件 bash 229 项 + Python 741 项（33 模块）零失败，真机脚本全部可一键重放。环境限制未变：真实 OCI 实例、TG/CF 真实凭据、模型 API 凭据。
 
@@ -222,10 +224,10 @@ v1.4.1 当时待处理（前三项现已在 v1.4.2 修复）：TG token argv、�
 | G38 | 删除站点（目录/conf/证书/库全清） | 部分实现 | web site del；备份配置，数据与证书另行确认；不自动删数据库 |
 | G39 | 克隆站点（建库+dump 导入+全表替换域名） | 受管范围完成 | v1.18.0 web clone：目录+配置克隆真机验证；WP 库克隆实现（wp-config 检测+dump 域名替换），真实库场景未验证 |
 | G40 | 关联多域名（复制 conf 替换 server_name/证书） | 部分实现 | web site alias；配置校验回滚，证书仍需域名条件 |
-| G41 | 清缓存（重启容器 + Cloudflare purge API） | 受管范围完成 | v1.18.0 web cache：FPM 重启+缓存目录清理真机验证；CF purge 凭据依赖未实测 |
+| G41 | 清缓存（重启容器 + Cloudflare purge API） | 受管范围完成 | v1.18.0 web cache：FPM 重启+缓存目录清理真机验证；v1.41.0 修复 CF purge 响应断言的 pretty JSON 兼容（purge 真实触发仍未实测） |
 | G42 | 站点访问日志分析（goaccess 报表） | 受管范围完成 | v1.18.0 web goaccess：真实安装+报表生成，/root 私有存放 |
 | G43 | 防 CC（fail2ban nginx filter + DOCKER-USER chain + Cloudflare action） | 部分实现 | 宿主 Nginx 4xx fail2ban；未覆盖 DOCKER-USER/真实流量测试 |
-| G44 | Cloudflare 联动（负载>5 自动 under_attack + CF API 封 IP） | 凭据依赖 | CF 封禁辅助脚本/开盾；保存初始安全级别；未实测 API |
+| G44 | Cloudflare 联动（负载>5 自动 under_attack + CF API 封 IP） | 真机验证 | v1.41.0：最小权限 Token 真机验证 21/21（under_attack 切换/恢复/幂等、封禁/解封/幂等、缺凭据显式拒绝）；实测修复 pretty JSON 断言；Global Key 粘贴自动铸造最小权限 Token（真实 Key 端到端通过） |
 | G45 | 优化模式（标准/高性能切换） | 受管范围完成 | v1.21.0 web tune standard/high：真机 nginx 档位验证；MySQL 只写配置不自动重启 |
 | G46 | brotli/zstd 压缩开关 | brotli 完成 | v1.21.0 web brotli：真机实测 Content-Encoding: br；zstd 无稳定发行版模块，不提供 |
 | G47 | WordPress + Redis 预配置 | 受管范围完成 | v1.21.0 web wp-redis：注入+幂等+php -l 回滚（真机 redis 安装+注入）；Object Cache 插件需 WP 内自装 |

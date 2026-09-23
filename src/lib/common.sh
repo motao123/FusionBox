@@ -31,7 +31,12 @@ readonly FUSION_TELEMETRY_ENDPOINT="https://fusionbox-telemetry.gdindex-demo.wor
 F_LANG="auto"
 F_COLOR=1
 
-declare -A _LANG_DATA
+# ---- i18n 核心（语言包加载 + 键式查询 L/_tr）----
+# 独立成文件：fusion.sh 的根权限门禁早于本文件加载，也需要本地化提示。
+if ! declare -F L >/dev/null 2>&1; then
+  # shellcheck disable=SC1091
+  . "$FUSION_SRC/lib/i18n.sh"
+fi
 
 # ---- Utility Functions ----
 
@@ -69,57 +74,21 @@ progress_end() {
   _F_PROGRESS_CURRENT=0
 }
 
-# Load language strings
-# Usage: L <key>
-L() {
-  local key="$1"
-  echo "${_LANG_DATA[$key]:-$key}"
-}
-
-_load_lang() {
-  local lang="$1"
-  _LANG_DATA=()
-  if [[ -f "$FUSION_I18N_DIR/$lang.sh" ]]; then
-    source "$FUSION_I18N_DIR/$lang.sh"
-    local v
-    for v in $(compgen -v | grep -E '^(MSG_|MOD_|SYS_|NET_|WEB_|PANEL_|MARKET_|BBR_|PROXY_)'); do
-      _LANG_DATA[$v]="${!v}"
-    done
-  fi
-}
-
-_init_lang() {
-  if [[ "$F_LANG" == "auto" ]]; then
-    local lang_env="${LANG:-en_US.UTF-8}"
-    if [[ "$lang_env" =~ zh_CN|zh_ ]]; then
-      _load_lang "zh_CN"
-    else
-      _load_lang "en"
-    fi
-  else
-    _load_lang "$F_LANG"
-  fi
-}
-
-# Print text with color using i18n
-# NOTE: must NOT be named "tr" — that would shadow /usr/bin/tr and silently
-# break every `| tr` pipeline in the project (this bug shipped in v1.1.0)
-_tr() {
-  local key="$1"
-  local text="${_LANG_DATA[$key]:-$2}"
-  echo -e "$text"
-}
+# 语言字符串查询（L / _tr / _load_lang / _init_lang / _i18n_*）已迁到 src/lib/i18n.sh，
+# 由本文件顶部按需加载，此处不再重复定义——重复定义会覆盖新实现。
 
 # ---- User Interaction ----
 
 pause() {
+  # 非交互场景（管道/CI/重定向）直接返回：只读输出不该卡在「按 Enter 继续」。
+  [[ -t 0 ]] || return 0
   msg ""
-  msg "按 Enter 键继续..."
+  msg "$(L MSG_COMMON_0001)"
   read -r || exit 0   # stdin 已关闭（CI/管道）时干净退出，避免菜单死循环
 }
 
 confirm() {
-  local msg_str="${1:-确认执行？} [$F_GREEN y $F_RESET/N]: "
+  local msg_str="${1:-$(L MSG_COMMON_0025)} [$F_GREEN y $F_RESET/N]: "
   msg "$msg_str"
   local ans=""
   read -r ans || return 1   # EOF/中断一律视为拒绝
@@ -157,10 +126,10 @@ read_input() {
 # 因为 read 阻塞而卡住。这里明确报错并给出可执行的下一步，返回 2（区别于成功 0）。
 _module_unknown_cmd() {
   local module="$1" cmd="${2:-}"
-  msg_err "未知子命令: ${cmd:-<空>}"
-  msg_info "用法: fusionbox ${module} help      查看该模块全部命令"
-  msg_info "      fusionbox help ${module}      查看该模块详细帮助"
-  msg_info "      fusionbox ${module}           进入交互菜单"
+  msg_err "$(L MSG_COMMON_0016 "${cmd:-$(L MSG_COMMON_0017)}")"
+  msg_info "$(L MSG_COMMON_0002 "${module}")"
+  msg_info "$(L MSG_COMMON_0003 "${module}")"
+  msg_info "$(L MSG_COMMON_0004 "${module}")"
   return 2
 }
 
@@ -338,7 +307,7 @@ _telemetry_install_consent() {
   esac
 
   if _telemetry_consent_is_interactive; then
-    printf '是否允许发送匿名安装与使用统计？不包含命令参数或业务数据 [y/N]: '
+    printf "$(L MSG_COMMON_0005)"
     read -r answer || answer=''
   fi
   if [[ "$answer" =~ ^[Yy]$ ]]; then
@@ -530,9 +499,9 @@ _check_pkg() {
   local cmd="$1"; shift
   local pkgs=("$@")
   if ! command -v "$cmd" &>/dev/null; then
-    msg_info "正在安装 ${pkgs[*]}..."
+    msg_info "$(L MSG_COMMON_0006 "${pkgs[*]}")"
     _install_pkg "${pkgs[@]}" || {
-      msg_err "安装 ${pkgs[*]} 失败"
+      msg_err "$(L MSG_COMMON_0007 "${pkgs[*]}")"
       return 1
     }
   fi
@@ -576,9 +545,9 @@ _cpu_cores_display() {
   avail=$(_cpu_cores_available)
   host=$(_cpu_cores_host)
   if [[ -n "$avail" && -n "$host" && "$avail" != "$host" ]]; then
-    printf '可用 %s 核 / 宿主 %s 核' "$avail" "$host"
+    printf "$(L MSG_COMMON_0008)" "$avail" "$host"
   else
-    printf '%s 核' "${avail:-$host}"
+    printf "$(L MSG_COMMON_0009)" "${avail:-$host}"
   fi
 }
 
@@ -599,7 +568,7 @@ _download() {
 
 _init_log() {
   mkdir -p "$FUSION_LOG_DIR"
-  _log_write "=== FusionBox 会话已启动 ==="
+  _log_write "$(L MSG_COMMON_0026)"
 }
 
 _log_write() {
@@ -619,7 +588,7 @@ _pkg_install_hint() {
     yum)    printf 'yum install -y %s' "$pkg" ;;
     apk)    printf 'apk add %s' "$pkg" ;;
     zypper) printf 'zypper install -y %s' "$pkg" ;;
-    *)      printf '请用系统包管理器安装 %s' "$pkg" ;;
+    *)      printf "$(L MSG_COMMON_0010)" "$pkg" ;;
   esac
 }
 
@@ -630,17 +599,19 @@ _require_cmd() {
   if command -v "$cmd" &>/dev/null; then
     return 0
   fi
-  msg_err "缺少必需命令: $cmd${impact:+（影响：$impact）}"
-  msg_info "安装方式: $(_pkg_install_hint "$pkg")"
+  local _impact=""
+  [[ -n "$impact" ]] && _impact="$(L MSG_COMMON_0019 "$impact")"
+  msg_err "$(L MSG_COMMON_0018 "$cmd" "$_impact")"
+  msg_info "$(L MSG_COMMON_0020 "$(_pkg_install_hint "$pkg")")"
   return 1
 }
 
 _require_python3() {
-  _require_cmd python3 python3 "${1:-备份/恢复、系统信息、受管应用市场等}"
+  _require_cmd python3 python3 "${1:-$(L MSG_COMMON_0027)}"
 }
 
 _require_docker() {
-  _require_cmd docker docker.io "Docker 管理、受管应用市场"
+  _require_cmd docker docker.io "$(L MSG_COMMON_0028)"
 }
 
 # Docker CLI present? (daemon check is separate so we can explain each case)
@@ -654,26 +625,26 @@ _docker_compose_v2_present() {
 
 # _require_docker_compose [影响说明]
 _require_docker_compose() {
-  local impact="${1:-受管应用市场}"
+  local impact="${1:-$(L MSG_COMMON_0029)}"
   _require_docker || return 1
   if _docker_compose_v2_present; then
     return 0
   fi
-  msg_err "缺少 Docker Compose v2（影响：$impact）"
-  msg_info "请安装 compose 插件：$(_pkg_install_hint docker-compose-plugin)"
-  msg_info "或参考: https://docs.docker.com/compose/install/linux/"
+  msg_err "$(L MSG_COMMON_0011 "$impact")"
+  msg_info "$(L MSG_COMMON_0024 "$(_pkg_install_hint docker-compose-plugin)")"
+  msg_info "$(L MSG_COMMON_0012)"
   return 1
 }
 
 # _require_docker_daemon [影响说明] — CLI present but daemon unreachable.
 _require_docker_daemon() {
-  local impact="${1:-Docker 管理}"
+  local impact="${1:-$(L MSG_COMMON_0030)}"
   _require_docker || return 1
   if docker info &>/dev/null; then
     return 0
   fi
-  msg_err "Docker 守护进程不可用（影响：$impact）"
-  msg_info "请检查服务状态: systemctl status docker（或 service docker status）"
+  msg_err "$(L MSG_COMMON_0013 "$impact")"
+  msg_info "$(L MSG_COMMON_0014)"
   return 1
 }
 
@@ -709,7 +680,8 @@ _filter_existing_scopes() {
     if [[ $found -eq 1 ]]; then
       kept="${kept:+$kept,}$scope"
     else
-      msg_warn "已跳过 scope ${scope}（$root/$(_scope_sources "$scope" | awk '{print $1}') 不存在）" >&2
+      local _src; _src="$(_scope_sources "$scope" | awk '{print $1}')"
+      msg_warn "$(L MSG_COMMON_0021 "$scope" "$root" "$_src")" >&2
     fi
     IFS=','
   done
@@ -744,14 +716,39 @@ show_dependency_status() {
   fi
 }
 
+# ---- 界面语言（`fusionbox lang`）----
+# 语言包为两套完整实现（src/i18n/zh_CN.sh 与 en.sh），此处只负责查看与切换。
+
+_i18n_switch() {
+  local want="$1"
+  _config_set_general lang "$want" || { msg_err "$(L MSG_COMMON_0035)"; return 1; }
+  CONFIG_general_lang="$want"
+  _i18n_init                                  # 立即生效：后续输出即用新语言
+  msg_ok "$(L MSG_COMMON_0036 "$(_i18n_display_name "$F_LANG")")"
+}
+
+lang_command() {
+  local action="${1:-status}"
+  case "$action" in
+    status|"")
+      msg "$(L MSG_COMMON_0032 "$(_i18n_display_name "$F_LANG")")"
+      msg "$(L MSG_COMMON_0033)"
+      ;;
+    zh_CN|zh|cn)  _i18n_switch zh_CN ;;
+    en|english)   _i18n_switch en ;;
+    auto)         _i18n_switch auto ;;
+    *) msg_err "$(L MSG_COMMON_0034 "$action")"; return 2 ;;
+  esac
+}
+
 # ---- Optional command hint (ping/mtr/nmap/... are only needed by some tasks) ----
 _require_optional_cmd() {
-  local cmd="$1" pkg="${2:-$1}" feature="${3:-该功能}"
+  local cmd="$1" pkg="${2:-$1}" feature="${3:-$(L MSG_COMMON_0031)}"
   if command -v "$cmd" &>/dev/null; then
     return 0
   fi
-  msg_warn "未找到 $cmd，无法执行$feature"
-  msg_info "安装方式: $(_pkg_install_hint "$pkg")"
+  msg_warn "$(L MSG_COMMON_0015 "$cmd" "$feature")"
+  msg_info "$(L MSG_COMMON_0020 "$(_pkg_install_hint "$pkg")")"
   return 1
 }
 
