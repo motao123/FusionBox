@@ -1156,7 +1156,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8080:80"
+      - "8080:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       WORDPRESS_DB_HOST: db:3306
       WORDPRESS_DB_USER: wp
@@ -1223,7 +1223,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8081:80"
+      - "8081:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       TYPECHO_DB_ADAPTER: Pdo_Mysql
       TYPECHO_DB_HOST: db
@@ -1265,7 +1265,7 @@ services:
     container_name: halo
     restart: always
     ports:
-      - "8090:8090"
+      - "8090:8090"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - halo_data:/root/.halo2
     command:
@@ -1324,7 +1324,7 @@ services:
       - db
       - redis
     ports:
-      - "8082:80"
+      - "8082:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       DB_HOST: db
       DB_NAME: discuz
@@ -1365,7 +1365,7 @@ services:
     container_name: kodexplorer
     restart: always
     ports:
-      - "8083:80"
+      - "8083:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ./data:/code/data
 KDEOF
@@ -1411,7 +1411,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8084:80"
+      - "8084:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       MYSQL_HOST: db
       MYSQL_DATABASE: nextcloud
@@ -1451,7 +1451,7 @@ services:
     container_name: alist
     restart: always
     ports:
-      - "5244:5244"
+      - "5244:5244"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ./data:/opt/alist/data
     environment:
@@ -1505,7 +1505,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8085:80"
+      - "8085:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ac_data:/var/www/html
 
@@ -1536,7 +1536,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8085:80"
+      - "8085:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ac_data:/var/www/html
 
@@ -1571,7 +1571,7 @@ services:
     container_name: emby
     restart: always
     ports:
-      - "8096:8096"
+      - "8096:8096"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       - UID=0
       - GID=0
@@ -1607,7 +1607,7 @@ services:
     container_name: jellyfin
     restart: always
     ports:
-      - "8097:8096"
+      - "8097:8096"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ./config:/config
       - ./cache:/cache
@@ -1655,7 +1655,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8086:8888"
+      - "8086:8888"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       DB_HOST: db
       DB_NAME: flarum
@@ -1697,7 +1697,7 @@ services:
     container_name: linkstack
     restart: always
     ports:
-      - "8087:80"
+      - "8087:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       TZ: Asia/Shanghai
     volumes:
@@ -1730,7 +1730,7 @@ services:
     container_name: bitwarden
     restart: always
     ports:
-      - "8088:80"
+      - "8088:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       WEBSOCKET_ENABLED: "true"
       SIGNUPS_ALLOWED: "false"
@@ -1764,7 +1764,7 @@ services:
     container_name: uptime-kuma
     restart: always
     ports:
-      - "3001:3001"
+      - "3001:3001"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ./data:/app/data
 UKEOF
@@ -1795,7 +1795,7 @@ services:
     container_name: it-tools
     restart: always
     ports:
-      - "8880:80"
+      - "8880:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
 ITEOF
   chmod 600 "$app_dir/docker-compose.yml"
 
@@ -1824,7 +1824,7 @@ services:
     container_name: memos
     restart: always
     ports:
-      - "5230:5230"
+      - "5230:5230"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ./data:/var/opt/memos
 MEOF

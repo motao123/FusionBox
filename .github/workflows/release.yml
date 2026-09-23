@@ -66,6 +66,13 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
+      - name: Shipped compose exposure gate (ports bound, no baked credentials)
+        run: |
+          set -e
+          python3 scripts/deploy_exposure_audit.py
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+
       - name: Release version consistency
         run: |
           set -e

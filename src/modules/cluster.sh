@@ -352,7 +352,7 @@ services:
     container_name: minecraft-java
     restart: always
     ports:
-      - "25565:25565"
+      - "25565:25565"  # fb-expose: 游戏服务端需公网可达
     environment:
       EULA: "TRUE"
       TYPE: "PAPER"
@@ -395,7 +395,7 @@ services:
     container_name: minecraft-bedrock
     restart: always
     ports:
-      - "19132:19132/udp"
+      - "19132:19132/udp"  # fb-expose: 游戏服务端需公网可达
     environment:
       EULA: "TRUE"
       GAMEMODE: "survival"
@@ -431,7 +431,7 @@ services:
     container_name: terraria
     restart: always
     ports:
-      - "7777:7777"
+      - "7777:7777"  # fb-expose: 游戏服务端需公网可达
     environment:
       WORLD_FILENAME: "fusionbox.wld"
       MAX_PLAYERS: "8"
@@ -466,8 +466,8 @@ services:
     container_name: palworld
     restart: always
     ports:
-      - "8211:8211/udp"
-      - "27015:27015/udp"
+      - "8211:8211/udp"  # fb-expose: 游戏服务端需公网可达
+      - "27015:27015/udp"  # fb-expose: 游戏服务端需公网可达
     environment:
       PLAYERS: "16"
       MULTITHREADING: "true"
