@@ -1,5 +1,13 @@
 # FusionBox Docker Compose Template
 # Prometheus + Grafana monitoring stack
+#
+# 两个面板只绑 127.0.0.1，与本仓库托管应用层一致（src/lib/market_apps.py 把
+# bridge 端口一律渲染成 127.0.0.1:已发布:目标）。要从外网看，请经反向代理/TLS
+# 或 SSH 隧道转发，不要改成 0.0.0.0。
+#
+# Grafana 管理员口令必须由使用方提供：与本文件同目录建 .env 写入
+#   GRAFANA_ADMIN_PASSWORD=<你的强口令>
+# 缺失或为空时 docker compose 会在启动前直接报错，而不是回落到内置默认口令。
 
 version: '3.8'
 
@@ -12,7 +20,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -24,9 +32,10 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=fusionbox
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?required - create .env next to this file and set GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
 
   node-exporter:

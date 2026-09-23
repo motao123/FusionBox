@@ -301,6 +301,10 @@ server {
     root $web_root;
     index index.html index.php;
 
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
     location / {
         try_files \$uri \$uri/ =404;
     }
@@ -591,6 +595,13 @@ _web_acme_write_tls() {
     printf '    listen %s ssl;\n    server_name %s;\n' "$_WEB_ACME_HTTPS_PORT" "$domain"
     printf '    ssl_certificate %s;\n    ssl_certificate_key %s;\n' "$cert" "$key"
     printf '    ssl_protocols TLSv1.2 TLSv1.3;\n'
+    printf '    add_header X-Content-Type-Options "nosniff" always;\n'
+    printf '    add_header X-Frame-Options "SAMEORIGIN" always;\n'
+    printf '    add_header Referrer-Policy "strict-origin-when-cross-origin" always;\n'
+    # HSTS 故意不自动下发：一旦下发，浏览器会在 max-age 内强制该主机走 HTTPS，
+    # 证书后续失效时用户连回退明文的机都没有——要加请在此块内手动写
+    # add_header Strict-Transport-Security "max-age=31536000" always;
+    printf '# HSTS is opt-in here; see FusionBox docs before enabling (browser-side lock-in risk)\n'
     if [[ -n "$proxy" ]]; then
       printf '    location / {\n        proxy_pass %s;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n' "$proxy"
     else
@@ -932,7 +943,7 @@ web_firewall() {
     # Add security headers in http block if not present
     if grep -q "X-Content-Type-Options" "$nginx_conf" 2>/dev/null; then
       msg_info "$(L MSG_WEB_0766)"
-    elif sed -i '/http {/a\    add_header X-Content-Type-Options nosniff;\n    add_header X-Frame-Options SAMEORIGIN;\n    add_header X-XSS-Protection "1; mode=block";' "$nginx_conf" 2>/dev/null; then
+    elif sed -i '/http {/a\    add_header X-Content-Type-Options nosniff;\n    add_header X-Frame-Options SAMEORIGIN;\n    add_header Referrer-Policy strict-origin-when-cross-origin;' "$nginx_conf" 2>/dev/null; then
       msg_ok "$(L MSG_WEB_0767)"
     else
       msg_warn "$(L MSG_WEB_0768)"
@@ -1722,7 +1733,7 @@ services:
       - "8088:80"
     environment:
       WEBSOCKET_ENABLED: "true"
-      SIGNUPS_ALLOWED: "true"
+      SIGNUPS_ALLOWED: "false"
     volumes:
       - ./data:/data
 BWEOF
@@ -1917,6 +1928,10 @@ server {
 
     ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     location / {
         proxy_pass http://$backend;
