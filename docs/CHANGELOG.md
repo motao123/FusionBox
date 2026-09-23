@@ -2,6 +2,20 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.2 安全加固：遥测 Worker 收口、交付编排端口与凭据棘轮、6 个面板默认只绑本机
+
+外部扫描结果逐条独立复核后的修复；判级与机理以本条为准，其中两处扫描结论属夸大或影响面写错，已注明。
+
+- **遥测 Worker**（`telemetry-worker/src/index.ts`）：`readBody()` 原为 `await request.arrayBuffer()` 全量缓冲后再判 4096 字节上限，且 `Content-Length` 头检在分块传输与 HTTP/2（无该头）下被整体跳过——现改为按块累计、越限立即取消流。测试用一条 1 MiB 无 `Content-Length` 的流断言"只读过上限一块就停"，旧实现下实测吸完 1056768 字节才拒绝
+- **写入端点不再对浏览器开放跨域**：原先所有响应带 `Access-Control-Allow-Origin: *` 且 `Allow-Methods` 含 POST，配合 `/v1/event` 无鉴权，任意网页可借访客出口 IP 消耗其 source 限流额度并伪造遥测。通配 CORS 现只保留 `/v1/public/summary`、`/v1/public/badge` 两个只读端点，`/v1/event` 见 `Origin` 请求头即 403（采集端是 curl，不发该头）；`version` 数值段由无界 `\d+` 改为 `\d{1,10}`，避免它成为可被撑到请求体上限的 D1 主键片段。D1 表的保留/清理策略是数据口径决定，本轮有意未做
+- **`templates/docker/monitoring.yml`**：Grafana 管理员口令原为内置字面量 `fusionbox`，现改 `${GRAFANA_ADMIN_PASSWORD:?}`（缺失即启动前失败，不回落默认口令）并关闭 Grafana 自助注册；Prometheus 与 Grafana 端口改绑 `127.0.0.1`，与托管应用层 `src/lib/market_apps.py:207` 的渲染口径一致。扫描报告称 node-exporter 同样暴露属夸大——该服务无 `ports` 段
+- **`web` 模块生成的 nginx 配置**：站点、反向代理 HTTPS 块、ACME 托管 TLS 块补 `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`；`web_firewall` 注入集与 `templates/nginx/fusionbox.conf` 去掉已废弃的 `X-XSS-Protection`。HSTS 与 CSP 有意不自动下发并在产物内留注：前者一旦下发，证书失效时浏览器仍强制 HTTPS，用户没有临时回退余地；后者对未知应用会直接打断第三方脚本。扫描报告称 `fusionbox.conf` 缺头会"传播到所有 vhost"不准确——全仓无任何代码安装或 include 该文件，它是给人手工 include 的模板
+- **6 个一键部署默认只绑本机**：判据是"首个访问者能否拿到管理员或完成初始化"。改：Halo（初始化向导）、KodExplorer（默认账号）、LinkStack（管理面板）、Uptime Kuma（首个访问者即管理员）、Vaultwarden（明文 HTTP 上的密码管理器，同时 `SIGNUPS_ALLOWED` 默认 false）、Memos（首个注册者即所有者）。保持对外并注明理由的 10 处：WordPress / Typecho / Discuz / Nextcloud / Flarum / 苹果 CMS 属对外站点且各有真实认证，Emby / Jellyfin 的正常用法是局域网内设备连媒体库，Alist 的随机管理员口令只出现在服务端日志，IT-Tools 是无状态纯前端工具箱
+- **新断言**：`scripts/deploy_exposure_audit.py` 要求交付的 compose 中每个已发布端口要么绑回环、要么就地注明 `# fb-expose: <理由>`，口令类环境变量必须运行时取值否则注明 `# fb-cred-ok: <理由>`；已接入 `.cnb.yml` 的 `&ci-stages`（push 与 pull_request 同源）与 GitHub syntax job。扫描器只报出 1 处裸端口，该断言在仓库内定位到 **25 处**（`web.sh` 17、`cluster.sh` 5、`panels.sh` 1、`nginx-proxy.yml` 2），至此全部显式表态
+- **缺陷修复（苹果 CMS）**：`_deploy_apple_cms` 写完主编排并 `chmod` 后，又无条件用"fallback：若专用镜像不可用"的编排覆盖同一个文件，而代码里没有任何条件判断——`maccms` 镜像从未生效，部署出来的始终是空 docroot 的 `php:8.1-apache`。现改为仅当 `docker compose up -d` 失败才 `down` 后写入回落编排重启。以 docker 桩实测四条路径确认差异
+- **文档闸门缺陷修复**：README 与 README.en 的发布槽位在 v1.43.1 发布时丢了闭合符，导致从"最近更新"起整篇正文被当作 HTML 注释（GitHub 渲染时"命令参考"及其后内容全部消失）。已闭合，并给 `scripts/docs_readme_gate.py` 加"注释必须成对、且发布槽位之后不得残留未闭合注释"的断言——双语闸门当时未报，是因为两个文件同病，结构对比自然相等
+- **验证口径**：遥测 Worker 套件 8/8 + `tsc --noEmit` 干净；静态闸门本地全绿（i18n 3248 键逐键对等、README 双语同步、主页数字派生、端口与凭据棘轮、语法与 Python 产物）。**本轮未重跑真机验收**：端口绑定与 nginx 配置变更需在验证服务器确认，环境限制未变（真实 OCI 实例、TG bot token、真机关机分支）
+
 ## v1.43.1 修补：应用市场最后一条硬编码文案 + 审计器补数据数组棘轮
 
 - `src/modules/market.sh` 的 `MARKET_APPS` 里，`"utility:Warp:cloudflare-warp:Cloudflare WARP VPN"`
@@ -16,6 +30,9 @@
   这 5 个约定全量键式的数组，出现任何字面量条目即失败（**与语种无关**，漏网的正是纯英文条目）；
   另加兜底规则：任何数组条目含中文且未走语言包一律失败。标识符型数组
   （`P_PROTOCOLS` 的 `"VLESS-TCP" "vless" "tcp"`、`CLUSTER_GAMES` 的纯 ASCII 条目）不受影响
+- **同批交付**：`README.en.md` 全文英译与 `scripts/docs_readme_gate.py`（中英结构/命令/链接/锚点同步闸门）、`scripts/site_facts.py`（主页数字派生校验）一并接入 GitHub 与 CNB 两条流水线；主页数字改由源码派生，不再手打
+- **验证口径**：本版只动文案与工具链，未重跑真机验收；真机口径沿用 v1.43.0 的 Ubuntu 22.04 结果（闸门 193/193、完整套件 bash 229 + Python 764 项）
+
 
 ## v1.43.0 双语支持第二批：模块层 100% 双语（全仓文案收口）
 
