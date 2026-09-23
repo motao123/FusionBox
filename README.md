@@ -90,7 +90,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 | 系统管理 | `fusionbox system` | BBR、基准测试、备份、SSH、防火墙、定时任务、磁盘、时区、回收站、救援指引 |
 | 网络工具 | `fusionbox network` | IP 查询、流媒体检测、测速、DNS、路由追踪、端口检测 |
 | 网站部署 | `fusionbox web` | LNMP、SSL、17 种应用部署、反向代理、L4 转发、站点备份 |
-| 面板工具 | `fusionbox panels` | Docker 完整管理、宝塔 / Aapanel / FRP / Aria2 / 哪吒 |
+| 面板工具 | `fusionbox panels` | Docker 完整管理、宝塔 / 1Panel / FRP / Aria2 / 哪吒 |
 | 应用市场 | `fusionbox market` | 70+ 软件一键安装（10 个分类）+ 受管模板生命周期 |
 | WARP 管理 | `fusionbox warp` | Cloudflare WARP 安装、Proxy 模式、流媒体解锁 |
 | 后台工作区 | `fusionbox workspace` | 编号工作区 w1–w10（tmux / screen 自动选择） |
@@ -105,7 +105,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 | `system` | 系统信息、BBR（含 BBR2 / BBRplus / 魔改 / Lotserver / xanmod）、CPU 与磁盘基准、网络测速、实时监控、备份恢复、系统清理；工具箱含 SSH 密钥、防火墙（UFW/iptables/Fail2Ban）、cron、磁盘分区与挂载、29 城市时区一键切换 + IANA 自定义 + NTP、回收站、文件管理器、rsync 同步任务 |
 | `network` | IPv4/IPv6 与 ISP 信息、Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili 解锁检测、上下行测速、多 DNS 解析对比、Traceroute、端口探测、网卡管理 |
 | `web` | LNMP / LAMP 一键安装、站点创建与 Nginx 虚拟主机、certbot 自动签发（支持本地 Pebble 与 LE staging 两条验证路线）、数据库与用户权限、17 种应用内置部署、反代与负载均衡、Stream L4 转发、站点克隆、站点数据备份、调优档位与 brotli |
-| `panels` | Docker 安装与完整管理（容器/镜像/Compose/网络/卷/清理/备份迁移/daemon.json）、容器端口封禁（DOCKER-USER）、宝塔 / Aapanel / X-UI、Aria2 / Rclone / FRP / 哪吒监控 |
+| `panels` | Docker 安装与完整管理（容器/镜像/Compose/网络/卷/清理/备份迁移/daemon.json）、容器端口封禁（DOCKER-USER）、宝塔 / 1Panel / X-UI、Aria2 / Rclone / FRP / 哪吒监控 |
 | `market` | 70+ 软件、10 个分类；`managed` 子命令为数据驱动 Compose 生命周期（见下节） |
 | `warp` | WARP 安装卸载、Proxy 模式（不断 SSH）、IP 与解锁状态检测、出站配置示例 |
 | `workspace` | 编号工作区 w1–w10，tmux / screen 自动选择，支持命令注入 |
@@ -366,7 +366,7 @@ fusionbox web sitedata           # 站点数据管理
 - 备份/迁移/恢复 (容器/镜像/Compose项目)
 - 网络管理/卷管理/垃圾清理
 
-**服务器面板：** 宝塔、Aapanel、X-UI 一键安装
+**服务器面板：** 宝塔、1Panel、X-UI 一键安装
 
 **实用工具：** Aria2、Rclone、FRP 内网穿透、哪吒监控
 

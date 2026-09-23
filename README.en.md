@@ -90,7 +90,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 | System management | `fusionbox system` | BBR, benchmarks, backups, SSH, firewall, cron, disk, timezone, trash, rescue guidance |
 | Network tools | `fusionbox network` | IP lookup, streaming detection, speed tests, DNS, traceroute, port checks |
 | Web deployment | `fusionbox web` | LNMP, SSL, 17 application deployments, reverse proxy, L4 forwarding, site backups |
-| Panel tools | `fusionbox panels` | Full Docker management, 宝塔 / Aapanel / FRP / Aria2 / 哪吒监控 |
+| Panel tools | `fusionbox panels` | Full Docker management, 宝塔 / 1Panel / FRP / Aria2 / 哪吒监控 |
 | Application market | `fusionbox market` | 70+ one-click installs (10 categories) + managed template lifecycle |
 | WARP management | `fusionbox warp` | Cloudflare WARP install, Proxy mode, streaming unlock |
 | Background workspace | `fusionbox workspace` | Numbered workspaces w1-w10 (tmux / screen auto-selected) |
@@ -105,7 +105,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 | `system` | System info, BBR (incl. BBR2 / BBRplus / modded / Lotserver / xanmod), CPU and disk benchmarks, network speed test, real-time monitoring, backup and restore, system cleanup; the toolbox adds SSH keys, firewall (UFW/iptables/Fail2Ban), cron, disk partitioning and mounting, one-click switching across 29 cities + custom IANA + NTP, trash, file manager, rsync sync jobs |
 | `network` | IPv4/IPv6 and ISP info, Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili unlock detection, upload/download speed tests, resolution comparison across multiple DNS servers, Traceroute, port probing, network interface management |
 | `web` | One-click LNMP / LAMP install, site creation and Nginx virtual hosts, automatic certbot issuance (both validation routes supported: local Pebble and LE staging), databases and user privileges, 17 built-in application deployments, reverse proxy and load balancing, Stream L4 forwarding, site cloning, site data backups, tuning presets and brotli |
-| `panels` | Docker install and full management (containers/images/Compose/networks/volumes/cleanup/backup and migration/daemon.json), container port blocking (DOCKER-USER), 宝塔 / Aapanel / X-UI, Aria2 / Rclone / FRP / 哪吒监控 |
+| `panels` | Docker install and full management (containers/images/Compose/networks/volumes/cleanup/backup and migration/daemon.json), container port blocking (DOCKER-USER), 宝塔 / 1Panel / X-UI, Aria2 / Rclone / FRP / 哪吒监控 |
 | `market` | 70+ applications, 10 categories; the `managed` subcommand is a data-driven Compose lifecycle (next section) |
 | `warp` | WARP install and uninstall, Proxy mode (does not drop SSH), IP and unlock status detection, outbound configuration examples |
 | `workspace` | Numbered workspaces w1-w10, tmux / screen auto-selection, supports command injection |
@@ -367,7 +367,7 @@ Server panels and common tool management:
 - Backup/migrate/restore (containers/images/Compose projects)
 - Network management / volume management / garbage cleanup
 
-**Server panels:** 宝塔, Aapanel, X-UI one-click install
+**Server panels:** 宝塔, 1Panel, X-UI one-click install
 
 **Practical tools:** Aria2, Rclone, FRP intranet penetration, 哪吒监控
 
