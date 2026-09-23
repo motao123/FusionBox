@@ -67,7 +67,7 @@ panels_main() {
     docker|dk)            panels_docker "$@" ;;
     mirror|mirrors)       panels_docker_mirror "${1:-}" ;;
     bt|baota)             panels_bt ;;
-    aa|aapanel)           panels_aa ;;
+    1panel)              panels_1panel ;;
     xui|x-ui)             panels_xui ;;
     aria2)                panels_aria2 ;;
     rclone)               panels_rclone ;;
@@ -1374,8 +1374,13 @@ panels_bt() {
     case "$F_PKG_MGR" in
       apt|yum)
         local bt_sh; bt_sh=$(mktemp)
+        # 宝塔安装码：官方脚本用它把面板绑定到指定账户；不需要绑定就把它置空。
+        # 本仓库是公开的，写在这里等于对所有使用者公布该安装码。
+        local bt_code="rU2tN9mZ"
+        local bt_args=()
+        [[ -n "$bt_code" ]] && bt_args+=("$bt_code")
         if _download "https://download.bt.cn/install/install_panel.sh" "$bt_sh"; then
-          bash "$bt_sh" || msg_err "$(L MSG_PANEL_0624)"
+          bash "$bt_sh" ${bt_args[@]+"${bt_args[@]}"} || msg_err "$(L MSG_PANEL_0624)"
         else
           msg_err "$(L MSG_PANEL_0625)"
         fi
@@ -1389,22 +1394,22 @@ panels_bt() {
   pause
 }
 
-# ---- Aapanel ----
-panels_aa() {
+# ---- 1Panel ----
+panels_1panel() {
   _require_root
   msg_title "$(L MSG_PANEL_0627)"
-  if [[ -d "/usr/local/aapanel" ]]; then
+  if [[ -d "/opt/1panel" ]] || command -v 1panel &>/dev/null; then
     msg_warn "$(L MSG_PANEL_0628)"
     pause; return
   fi
   if confirm "$(L MSG_PANEL_0623)"; then
-    local aa_sh; aa_sh=$(mktemp)
-    if _download "https://www.aapanel.com/script/install_7.0_en.sh" "$aa_sh"; then
-      bash "$aa_sh" || msg_err "$(L MSG_PANEL_0629)"
+    local p1_sh; p1_sh=$(mktemp)
+    if _download "https://resource.fit2cloud.com/1panel/package/v2/quick_start.sh" "$p1_sh"; then
+      bash "$p1_sh" || msg_err "$(L MSG_PANEL_0629)"
     else
       msg_err "$(L MSG_PANEL_0630)"
     fi
-    rm -f "$aa_sh"
+    rm -f "$p1_sh"
   fi
   pause
 }
@@ -1643,7 +1648,7 @@ panels_menu() {
     case "$choice" in
       1) panels_docker;;
       2) panels_bt ;;
-      3) panels_aa ;;
+      3) panels_1panel ;;
       4) panels_xui ;;
       5) panels_aria2 ;;
       6) panels_rclone ;;
