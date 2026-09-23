@@ -163,7 +163,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 > 上表为本地测试资产的验证结论；`tests/` 不入库，完整回归在本地与验证服务器执行。
 
-CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径：`syntax`（脚本语法 + Python 产物 + i18n 双语契约审计 + 五处版本一致性）→ `release`（仅 tag 触发，产出校验过的发布包）。**测试资产不入库**：`tests/` 只存本地与验证服务器（`.gitignore` 屏蔽 + `.gitattributes` 的 `export-ignore` 双保险，发布包本就不含测试），完整回归在本地与真机执行。
+CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径：`syntax`（脚本语法 + Python 产物 + i18n 双语契约审计 + 六处版本一致性，含面向使用者的 `docs/release-notes.md`）→ `release`（仅 tag 触发，产出校验过的发布包）。**测试资产不入库**：`tests/` 只存本地与验证服务器（`.gitignore` 屏蔽 + `.gitattributes` 的 `export-ignore` 双保险，发布包本就不含测试），完整回归在本地与真机执行。
 
 ---
 

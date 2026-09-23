@@ -82,7 +82,9 @@ jobs:
           grep -Fq "version-$version" README.md
           grep -Fq "v$version" docs/index.html
           grep -Fq "v$version" docs/implementation-status.md
-          echo "version.txt / init.sh / README / Pages / 实施状态 版本一致: $version"
+          # 升级提示与 Release 说明取自 docs/release-notes.md 的当前版本小节，缺了就等于发版不写说明
+          head -n 200 docs/release-notes.md | grep -m1 -q "^## v$version\([[:space:]]\|$\)"             || { echo "docs/release-notes.md 顶部小节不是 v$version（发版前必须补写面向使用者的说明）"; exit 1; }
+          echo "version.txt / init.sh / README / Pages / 实施状态 / 使用者说明 版本一致: $version"
 
   # ---------------------------------------------------------------- 打标签时发布
   release:

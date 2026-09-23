@@ -164,7 +164,7 @@ Run from scratch on a **freshly installed Ubuntu 22.04** (Docker CE 29.8.1 + Com
 
 > The table above is the verification conclusion for the local test assets; `tests/` is not committed to the repo, full regression runs locally and on the verification server.
 
-CI only does static checks (see below), and both repos (GitHub / CNB) use the same pipeline: `syntax` (script syntax + Python artifacts + i18n bilingual contract audit + version consistency across five places) -> `release` (tag-triggered only, produces a verified release package). **Test assets are not committed**: `tests/` lives only locally and on the verification server (`.gitignore` blocks it and `.gitattributes` sets `export-ignore`, a double lock; the release package never contains tests anyway), full regression runs locally and on real hardware.
+CI only does static checks (see below), and both repos (GitHub / CNB) use the same pipeline: `syntax` (script syntax + Python artifacts + i18n bilingual contract audit + version consistency across six places, including the user-facing `docs/release-notes.md`) -> `release` (tag-triggered only, produces a verified release package). **Test assets are not committed**: `tests/` lives only locally and on the verification server (`.gitignore` blocks it and `.gitattributes` sets `export-ignore`, a double lock; the release package never contains tests anyway), full regression runs locally and on real hardware.
 
 ---
 
