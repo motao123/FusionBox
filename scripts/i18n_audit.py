@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""i18n 审计：语言包一致性、英文包纯净度、覆盖进度、install.sh 内置表漂移。
+"""i18n 审计：语言包一致性、英文包纯净度、覆盖进度、install.sh 内置表漂移、数据数组字面量。
 
 用法：
-    python3 scripts/i18n_audit.py            # 全部检查（一致性/纯净度/内置表）
+    python3 scripts/i18n_audit.py            # 全部检查（一致性/纯净度/内置表/数据数组）
     python3 scripts/i18n_audit.py --coverage # 追加：各文件未抽取文案计数（信息性）
     python3 scripts/i18n_audit.py --max-untranslated N   # 覆盖率棘轮（超过 N 视为失败）
 
-退出码：0 全部通过；1 有硬性失败（键不一致 / 英文含中文 / 内置表漂移 / 超棘轮）。
+退出码：0 全部通过；1 有硬性失败（键不一致 / 英文含中文 / 内置表漂移 /
+        数据数组含未走语言包的中文条目 / 超棘轮）。
 """
 import argparse
 import io
@@ -19,6 +20,16 @@ I18N = os.path.join(ROOT, 'src', 'i18n')
 KEY_RE = re.compile(r'^([A-Z][A-Z0-9_]*)="((?:[^"\\]|\\.)*)"', re.M)
 CJK_RE = re.compile('[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef\u2018\u2019\u201c\u201d\u2014\u2026\u3001\u3002]')
 SPEC_RE = re.compile(r'%(?:s|d|i|f|x|X|o|e|g|u|c)')
+# bash 数组字面量：NAME=(\n ... \n) —— 用于扫描数据表里的未抽取条目
+ARRAY_RE = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=\(\n(.*?)^\)', re.M | re.S)
+
+# 约定「条目 100% 走语言包」的数据表（棘轮基线：2026-09-23 实测全部 100% 键式）。
+# 往这些数组里加字面量条目即为未抽取文案。标识符型数组（P_PROTOCOLS / P_BACKENDS /
+# CLUSTER_GAMES 的纯 ASCII 条目）不在此列——它们本来就不该有键。
+KEYED_ARRAYS = {
+    'MARKET_APPS', 'SYSTEM_TZ_PRESETS', 'PANELS_DOCKER_MIRRORS',
+    'CLUSTER_TASKS', 'NETWORK_BENCH_ITEMS',
+}
 
 # 英文包里允许保留的中文（仅有「语言自称」这类必须写原名的场景）
 EN_CJK_ALLOW = set()
@@ -105,6 +116,46 @@ def count_untranslated(files):
     return rows, total
 
 
+def check_data_arrays(files, problems):
+    """数据数组的抽取检查。
+
+    `count_untranslated()` 只扫 msg/echo/printf 这类**文案出口**，看不见数组里的条目，
+    所以 v1.43.0 的 `MARKET_APPS` Warp 条目（英文说明、未走语言包）能一路混过 --coverage
+    报 0。这里补两条正交的规矩：
+
+    1. 棘轮：`KEYED_ARRAYS` 里的数组今天 100% 走语言包，出现任何非 `$(L ...)` 条目即为
+       未抽取文案——**与语种无关**（那条漏网的正是纯英文，只查中文会再次放过它）。
+    2. 兜底：任何数组条目里出现中文字面量且未走语言包，一律失败。
+       标识符型数组（P_PROTOCOLS 的 `"VLESS-TCP" "vless" "tcp"`、CLUSTER_GAMES 的
+       `minecraft-java|Minecraft Java|...`）不含中文，天然不受影响。
+    """
+    arrays = entries = 0
+    for rel in files:
+        p = os.path.join(ROOT, rel)
+        if not os.path.isfile(p):
+            continue
+        src = io.open(p, encoding='utf-8').read()
+        for m in ARRAY_RE.finditer(src):
+            name, body, base = m.group(1), m.group(2), m.start(2)
+            rows = [(i, l.strip()) for i, l in enumerate(body.split('\n'))
+                    if l.strip().startswith('"')]
+            if not rows:
+                continue
+            arrays += 1
+            entries += len(rows)
+            for i, row in rows:
+                if '$(L ' in row:
+                    continue
+                ln = src[:base].count('\n') + i + 1
+                if name in KEYED_ARRAYS:
+                    problems.append('%s:%d 数组 %s 约定全量走语言包，出现字面量条目: %s'
+                                    % (rel, ln, name, row[:60]))
+                elif CJK_RE.search(row):
+                    problems.append('%s:%d 数组 %s 的条目含中文却未走语言包: %s'
+                                    % (rel, ln, name, row[:60]))
+    return arrays, entries
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--coverage', action='store_true')
@@ -120,6 +171,7 @@ def main():
     check_parity(zh, en, problems)
     check_en_purity(en, problems)
     check_install_table(zh, en, problems)
+    arrays, entries = check_data_arrays(ALL_FILES, problems)
 
     if args.coverage:
         # 全仓覆盖进度
@@ -141,7 +193,9 @@ def main():
         return 1
     if not args.quiet:
         print('i18n 审计通过：zh_CN %d 键 / en %d 键，键与占位符完全一致，英文包无中文，'
-              'install.sh 内置表与语言包同步' % (len(zh), len(en)))
+              'install.sh 内置表与语言包同步；数据数组扫描 %d 个 / %d 条目，'
+              '棘轮数组 %s 保持全量键式'
+              % (len(zh), len(en), arrays, entries, '/'.join(sorted(KEYED_ARRAYS))))
     return 0
 
 

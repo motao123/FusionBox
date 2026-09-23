@@ -11,8 +11,11 @@
 - **为什么之前没被发现**：v1.43.0 的「全仓未抽取归零」结论本身没错，但 `scripts/i18n_audit.py --coverage`
   只扫描 `msg/echo/printf` 等文案出口，**不检查数据数组里的字面量**，所以这类漏网条目不会让审计变红。
   本条不改写 v1.43.0 的历史记录，只在此补记实际缺口。
-- 待办：让审计器同时扫描 `MARKET_APPS` / `SYSTEM_TZ_PRESETS` 这类数据数组的字面量条目，
-  使同类缺口下次能自动暴露
+- **已给审计器补上这条盲区**：`scripts/i18n_audit.py` 新增数据数组检查——`MARKET_APPS` /
+  `SYSTEM_TZ_PRESETS` / `PANELS_DOCKER_MIRRORS` / `CLUSTER_TASKS` / `NETWORK_BENCH_ITEMS`
+  这 5 个约定全量键式的数组，出现任何字面量条目即失败（**与语种无关**，漏网的正是纯英文条目）；
+  另加兜底规则：任何数组条目含中文且未走语言包一律失败。标识符型数组
+  （`P_PROTOCOLS` 的 `"VLESS-TCP" "vless" "tcp"`、`CLUSTER_GAMES` 的纯 ASCII 条目）不受影响
 
 ## v1.43.0 双语支持第二批：模块层 100% 双语（全仓文案收口）
 
