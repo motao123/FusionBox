@@ -1504,7 +1504,11 @@ volumes:
 ACEOF
   chmod 600 "$app_dir/docker-compose.yml"
 
-  # Fallback: use generic PHP+MySQL if specific image not available
+  cd "$app_dir" || return 1
+  if ! docker compose up -d 2>/dev/null; then
+    # 只有专用镜像拉不下来时才回落到通用 PHP+MySQL 编排。原实现在这里无条件覆盖
+    # 同一个文件，maccms 编排从未生效，点出来的永远是空 docroot 的 php:8.1-apache
+    docker compose down 2>/dev/null
   cat > "$app_dir/docker-compose.yml" << ACEOF2
 version: '3.8'
 services:
@@ -1533,12 +1537,11 @@ volumes:
   ac_db:
   ac_data:
 ACEOF2
-  chmod 600 "$app_dir/docker-compose.yml"
-
-  cd "$app_dir" || return 1
-  if ! docker compose up -d 2>/dev/null; then
-    msg_err "$(L MSG_WEB_0810)"
-    pause; return 1
+    chmod 600 "$app_dir/docker-compose.yml"
+    if ! docker compose up -d 2>/dev/null; then
+      msg_err "$(L MSG_WEB_0810)"
+      pause; return 1
+    fi
   fi
   msg_ok "$(L MSG_WEB_0833)"
   msg "$(L MSG_WEB_0834 "$(hostname -I | awk '{print $1}')")"
