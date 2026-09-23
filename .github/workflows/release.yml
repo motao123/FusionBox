@@ -52,6 +52,20 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
+      - name: README bilingual sync gate (docs drift)
+        run: |
+          set -e
+          python3 scripts/docs_readme_gate.py
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+
+      - name: Pages facts gate (numbers derived from source)
+        run: |
+          set -e
+          python3 scripts/site_facts.py
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+
       - name: Release version consistency
         run: |
           set -e
