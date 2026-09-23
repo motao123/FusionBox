@@ -1265,7 +1265,7 @@ services:
     container_name: halo
     restart: always
     ports:
-      - "8090:8090"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
+      - "127.0.0.1:8090:8090"
     volumes:
       - halo_data:/root/.halo2
     command:
@@ -1284,7 +1284,7 @@ HAEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0820)"
-  msg "$(L MSG_WEB_0821 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0821)"
   _log_write "$(L MSG_WEB_0820)"
   pause
 }
@@ -1365,7 +1365,7 @@ services:
     container_name: kodexplorer
     restart: always
     ports:
-      - "8083:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
+      - "127.0.0.1:8083:80"
     volumes:
       - ./data:/code/data
 KDEOF
@@ -1377,7 +1377,7 @@ KDEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0825)"
-  msg "$(L MSG_WEB_0826 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0826)"
   _log_write "$(L MSG_WEB_0825)"
   pause
 }
@@ -1697,7 +1697,7 @@ services:
     container_name: linkstack
     restart: always
     ports:
-      - "8087:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
+      - "127.0.0.1:8087:80"
     environment:
       TZ: Asia/Shanghai
     volumes:
@@ -1711,7 +1711,7 @@ LLEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0843)"
-  msg "$(L MSG_WEB_0844 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0844)"
   _log_write "$(L MSG_WEB_0843)"
   pause
 }
@@ -1730,7 +1730,7 @@ services:
     container_name: bitwarden
     restart: always
     ports:
-      - "8088:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
+      - "127.0.0.1:8088:80"
     environment:
       WEBSOCKET_ENABLED: "true"
       SIGNUPS_ALLOWED: "false"
@@ -1745,7 +1745,7 @@ BWEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0845)"
-  msg "$(L MSG_WEB_0846 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0846)"
   _log_write "$(L MSG_WEB_0847)"
   pause
 }
@@ -1764,7 +1764,7 @@ services:
     container_name: uptime-kuma
     restart: always
     ports:
-      - "3001:3001"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
+      - "127.0.0.1:3001:3001"
     volumes:
       - ./data:/app/data
 UKEOF
@@ -1776,7 +1776,7 @@ UKEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0848)"
-  msg "$(L MSG_WEB_0849 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0849)"
   _log_write "$(L MSG_WEB_0848)"
   pause
 }
@@ -1824,7 +1824,7 @@ services:
     container_name: memos
     restart: always
     ports:
-      - "5230:5230"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
+      - "127.0.0.1:5230:5230"
     volumes:
       - ./data:/var/opt/memos
 MEOF
@@ -1836,7 +1836,7 @@ MEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0852)"
-  msg "$(L MSG_WEB_0853 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0853)"
   _log_write "$(L MSG_WEB_0852)"
   pause
 }
