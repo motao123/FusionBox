@@ -490,7 +490,7 @@ fusionbox cluster kcmd           # Configure the k command shortcuts
 - The per-application verification scope of managed apps follows each template's own documentation; gaps and to-dos are reconciled item by item in the implementation tracking document
 - Anonymous usage statistics are **off by default**, and you can opt in explicitly on the first interactive install; only a random install identifier, the version, coarse system/architecture information and fixed events are sent, see [the privacy note](docs/privacy.md)
 - The statistics Worker is deployed and aggregates through Cloudflare D1; Pages shows the de-duplicated cumulative anonymous install count
-- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3248 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
+- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3249 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
   unextracted strings repo-wide are 0 (enforced key by key by scripts/i18n_audit.py), conventions in [docs/i18n.md](docs/i18n.md)
 - Raw output from third-party tools (docker/certbot/apt) and brand proper nouns are not translated
 - Commercial advertising systems, affiliate promotions and the private KPanel/.kpb protocol are not part of the capability scope
