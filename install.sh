@@ -18,9 +18,12 @@ msg_info(){ msg "${CYAN}[INFO]${RESET} $*"; }
 # ── 语言包（安装器双语文案）──────────────────────────────────────────────
 # 下载/解压之前仓库文件尚未就位，用内置表兜底；解压出 src/i18n 后切换为完整语言包。
 # 内置表由 scripts/i18n_extract.py 的同源数据生成，tests/test_i18n.py 会校验不漂移。
-case "${FUSION_LANG:-${LANG:-en}}" in
-  zh*) FUSION_ILANG=zh_CN ;;
-  *)   FUSION_ILANG=en ;;
+# 与运行时 src/lib/i18n.sh 的 auto 规则保持一致：只有显式英文（FUSION_LANG=en* 或 LANG=en*）
+# 才用英文，其余（zh_*、C、POSIX、未设置）一律中文。原先的 LANG:-en 兜底会让 Ubuntu 云镜像
+# 默认的 C.UTF-8 装出英文界面，而装完之后的菜单本身是中文的。
+case "${FUSION_LANG:-${LANG:-zh_CN}}" in
+  en*|EN*) FUSION_ILANG=en ;;
+  *)       FUSION_ILANG=zh_CN ;;
 esac
 
 declare -A _IL_ZH=() _IL_EN=()
@@ -70,6 +73,7 @@ _IL_ZH[MSG_INST_0016]="依赖安装失败: %s"
 _IL_ZH[MSG_INST_0017]="正在下载 FusionBox..."
 _IL_ZH[MSG_INST_0018]="main 分支快照下载失败"
 _IL_ZH[MSG_INST_0019]="Release 资产下载或 SHA256 校验失败；为避免降级安装未校验内容，安装已停止"
+_IL_ZH[MSG_INST_0034]="正在打开主菜单；退出后可随时用 fusionbox 再次进入"
 _IL_EN[MSG_INST_0001]="Please run as root"
 _IL_EN[MSG_INST_0002]="Unsupported architecture: %s"
 _IL_EN[MSG_INST_0003]="  %sFusionBox installer %s%s"
@@ -86,7 +90,7 @@ _IL_EN[MSG_INST_0016]="Dependency install failed: %s"
 _IL_EN[MSG_INST_0017]="Downloading FusionBox..."
 _IL_EN[MSG_INST_0018]="Failed to download the main branch snapshot"
 _IL_EN[MSG_INST_0019]="Release asset download or SHA256 verification failed; installation stopped to avoid installing unverified content"
-
+_IL_EN[MSG_INST_0034]="Opening the main menu; run fusionbox again any time after you exit"
 
 [[ $EUID -ne 0 ]] && msg_err "$(L MSG_INST_0001)" && exit 1
 
@@ -300,6 +304,15 @@ rm -rf "$TMPDIR"
 msg ""
 msg_ok "$(L MSG_INST_0024)"
 _finish_install_telemetry
+
+# 交互式安装完直接进主菜单（fusionbox 无参数即主菜单）。curl | bash 时 stdin 是脚本本身、
+# -t 0 为假，会走下面的用法提示分支，不会把剩余脚本行当成菜单输入吃掉。
+if [[ -t 0 && -t 1 ]]; then
+  msg ""
+  msg_info "$(L MSG_INST_0034)"
+  exec "$FUSION_BIN"
+fi
+
 msg ""
 msg "$(L MSG_INST_0025 "${BOLD}" "${RESET}")"
 msg "$(L MSG_INST_0026 "${CYAN}" "${RESET}")"
