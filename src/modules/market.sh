@@ -77,7 +77,7 @@ MARKET_APPS=(
   "$(L MSG_MARKET_0277)"
   "$(L MSG_MARKET_0278)"
   "$(L MSG_MARKET_0279)"
-  "utility:Warp:cloudflare-warp:Cloudflare WARP VPN"
+  "$(L MSG_MARKET_0429)"
   "$(L MSG_MARKET_0280)"
   "$(L MSG_MARKET_0281)"
   "$(L MSG_MARKET_0282)"

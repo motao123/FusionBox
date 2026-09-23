@@ -2989,6 +2989,7 @@ MSG_MARKET_0425="  %s5%s) 移除应用"
 MSG_MARKET_0426="  %s6%s) 受管应用生命周期（catalog 查看全部 %s 个；localhost/保留数据）"
 MSG_MARKET_0427="  %s0%s) 返回主菜单"
 MSG_MARKET_0428="请选择 [0-6]: "
+MSG_MARKET_0429="utility:Warp:cloudflare-warp:Cloudflare WARP 加速器"
 
 # ---- workspace 模块 ----
 MSG_WS_0093="screen 已安装"
