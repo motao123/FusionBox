@@ -13,6 +13,8 @@
 [![GitHub 主包下载量](https://img.shields.io/endpoint?url=https%3A%2F%2Fmotao123.github.io%2FFusionBox%2Fgenerated%2Fgithub-downloads-shield.json)](https://github.com/motao123/FusionBox/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/motao123/FusionBox)](https://github.com/motao123/FusionBox/stargazers)
 
+[简体中文](README.md) | [English](README.en.md)
+
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
 ```
@@ -493,8 +495,8 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
 - 统计 Worker 已部署并使用 Cloudflare D1 聚合；Pages 显示的是去重后的累计匿名装机数
-- **双语口径**：核心层（主菜单/全局帮助/通用提示/安装器）为两套完整语言包，英文模式无中文；
-  模块层菜单与提示仍在分批抽取（约 2500 条），进度与约定见 [docs/i18n.md](docs/i18n.md)
+- **双语口径**：核心层与 9 个模块层均已走语言包（zh_CN / en 各 3247 键，逐键对等），英文模式零中文；
+  全仓未抽取文案 0 条（由 scripts/i18n_audit.py 逐键强制），约定见 [docs/i18n.md](docs/i18n.md)
 - 第三方工具（docker/certbot/apt）的原始输出与品牌专有名词不做翻译
 - 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围
 
@@ -617,10 +619,12 @@ FusionBox/
 <details>
 <summary><strong>文档索引</strong></summary>
 
+> 除标注 English 者外，下列文档目前只提供中文。
+
 - [实施范围与逐项对账（G 表）](docs/implementation-status.md)
 - [未完成项与可执行方案](docs/roadmap.md)
 - [匿名统计与隐私说明](docs/privacy.md)
-- [声明式应用目录与高权限边界](docs/market-catalog.md)
+- [声明式应用目录与高权限边界](docs/market-catalog.md)（English）
 - [界面语言与本地化约定](docs/i18n.md)
 - [完整变更历史](docs/CHANGELOG.md)
 - [项目主页（Pages）](https://motao123.github.io/FusionBox/)

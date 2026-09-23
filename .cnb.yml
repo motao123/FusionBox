@@ -72,6 +72,8 @@ main:
             python3 -m py_compile src/lib/*.py scripts/*.py
             python3 src/lib/market_apps.py catalog >/dev/null
             python3 scripts/i18n_audit.py
+            python3 scripts/docs_readme_gate.py
+            python3 scripts/site_facts.py
             echo "All shipped code checks passed"
 
   pull_request:
@@ -90,4 +92,6 @@ main:
             python3 -m py_compile src/lib/*.py scripts/*.py
             python3 src/lib/market_apps.py catalog >/dev/null
             python3 scripts/i18n_audit.py
+            python3 scripts/docs_readme_gate.py
+            python3 scripts/site_facts.py
             echo "All shipped code checks passed"
