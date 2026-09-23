@@ -302,9 +302,9 @@ _update_validate_archive() {
   done
 }
 
-# Extract the release notes for one version from a CHANGELOG file.
+# Extract one version的说明段落（来自面向使用者的 docs/release-notes.md）。
 # Prints the section body (without trailing blank lines) and returns 0 when found.
-_update_changelog_section() {
+_update_release_notes_section() {
   local file="$1" version="$2"
   [[ -f "$file" && ! -L "$file" ]] || return 1
   local prefix="$version"
@@ -325,9 +325,9 @@ _update_changelog_section() {
 
 # Show what changed in this update, read from the (already verified) extracted archive.
 _update_show_notes() {
-  local root="$1" version="$2" changelog body
-  changelog="$root/docs/CHANGELOG.md"
-  body="$(_update_changelog_section "$changelog" "$version")" || {
+  local root="$1" version="$2" notes body
+  notes="$root/docs/release-notes.md"
+  body="$(_update_release_notes_section "$notes" "$version")" || {
     msg "  $(_tr MSG_UPDATE_NOTES_UNAVAILABLE)"
     return 0
   }
