@@ -320,7 +320,7 @@ services:
     container_name: ${project}_app
     restart: always
     ports:
-      - "80:80"
+      - "80:80"  # fb-expose: 站点入口需公网 80
     volumes:
       - ./html:/usr/share/nginx/html
 YEOF

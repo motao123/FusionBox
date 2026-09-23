@@ -301,6 +301,10 @@ server {
     root $web_root;
     index index.html index.php;
 
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
     location / {
         try_files \$uri \$uri/ =404;
     }
@@ -591,6 +595,13 @@ _web_acme_write_tls() {
     printf '    listen %s ssl;\n    server_name %s;\n' "$_WEB_ACME_HTTPS_PORT" "$domain"
     printf '    ssl_certificate %s;\n    ssl_certificate_key %s;\n' "$cert" "$key"
     printf '    ssl_protocols TLSv1.2 TLSv1.3;\n'
+    printf '    add_header X-Content-Type-Options "nosniff" always;\n'
+    printf '    add_header X-Frame-Options "SAMEORIGIN" always;\n'
+    printf '    add_header Referrer-Policy "strict-origin-when-cross-origin" always;\n'
+    # HSTS 故意不自动下发：一旦下发，浏览器会在 max-age 内强制该主机走 HTTPS，
+    # 证书后续失效时用户连回退明文的机都没有——要加请在此块内手动写
+    # add_header Strict-Transport-Security "max-age=31536000" always;
+    printf '# HSTS is opt-in here; see FusionBox docs before enabling (browser-side lock-in risk)\n'
     if [[ -n "$proxy" ]]; then
       printf '    location / {\n        proxy_pass %s;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n' "$proxy"
     else
@@ -932,7 +943,7 @@ web_firewall() {
     # Add security headers in http block if not present
     if grep -q "X-Content-Type-Options" "$nginx_conf" 2>/dev/null; then
       msg_info "$(L MSG_WEB_0766)"
-    elif sed -i '/http {/a\    add_header X-Content-Type-Options nosniff;\n    add_header X-Frame-Options SAMEORIGIN;\n    add_header X-XSS-Protection "1; mode=block";' "$nginx_conf" 2>/dev/null; then
+    elif sed -i '/http {/a\    add_header X-Content-Type-Options nosniff;\n    add_header X-Frame-Options SAMEORIGIN;\n    add_header Referrer-Policy strict-origin-when-cross-origin;' "$nginx_conf" 2>/dev/null; then
       msg_ok "$(L MSG_WEB_0767)"
     else
       msg_warn "$(L MSG_WEB_0768)"
@@ -1145,7 +1156,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8080:80"
+      - "8080:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       WORDPRESS_DB_HOST: db:3306
       WORDPRESS_DB_USER: wp
@@ -1212,7 +1223,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8081:80"
+      - "8081:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       TYPECHO_DB_ADAPTER: Pdo_Mysql
       TYPECHO_DB_HOST: db
@@ -1254,7 +1265,7 @@ services:
     container_name: halo
     restart: always
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
     volumes:
       - halo_data:/root/.halo2
     command:
@@ -1273,7 +1284,7 @@ HAEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0820)"
-  msg "$(L MSG_WEB_0821 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0821)"
   _log_write "$(L MSG_WEB_0820)"
   pause
 }
@@ -1313,7 +1324,7 @@ services:
       - db
       - redis
     ports:
-      - "8082:80"
+      - "8082:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       DB_HOST: db
       DB_NAME: discuz
@@ -1354,7 +1365,7 @@ services:
     container_name: kodexplorer
     restart: always
     ports:
-      - "8083:80"
+      - "127.0.0.1:8083:80"
     volumes:
       - ./data:/code/data
 KDEOF
@@ -1366,7 +1377,7 @@ KDEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0825)"
-  msg "$(L MSG_WEB_0826 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0826)"
   _log_write "$(L MSG_WEB_0825)"
   pause
 }
@@ -1400,7 +1411,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8084:80"
+      - "8084:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       MYSQL_HOST: db
       MYSQL_DATABASE: nextcloud
@@ -1440,7 +1451,7 @@ services:
     container_name: alist
     restart: always
     ports:
-      - "5244:5244"
+      - "5244:5244"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ./data:/opt/alist/data
     environment:
@@ -1494,7 +1505,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8085:80"
+      - "8085:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ac_data:/var/www/html
 
@@ -1529,7 +1540,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8085:80"
+      - "8085:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ac_data:/var/www/html
 
@@ -1563,7 +1574,7 @@ services:
     container_name: emby
     restart: always
     ports:
-      - "8096:8096"
+      - "8096:8096"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       - UID=0
       - GID=0
@@ -1599,7 +1610,7 @@ services:
     container_name: jellyfin
     restart: always
     ports:
-      - "8097:8096"
+      - "8097:8096"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     volumes:
       - ./config:/config
       - ./cache:/cache
@@ -1647,7 +1658,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8086:8888"
+      - "8086:8888"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
     environment:
       DB_HOST: db
       DB_NAME: flarum
@@ -1689,7 +1700,7 @@ services:
     container_name: linkstack
     restart: always
     ports:
-      - "8087:80"
+      - "127.0.0.1:8087:80"
     environment:
       TZ: Asia/Shanghai
     volumes:
@@ -1703,7 +1714,7 @@ LLEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0843)"
-  msg "$(L MSG_WEB_0844 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0844)"
   _log_write "$(L MSG_WEB_0843)"
   pause
 }
@@ -1722,10 +1733,10 @@ services:
     container_name: bitwarden
     restart: always
     ports:
-      - "8088:80"
+      - "127.0.0.1:8088:80"
     environment:
       WEBSOCKET_ENABLED: "true"
-      SIGNUPS_ALLOWED: "true"
+      SIGNUPS_ALLOWED: "false"
     volumes:
       - ./data:/data
 BWEOF
@@ -1737,7 +1748,7 @@ BWEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0845)"
-  msg "$(L MSG_WEB_0846 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0846)"
   _log_write "$(L MSG_WEB_0847)"
   pause
 }
@@ -1756,7 +1767,7 @@ services:
     container_name: uptime-kuma
     restart: always
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     volumes:
       - ./data:/app/data
 UKEOF
@@ -1768,7 +1779,7 @@ UKEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0848)"
-  msg "$(L MSG_WEB_0849 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0849)"
   _log_write "$(L MSG_WEB_0848)"
   pause
 }
@@ -1787,7 +1798,7 @@ services:
     container_name: it-tools
     restart: always
     ports:
-      - "8880:80"
+      - "8880:80"  # fb-expose: 需浏览器直连，公网面交给 web 模块的防火墙与反向代理收口
 ITEOF
   chmod 600 "$app_dir/docker-compose.yml"
 
@@ -1816,7 +1827,7 @@ services:
     container_name: memos
     restart: always
     ports:
-      - "5230:5230"
+      - "127.0.0.1:5230:5230"
     volumes:
       - ./data:/var/opt/memos
 MEOF
@@ -1828,7 +1839,7 @@ MEOF
     pause; return 1
   fi
   msg_ok "$(L MSG_WEB_0852)"
-  msg "$(L MSG_WEB_0853 "$(hostname -I | awk '{print $1}')")"
+  msg "$(L MSG_WEB_0853)"
   _log_write "$(L MSG_WEB_0852)"
   pause
 }
@@ -1920,6 +1931,10 @@ server {
 
     ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     location / {
         proxy_pass http://$backend;
