@@ -174,7 +174,7 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Bilingual support closed out (second batch: module layer 100% bilingual)**: all 9 modules now go through the language packs, **3247 keys** (Chinese and English equal key for key) - in Chinese mode the output is **byte-for-byte identical** to v1.42.0 (diff=0 across 30 read-only scenarios), and in English mode the help, menus and entry output contain **0 Chinese characters**
+- **Bilingual support closed out (second batch: module layer 100% bilingual)**: all 9 modules now go through the language packs, **3248 keys** (Chinese and English equal key for key) - in Chinese mode the output is **byte-for-byte identical** to v1.42.0 (diff=0 across 30 read-only scenarios), and in English mode the help, menus and entry output contain **0 Chinese characters**
 - **The extractor covers every user-facing output site**: besides the output functions it also handles interactive arguments such as `read -p`/`confirm`/`select_option`, the `_log_write`/`_require_*` guards, variable assignments (status labels), and the menus and data tables (74 application-catalog entries, 13 benchmark-matrix rows, 29 timezone presets)
 - **Zero unextracted strings left in the whole repo**: section 22 of `run_checks.sh` is upgraded to repository-wide enforcement, so a new Chinese literal output site turns the gate red immediately
 - **Measured numbers**: on real hardware (Ubuntu 22.04) the gate is **193/193** (root and non-root), the full suite is bash **229** items + Python **764** items (34 modules) with zero failures; the Chinese comparison matches v1.42.0, the English output has zero Chinese
@@ -496,7 +496,7 @@ fusionbox cluster kcmd           # Configure the k command shortcuts
 - The per-application verification scope of managed apps follows each template's own documentation; gaps and to-dos are reconciled item by item in the implementation tracking document
 - Anonymous usage statistics are **off by default**, and you can opt in explicitly on the first interactive install; only a random install identifier, the version, coarse system/architecture information and fixed events are sent, see [the privacy note](docs/privacy.md)
 - The statistics Worker is deployed and aggregates through Cloudflare D1; Pages shows the de-duplicated cumulative anonymous install count
-- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3247 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
+- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3248 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
   unextracted strings repo-wide are 0 (enforced key by key by scripts/i18n_audit.py), conventions in [docs/i18n.md](docs/i18n.md)
 - Raw output from third-party tools (docker/certbot/apt) and brand proper nouns are not translated
 - Commercial advertising systems, affiliate promotions and the private KPanel/.kpb protocol are not part of the capability scope

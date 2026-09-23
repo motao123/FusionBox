@@ -2,6 +2,18 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## 未发布 · 修补：应用市场目录仍有 1 条文案未走语言包
+
+- `src/modules/market.sh` 的 `MARKET_APPS` 里，`"utility:Warp:cloudflare-warp:Cloudflare WARP VPN"`
+  是 75 条中唯一一条硬编码（其余 74 条均为 `$(L MSG_MARKET_xxxx)`），中文模式下这一行的说明会显示英文
+- 已改为键式取值：新增 `MSG_MARKET_0429`，中文包补中文说明、英文包保留原英文文案不改写；
+  语言包由 **3247 键 → 3248 键**，中英仍逐键对等
+- **为什么之前没被发现**：v1.43.0 的「全仓未抽取归零」结论本身没错，但 `scripts/i18n_audit.py --coverage`
+  只扫描 `msg/echo/printf` 等文案出口，**不检查数据数组里的字面量**，所以这类漏网条目不会让审计变红。
+  本条不改写 v1.43.0 的历史记录，只在此补记实际缺口。
+- 待办：让审计器同时扫描 `MARKET_APPS` / `SYSTEM_TZ_PRESETS` 这类数据数组的字面量条目，
+  使同类缺口下次能自动暴露
+
 ## v1.43.0 双语支持第二批：模块层 100% 双语（全仓文案收口）
 
 - **9 个模块全部双语化**：system / web / panels / cluster / network / market / workspace /

@@ -2989,6 +2989,7 @@ MSG_MARKET_0425="  %s5%s) Remove app"
 MSG_MARKET_0426="  %s6%s) Managed app lifecycle (catalog lists all %s; localhost/kept data)"
 MSG_MARKET_0427="  %s0%s) Back to main menu"
 MSG_MARKET_0428="Please choose [0-6]: "
+MSG_MARKET_0429="utility:Warp:cloudflare-warp:Cloudflare WARP VPN"
 
 # ---- workspace 模块 ----
 MSG_WS_0093="screen installed"
