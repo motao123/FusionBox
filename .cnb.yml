@@ -10,7 +10,9 @@
   # 仓库级事件（tag_push）只能挂在 $ 兜底分支下
   tag_push:
     - name: release-package
-      docker:
+      # 检查与发布都需要 python3 + bash + coreutils，默认 Runner 镜像不含这些工具。
+      # 此锚点被下面两条 CI 复用；YAML 别名不引入任何新键，解析结果与逐字重复写法等价。
+      docker: &ci-docker
         image: python:3.11
       lock:
         key: fusionbox-release
@@ -56,13 +58,14 @@
               - "SHA256SUMS"
 
 main:
+  # push 与 pull_request 的检查口径必须逐字一致，否则同一个提交在两种触发方式下
+  # 结论不同。这里用锚点定义一次、别名复用一处，改任何检查步骤都只会生效两处。
   push:
     - name: ci
-      docker:
-        image: python:3.11
-      env:
+      docker: *ci-docker
+      env: &ci-env
         PYTHONDONTWRITEBYTECODE: '1'
-      stages:
+      stages: &ci-stages
         - name: syntax
           script: |
             set -e
@@ -78,20 +81,6 @@ main:
 
   pull_request:
     - name: ci
-      docker:
-        image: python:3.11
-      env:
-        PYTHONDONTWRITEBYTECODE: '1'
-      stages:
-        - name: syntax
-          script: |
-            set -e
-            for f in fusion.sh install.sh src/init.sh src/lib/common.sh src/lib/deploy.sh src/modules/*.sh src/i18n/*.sh; do
-              bash -n "$f"
-            done
-            python3 -m py_compile src/lib/*.py scripts/*.py
-            python3 src/lib/market_apps.py catalog >/dev/null
-            python3 scripts/i18n_audit.py
-            python3 scripts/docs_readme_gate.py
-            python3 scripts/site_facts.py
-            echo "All shipped code checks passed"
+      docker: *ci-docker
+      env: *ci-env
+      stages: *ci-stages
