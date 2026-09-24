@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.2-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.3-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -169,15 +169,15 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.2** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.3** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **安全加固（对扫描结果的逐条复核与修复）**：遥测 Worker 的请求体改为带上限的流式读取（分块与 HTTP/2 请求原先会先整体缓冲再判 4096 字节上限）；写入端点不再向浏览器来源开放跨域，通配 CORS 收窄至两个公开只读端点；`version` 字段数值段限长。监控栈模板 `monitoring.yml` 取消内置的 Grafana 管理员口令（缺失时在启动前即失败），面板与 Prometheus 绑定收敛到 127.0.0.1。`web` 模块生成的站点、反向代理与 ACME TLS 配置补齐 `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` 三类安全响应头
-- **默认暴露面收敛**：一键部署中"首个访问者即可获得管理员或完成初始化"的 6 个应用（Halo、KodExplorer、LinkStack、Uptime Kuma、Vaultwarden、Memos）默认只绑定 127.0.0.1，提示语同步给出反向代理与 SSH 隧道两条对外路径；Vaultwarden 默认关闭公开注册
-- **新增交付物断言**：`scripts/deploy_exposure_audit.py` 要求交付的 compose 编排中每个已发布端口要么绑定回环地址、要么就地加一行 `# fb-expose` 注释写明理由，口令类环境变量必须为运行时取值。扫描器只报出 1 处，该断言在仓库内定位到 25 处并已全部显式表态
-- **缺陷修复**：`web` 模块的苹果 CMS 部署原先无条件以回落编排覆盖主编排，专用镜像 `maccms` 从未生效；现改为仅在 `docker compose up` 失败时回落
-- **验证口径**：遥测 Worker 套件 **8/8** 与 `tsc --noEmit` 通过；静态闸门（i18n 3248 键逐键对等、README 双语同步、主页数字派生、端口与凭据棘轮、语法与 Python 产物）本地全绿。**本轮未重跑真机验收**，端口绑定与 nginx 配置变更需在验证服务器确认
+- **安装体验**：安装程序默认中文（修掉 `LANG` 未设置 / `C.UTF-8` 的服务器上装出英文界面的问题），交互式安装完成后直接进入主菜单；装完可直接敲 `fb` 或 `FB` 打开，与 `fusionbox` 等价，且不会覆盖系统里已有的同名命令
+- **面板清单调整**：新增 1Panel 一键安装，移除 Aapanel，宝塔安装改为携带安装码；面板菜单编号不变，第 3 项现为 1Panel
+- **升级说明改成人话**：`fusionbox update` 后打印的"本次更新内容"改自 `docs/release-notes.md`，只写使用者能感知的变化与需要做的动作；升了版本号却不写该说明会让闸门变红
+- **描述修正**：评测矩阵中 TcpQuality 一项原写成"TCP 重传"，实为向全国三网节点做 TCP 质量探测，已改准；`NodeQuality` 与 `TcpQuality` 经核对本已在矩阵内，无需新增
+- **验证口径**：真机（Ubuntu 22.04 / Docker 29.8.1 / nginx 1.18.0）在隔离目录跑真实部署流程验证快捷命令的三种情形并实跑 `fb` / `FB`；CI 静态闸门全绿。**本版未重跑** 193 项完整闸门与真机回归全量（改动集中在安装器、面板安装入口与文案）
 
 ---
 

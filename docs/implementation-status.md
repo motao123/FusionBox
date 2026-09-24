@@ -1,4 +1,6 @@
-# 当前实施状态（v1.43.2）
+# 当前实施状态（v1.43.3）
+
+2026-09-24 本轮（1.43.3）为安装体验与面板清单收口：安装器语言默认值与运行时 auto 规则对齐（`LANG` 未设置或 `C.UTF-8` 不再装出英文界面），交互式安装完成后直接 `exec` 主菜单（管道式安装仍只打印用法），新增 `MSG_INST_0034` 并同步写入 install.sh 内置表以覆盖"新安装脚本 + 旧发布包"的窗口；新增 `fb` / `FB` 快捷命令（与 `fusionbox` 同为指向 `fusion.sh` 的软链接，创建在 `fusion_deploy` 提交之后，安装与更新两条路径都补齐，外部同名命令不覆盖，卸载对称删除）；面板清单换血——加 1Panel（官方 v2 quick_start）、删 Aapanel（四个语言包键原位改写，键数与菜单编号不变）、宝塔安装携带安装码（该码已随公开仓库发布，是否改法待维护者定）；升级说明通道 `docs/release-notes.md` 自本版起生效（PR #38 铺的路，CI 强制"顶部小节版本 == version.txt"）；修正 `MSG_NET_0152` 对 TcpQuality 名不符实的描述，并核实 NodeQuality / TcpQuality 本已在评测矩阵内。验证口径：真机（Ubuntu 22.04 / Docker 29.8.1 / nginx 1.18.0）隔离 base 跑真实 `fusion_deploy` 覆盖三种情形并实跑 `fb version`；四个外部 URL 实测可达；CI 静态闸门全绿。**本版未重跑** 193 项完整闸门与真机回归全量。
 
 2026-09-23 本轮（1.43.2）为安全加固与缺陷修复：逐条复核外部扫描结果后，遥测 Worker 请求体改为带上限的流式读取（分块/HTTP2 原先先整体缓冲再判 4096 上限）、写端点不再向浏览器来源开放跨域（通配 CORS 收窄到两个公开只读端点）、`version` 数值段限长；监控栈模板取消内置 Grafana 口令（缺失即启动前失败）并把面板与 Prometheus 绑定收敛到 127.0.0.1；`web` 模块生成的站点/反代/ACME TLS 配置补齐三类安全响应头（HSTS 与 CSP 有意留白并写明理由）；"首个访问者即管理员"的 6 个一键部署（Halo/KodExplorer/LinkStack/Uptime Kuma/Vaultwarden/Memos）默认只绑本机，Vaultwarden 默认关闭公开注册；新增 `scripts/deploy_exposure_audit.py` 端口与凭据棘轮（交付编排内定位到 25 处裸端口并全部显式表态，已接入两条流水线）；修复苹果 CMS 回落编排无条件覆盖导致 `maccms` 镜像从未生效的缺陷；修复 README / README.en 发布槽位未闭合的 HTML 注释（该缺陷会让"命令参考"之后的正文在渲染时整段消失），并给双语闸门加注释闭合断言。回归口径：遥测 Worker 套件 **8/8** + `tsc --noEmit` 干净，静态闸门本地全绿（i18n 3248 键逐键对等、README 双语同步、主页数字派生、端口与凭据棘轮、语法与 Python 产物）。**本轮未重跑真机验收**：端口绑定与 nginx 配置变更需在验证服务器确认；环境限制未变（真实 OCI 实例、TG bot token、真机关机分支）。
 
