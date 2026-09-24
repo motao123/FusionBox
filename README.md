@@ -565,6 +565,7 @@ fusionbox network bogus
 | `system.monitor_interval` | `fusionbox system monitor` 刷新间隔（秒） |
 | `system.backup_dir` | `fusionbox system backup\|restore` 默认目录 |
 | `network.speedtest_server` | 测速节点：`auto` 或数值节点 ID |
+| `panels.bt_install_code` | 宝塔装机渠道码（上报 bt.cn 安装统计做装机归属，非凭据）；留空则不带码安装 |
 
 自动更新等不在此文件的设置，请在文件末尾的说明中找到它们的真实归属。
 

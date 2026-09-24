@@ -1374,9 +1374,9 @@ panels_bt() {
     case "$F_PKG_MGR" in
       apt|yum)
         local bt_sh; bt_sh=$(mktemp)
-        # 宝塔安装码：官方脚本用它把面板绑定到指定账户；不需要绑定就把它置空。
-        # 本仓库是公开的，写在这里等于对所有使用者公布该安装码。
-        local bt_code="rU2tN9mZ"
+        # 渠道码取自 config.yaml 的 panels.bt_install_code（官方脚本把它作为 o= 上报安装统计
+        # 并写入 o.pl 做装机归属，不是凭据）；留空即不带码安装，行为与宝塔默认一致
+        local bt_code="${CONFIG_panels_bt_install_code:-}"
         local bt_args=()
         [[ -n "$bt_code" ]] && bt_args+=("$bt_code")
         if _download "https://download.bt.cn/install/install_panel.sh" "$bt_sh"; then

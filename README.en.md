@@ -566,6 +566,7 @@ Design intent: a mistyped command gets you an actionable next step and **does no
 | `system.monitor_interval` | Refresh interval of `fusionbox system monitor` (seconds) |
 | `system.backup_dir` | Default directory for `fusionbox system backup\|restore` |
 | `network.speedtest_server` | Speed test node: `auto` or a numeric node ID |
+| `panels.bt_install_code` | Baota installation channel code (reported to bt.cn install statistics for attribution; not a credential) - leave empty to install without it |
 
 Settings such as automatic updates that are not in this file: their real owner is named in the note at the end of the file.
 

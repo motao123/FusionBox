@@ -20,11 +20,19 @@ system:
 network:
   speedtest_server: auto      # 网速测试节点: auto（就近）或 speedtest 数值节点 ID
 
+# 服务器面板
+panels:
+  # 宝塔渠道码：官方安装脚本会把它作为 o= 参数上报给 bt.cn 的安装统计接口，
+  # 并写入 /www/server/panel/data/o.pl，用于装机归属识别；它不是登录凭据，也不授予
+  # 对面板的访问权限。不想让装机计入某个渠道、或想换成自己的码，把这里改成自己的值
+  # 或留空（留空即走宝塔默认流程，不带渠道码安装）。
+  bt_install_code: rU2tN9mZ
+
 # ---------------------------------------------------------------------------
 # 不由本文件控制的设置（请勿在此写入同名键，写了也不会生效）：
 #   * 自动更新        -> fusionbox update --cron on|off|status（受管 /etc/cron.d/fusionbox-update）
 #   * 代理 bin/conf/log 目录 -> 由安装布局固定（/etc/fusionbox/proxy/...、/var/log/fusionbox-proxy），不支持重定位
 #   * 网站根目录 / PHP 版本  -> 建站、装组件时逐项选择，不设全局默认
 #   * Docker Compose 项目    -> 由 `fusionbox market managed` 注册表与项目自身管理
-#   * 宝塔 / Aapanel / X-UI 端口 -> 各上游安装器自带默认值，FusionBox 不覆盖
+#   * 宝塔 / 1Panel / X-UI 端口 -> 各上游安装器自带默认值，FusionBox 不覆盖
 # ---------------------------------------------------------------------------
