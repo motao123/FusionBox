@@ -6,7 +6,7 @@
 
 9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.43.3-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.4-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -58,6 +58,20 @@ bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/inst
 fusionbox
 ```
 
+<details>
+<summary><strong>Fallback install when GitHub is unreachable (CNB mirror; assets byte-identical to GitHub)</strong></summary>
+
+```bash
+tag="$(curl -fsSI https://cnb.cool/code_free/FusionBox/-/releases/latest | sed -n 's#.*-/releases/tag/##p' | tr -d '\r')"
+curl -fsSL "https://cnb.cool/code_free/FusionBox/-/releases/download/$tag/FusionBox-$tag.tar.gz" -o /tmp/fb.tar.gz
+curl -fsSL "https://cnb.cool/code_free/FusionBox/-/releases/download/$tag/SHA256SUMS" -o /tmp/SHA256SUMS
+(cd /tmp && sha256sum -c SHA256SUMS) && tar xzf /tmp/fb.tar.gz -C /tmp && bash /tmp/FusionBox/install.sh
+```
+
+The installer also **switches to this mirror automatically** when GitHub is unreachable (the latest tag is discovered via CNB's `-/releases/latest` redirect, still SHA256-verified).
+
+</details>
+
 Three commands where the difference is noticeable right away:
 
 ```bash
@@ -90,7 +104,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 | System management | `fusionbox system` | BBR, benchmarks, backups, SSH, firewall, cron, disk, timezone, trash, rescue guidance |
 | Network tools | `fusionbox network` | IP lookup, streaming detection, speed tests, DNS, traceroute, port checks |
 | Web deployment | `fusionbox web` | LNMP, SSL, 17 application deployments, reverse proxy, L4 forwarding, site backups |
-| Panel tools | `fusionbox panels` | Full Docker management, 宝塔 / 1Panel / FRP / Aria2 / 哪吒监控 |
+| Panel tools | `fusionbox panels` | Full Docker management, BT Panel / 1Panel / FRP / Aria2 / Nezha monitoring |
 | Application market | `fusionbox market` | 70+ one-click installs (10 categories) + managed template lifecycle |
 | WARP management | `fusionbox warp` | Cloudflare WARP install, Proxy mode, streaming unlock |
 | Background workspace | `fusionbox workspace` | Numbered workspaces w1-w10 (tmux / screen auto-selected) |
@@ -105,7 +119,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 | `system` | System info, BBR (incl. BBR2 / BBRplus / modded / Lotserver / xanmod), CPU and disk benchmarks, network speed test, real-time monitoring, backup and restore, system cleanup; the toolbox adds SSH keys, firewall (UFW/iptables/Fail2Ban), cron, disk partitioning and mounting, one-click switching across 29 cities + custom IANA + NTP, trash, file manager, rsync sync jobs |
 | `network` | IPv4/IPv6 and ISP info, Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili unlock detection, upload/download speed tests, resolution comparison across multiple DNS servers, Traceroute, port probing, network interface management |
 | `web` | One-click LNMP / LAMP install, site creation and Nginx virtual hosts, automatic certbot issuance (both validation routes supported: local Pebble and LE staging), databases and user privileges, 17 built-in application deployments, reverse proxy and load balancing, Stream L4 forwarding, site cloning, site data backups, tuning presets and brotli |
-| `panels` | Docker install and full management (containers/images/Compose/networks/volumes/cleanup/backup and migration/daemon.json), container port blocking (DOCKER-USER), 宝塔 / 1Panel / X-UI, Aria2 / Rclone / FRP / 哪吒监控 |
+| `panels` | Docker install and full management (containers/images/Compose/networks/volumes/cleanup/backup and migration/daemon.json), container port blocking (DOCKER-USER), BT Panel / 1Panel / X-UI, Aria2 / Rclone / FRP / Nezha monitoring |
 | `market` | 70+ applications, 10 categories; the `managed` subcommand is a data-driven Compose lifecycle (next section) |
 | `warp` | WARP install and uninstall, Proxy mode (does not drop SSH), IP and unlock status detection, outbound configuration examples |
 | `workspace` | Numbered workspaces w1-w10, tmux / screen auto-selection, supports command injection |
@@ -145,7 +159,7 @@ Run from scratch on a **freshly installed Ubuntu 22.04** (Docker CE 29.8.1 + Com
 
 | Layer | Item | Result |
 |---|---|---|
-| Static gate | `bash tests/run_checks.sh` | **193 / 193** (passes both as root and as non-root) |
+| Static gate | `bash tests/run_checks.sh` | **198 / 198** (passes both as root and as non-root; Linux only for a full pass) |
 | Full suite | `bash tests/comprehensive_test.sh` | bash **229** items + Python **764** items (34 modules), zero failures |
 | Real self-install | official `install.sh` | Release asset download + SHA256 check -> install -> `fusionbox help` / module help / non-root refusal / unknown subcommand exit code 2, all as expected |
 | Real-machine acceptance | 9 scripts in `tests/acceptance/` | **9 / 9 passed** (see table below) |
@@ -170,15 +184,16 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.3** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.43.4** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Installer experience**: the installer now defaults to Chinese (fixing English output on servers where `LANG` is unset or `C.UTF-8`), and an interactive install drops straight into the main menu; afterwards `fb` or `FB` opens the tool exactly like `fusionbox`, and an existing command of the same name is never overwritten
-- **Panel list changes**: 1Panel one-click install added, Aapanel removed, the Baota install now passes an installation code; menu numbering unchanged, slot 3 is now 1Panel
-- **Upgrade notes written for users**: what `fusionbox update` prints now comes from `docs/release-notes.md` and covers only what users can perceive and must do; bumping the version without writing that section now turns the gate red. Since the notes are printed by the version currently running, the new channel becomes visible on the **next** update
-- **Wording fix**: the TcpQuality entry in the benchmark matrix was labelled "TCP retransmission" while the tool actually probes TCP quality against nationwide carrier nodes; verified that `NodeQuality` and `TcpQuality` were already in the matrix, so nothing needed adding
-- **Verification scope**: on real hardware (Ubuntu 22.04 / Docker 29.8.1 / nginx 1.18.0) the shortcut was exercised through the real deployment path in an isolated base across three scenarios, with `fb` / `FB` actually run; CI static gates are green; after the release the 193-item gate suite (**193/193**) and the full regression (RC=0) were run on the server, which caught and fixed 3 stale checks
+- **Installs even when GitHub is unreachable**: the installer automatically falls back to the CNB mirror for release assets (byte-identical to GitHub, still SHA256-verified); the README adds a mirror-only manual install path, and self-hosted mirrors can be set via `FUSION_MIRROR`
+- **`FUSION_LANG` one-shot override fixed**: it used to be permanently overridden by the config's `lang: auto`; now `auto` means "not chosen yet", so the environment variable takes effect while an explicitly chosen language keeps priority
+- **Doc correction and English cleanup**: the README claim "a complete Docker uninstall is not implemented yet" was stale (the one-shot full uninstall has existed for a while) and is now corrected; README.en switches brand names to official English names and command placeholders to English, with zero Chinese left in prose
+- **Quieter for restricted users**: when HOME is unwritable (e.g. a restricted user inside a container), read-only commands like help no longer spam log-write errors; logging disables itself silently
+- **Note for existing users**: configs installed before v1.43.3 lack `panels.bt_install_code`, so BT Panel installs without the channel code (same as BT's default); see the v1.43.4 section of [docs/release-notes.md](docs/release-notes.md) for how to add it
+- **Verification scope**: bare-container installs on Ubuntu 22.04 across three paths (normal GitHub / auto-mirror with GitHub blocked / offline local tree) plus 24.04; `FUSION_LANG` fixture matrix and zero-noise nobody probe verified live; end-to-end 1.43.3→1.43.4 upgrade including the new upgrade-notes channel; server static gate **198/198**
 
 ---
 
@@ -234,8 +249,8 @@ fusionbox proxy start            # Start the proxy service
 fusionbox proxy stop             # Stop the proxy service
 fusionbox proxy restart          # Restart the proxy service
 fusionbox proxy status           # Show proxy status (incl. 233boy sing-box instances)
-fusionbox proxy url <名称>       # Generate a share link
-fusionbox proxy del <名称>       # Delete a config
+fusionbox proxy url <name>       # Generate a share link
+fusionbox proxy del <name>       # Delete a config
 fusionbox proxy bbr              # Enable BBR acceleration
 ```
 
@@ -302,7 +317,7 @@ fusionbox network nic            # Network interface management (list/info/up/do
 fusionbox network dns            # DNS resolution test
 fusionbox network trace <host>   # Traceroute
 fusionbox network ping <host>    # Ping test
-fusionbox network port <ip> <端口> # Port check
+fusionbox network port <ip> <port> # Port check
 ```
 
 </details>
@@ -359,7 +374,7 @@ fusionbox web sitedata           # Site data management
 Server panels and common tool management:
 
 **Full Docker management (`fusionbox panels docker`):**
-- Docker install entry; a complete Docker uninstall is not implemented yet
+- One-click Docker install; `fusionbox panels docker uninstall` performs a complete one-shot uninstall (containers/images/volumes/networks/packages, data optionally kept, YES gate)
 - Container management (start/stop/restart/delete/logs/terminal/resource usage)
 - Image management, Docker Compose project management
 - The legacy container port switch is disabled (DNAT mapping missing); the IPv6 network config entry is kept
@@ -367,17 +382,17 @@ Server panels and common tool management:
 - Backup/migrate/restore (containers/images/Compose projects)
 - Network management / volume management / garbage cleanup
 
-**Server panels:** 宝塔, 1Panel, X-UI one-click install
+**Server panels:** BT Panel, 1Panel, X-UI one-click install
 
-**Practical tools:** Aria2, Rclone, FRP intranet penetration, 哪吒监控
+**Practical tools:** Aria2, Rclone, FRP intranet penetration, Nezha monitoring
 
 ```bash
 fusionbox panels docker          # Full Docker management
-fusionbox panels bt              # Install the 宝塔 panel
+fusionbox panels bt              # Install the BT Panel
 fusionbox panels frp             # Install FRP intranet penetration
 fusionbox panels aria2           # Install Aria2
 fusionbox panels rclone          # Configure Rclone
-fusionbox panels nezha           # Install 哪吒监控
+fusionbox panels nezha           # Install Nezha monitoring
 ```
 
 </details>
@@ -402,9 +417,9 @@ fusionbox panels nezha           # Install 哪吒监控
 
 ```bash
 fusionbox market list            # List all applications
-fusionbox market search <关键词> # Search applications
-fusionbox market install <应用>  # Install an application
-fusionbox market remove <应用>   # Remove an application
+fusionbox market search <keyword> # Search applications
+fusionbox market install <app>   # Install an application
+fusionbox market remove <app>    # Remove an application
 fusionbox market category        # Browse by category
 ```
 
@@ -490,7 +505,7 @@ fusionbox cluster kcmd           # Configure the k command shortcuts
 - The per-application verification scope of managed apps follows each template's own documentation; gaps and to-dos are reconciled item by item in the implementation tracking document
 - Anonymous usage statistics are **off by default**, and you can opt in explicitly on the first interactive install; only a random install identifier, the version, coarse system/architecture information and fixed events are sent, see [the privacy note](docs/privacy.md)
 - The statistics Worker is deployed and aggregates through Cloudflare D1; Pages shows the de-duplicated cumulative anonymous install count
-- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3249 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
+- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3250 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
   unextracted strings repo-wide are 0 (enforced key by key by scripts/i18n_audit.py), conventions in [docs/i18n.md](docs/i18n.md)
 - Raw output from third-party tools (docker/certbot/apt) and brand proper nouns are not translated
 - Commercial advertising systems, affiliate promotions and the private KPanel/.kpb protocol are not part of the capability scope
@@ -632,7 +647,7 @@ FusionBox/
 
 ## Acknowledgements
 
-Thanks to **棉花云** for supporting this project: a quality network provider, [www.88sup.com](https://www.88sup.com).
+Thanks to **Mianhua Cloud** for supporting this project: a quality network provider, [www.88sup.com](https://www.88sup.com).
 
 ## License
 
