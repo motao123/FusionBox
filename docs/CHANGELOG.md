@@ -2,6 +2,39 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.3 安装体验与面板清单：默认中文、装完进主菜单、fb/FB 快捷命令、1Panel 进 Aapanel 出
+
+- **安装器语言默认值（PR #39）**：`install.sh` 原为 `case "${FUSION_LANG:-${LANG:-en}}"` 且只认
+  `zh*`，而云镜像常见 `C.UTF-8` 或非登录 shell 无 `LANG`，导致安装全程英文、装完的菜单却是
+  中文。现与运行时 `src/lib/i18n.sh::_i18n_resolve_auto` 同规则：只有显式 `en*` 用英文，其余一律
+  中文；`FUSION_LANG` 可显式覆盖
+- **装完进主菜单（PR #39）**：交互式（stdin 与 stdout 均为 tty）时 `exec /usr/local/bin/fusionbox`
+  （无参数即主菜单）；`curl | bash` 时 `-t 0` 为假，仍走原用法提示分支，不会把脚本剩余内容当
+  菜单输入吃掉。新增 `MSG_INST_0034`，并**同时写入 install.sh 内置表**——新安装脚本会配到旧
+  发布包（v1.43.2 的语言包无此键），只靠语言包会打印裸键名
+- **面板清单（PR #40）**：新增 `panels_1panel`（官方 `resource.fit2cloud.com/1panel/package/v2/quick_start.sh`，
+  实测 200/2782B），移除 Aapanel 的函数、`aa|aapanel` 分发、菜单项与 help 行；语言包 0627-0630
+  四个键原位改写成 1Panel 语义，故键数不变、菜单编号不变。宝塔安装把安装码作为参数传给官方
+  脚本（用户给出的命令前半段 curl/wget 回退 `_download` 已实现，且它落临时文件而非当前目录，
+  故保留 `_download`）。**该安装码随公开仓库发布，等于对所有访客公布**，是否需要改法待维护者定
+- **快捷命令 fb / FB（PR #41）**：与 `fusionbox` 同是指向 `/etc/fusionbox/fusion.sh` 的软链接，创建点
+  在 `fusion_deploy` 提交之后——安装（传 bin）与更新（不传 bin，回退到 `/usr/local/bin/fusionbox`
+  同目录）两条路径都补齐；已存在且非本脚本所建的链接只提示不覆盖；`self_uninstall` 对称删除。
+  提示沿用 `deploy.sh` 既有英文诊断语气，未新增语言包键
+- **升级说明通道（PR #38，本版首次生效）**：新增 `docs/release-notes.md`，`fusion.sh` 的升级提示与
+  CNB 的 `descriptionFromFile` 都改指它；GitHub 每次 push/PR 的版本一致性步与 CNB 的 validate-version
+  都要求"顶部小节版本 == version.txt"，即升版本号却不写使用者说明会让闸门变红
+- **描述修正**：`MSG_NET_0152` 原名"TCP 重传｜统计 TCP 重传率"，与 `ibsgss/TcpQuality` 实际行为
+  （全国三网节点 TCP 质量探测、输出带宽与链路质量）不符，已改准。另核实 `LloydAsp/NodeQuality`
+  与 `ibsgss/TcpQuality` 早已在评测矩阵内（`MSG_NET_0148` / `MSG_NET_0152`，URL 与两仓库 README 的
+  官方命令逐字一致），无需新增
+- **验证口径**：真机（Ubuntu 22.04 / Docker 29.8.1 / nginx 1.18.0）在隔离 base 目录跑真实
+  `fusion_deploy` 验证软链接三种情形（外部同名命令不覆盖、正常建链、更新路径建链）并实跑
+  `fb version` / `FB version`；四个外部 URL 实测可达；CI 静态闸门（语法、Python 产物、i18n 3249 键
+  逐键对等、README 双语同步含注释闭合断言、主页数字派生、端口与凭据棘轮、版本一致性含
+  发版说明检查）全绿。**未重跑** 193 项完整闸门套件与真机回归全量（本版改动集中在安装器、
+  面板安装入口与文案，未触及模块业务逻辑）
+
 ## v1.43.2 安全加固：遥测 Worker 收口、交付编排端口与凭据棘轮、6 个面板默认只绑本机
 
 外部扫描结果逐条独立复核后的修复；判级与机理以本条为准，其中两处扫描结论属夸大或影响面写错，已注明。
