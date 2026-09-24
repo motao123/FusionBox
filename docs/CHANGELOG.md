@@ -19,11 +19,17 @@
   故保留 `_download`）。**该安装码随公开仓库发布，等于对所有访客公布**，是否需要改法待维护者定
 - **快捷命令 fb / FB（PR #41）**：与 `fusionbox` 同是指向 `/etc/fusionbox/fusion.sh` 的软链接，创建点
   在 `fusion_deploy` 提交之后——安装（传 bin）与更新（不传 bin，回退到 `/usr/local/bin/fusionbox`
-  同目录）两条路径都补齐；已存在且非本脚本所建的链接只提示不覆盖；`self_uninstall` 对称删除。
+  同目录）两条路径都补齐。**但 `self_update` 原先 `source "$FUSION_BASE/src/lib/deploy.sh"` 加载的是
+  机器上旧版那份 deploy.sh**（尽管它已校验过新下载的那份存在、非软链、包体哈希正确），
+  于是 deploy.sh 里的新动作要再下一次更新才落地——真机升级 v1.43.2→v1.43.3 实测确认 `fb`/`FB`
+  未被创建。现改为 `bash -n` 后加载刚下载的那份；已存在且非本脚本所建的链接只提示不覆盖；`self_uninstall` 对称删除。
   提示沿用 `deploy.sh` 既有英文诊断语气，未新增语言包键
-- **升级说明通道（PR #38，本版首次生效）**：新增 `docs/release-notes.md`，`fusion.sh` 的升级提示与
+- **升级说明通道（PR #38）**：新增 `docs/release-notes.md`，`fusion.sh` 的升级提示与
   CNB 的 `descriptionFromFile` 都改指它；GitHub 每次 push/PR 的版本一致性步与 CNB 的 validate-version
-  都要求"顶部小节版本 == version.txt"，即升版本号却不写使用者说明会让闸门变红
+  都要求"顶部小节版本 == version.txt"，即升版本号却不写使用者说明会让闸门变红。
+  **生效时点纠正**：发布 v1.43.3 后端到端实测发现，升级提示是由"正在运行的旧版 fusion.sh"打印的，
+  所以 1.43.2 → 1.43.3 这次更新输出的仍是 CHANGELOG 原文；新通道从 1.43.3 → 下一版起才生效。
+  原先写"本版首次生效"是错的
 - **描述修正**：`MSG_NET_0152` 原名"TCP 重传｜统计 TCP 重传率"，与 `ibsgss/TcpQuality` 实际行为
   （全国三网节点 TCP 质量探测、输出带宽与链路质量）不符，已改准。另核实 `LloydAsp/NodeQuality`
   与 `ibsgss/TcpQuality` 早已在评测矩阵内（`MSG_NET_0148` / `MSG_NET_0152`，URL 与两仓库 README 的
