@@ -244,7 +244,18 @@ _download_main_fallback() {
   DOWNLOAD_SOURCE="main branch fallback (no release checksum)"
 }
 
-if ! curl -s --connect-timeout 5 https://github.com > /dev/null 2>&1; then
+# 连通性探测不能用 curl：裸系统上 curl 正是下面那个循环要装的依赖，命令不存在时
+# `curl ...` 以 127 退出，会被误判成"网络不可用"而直接中止，自动补依赖永远走不到。
+_net_ok=0
+if command -v curl >/dev/null 2>&1; then
+  curl -s --connect-timeout 5 https://github.com >/dev/null 2>&1 && _net_ok=1
+elif command -v wget >/dev/null 2>&1; then
+  wget -q -T 5 -t 1 -O /dev/null https://github.com 2>/dev/null && _net_ok=1
+else
+  (exec 3<>"/dev/tcp/github.com/443") 2>/dev/null && _net_ok=1
+fi
+
+if [[ $_net_ok == 0 ]]; then
   if [[ -f "$SCRIPT_DIR/fusion.sh" ]]; then
     _do_local_install
   fi
@@ -252,9 +263,23 @@ if ! curl -s --connect-timeout 5 https://github.com > /dev/null 2>&1; then
   exit 1
 fi
 
+# 干净镜像（尤其容器里的 Ubuntu）可能完全没有包索引，直接 install 会报
+# "Unable to locate package"；首次装依赖前刷一次索引，失败不中止（让真正的安装步骤报错）。
+_dep_index_refreshed=0
+_ensure_dep_index() {
+  [[ $_dep_index_refreshed == 1 ]] && return 0
+  _dep_index_refreshed=1
+  case "$OS" in
+    ubuntu|debian) apt-get update -qq >/dev/null 2>&1 || true ;;
+    centos|rhel|fedora) yum -q makecache >/dev/null 2>&1 || true ;;
+    alpine) apk update >/dev/null 2>&1 || true ;;
+  esac
+}
+
 for dep in curl tar sha256sum sed grep; do
   command -v "$dep" &>/dev/null && continue
   msg_info "$(L MSG_INST_0014 "$dep")"
+  _ensure_dep_index
   case "$OS" in
     ubuntu|debian) apt-get install -y curl tar coreutils sed grep ;;
     centos|rhel|fedora) yum install -y curl tar coreutils sed grep ;;
