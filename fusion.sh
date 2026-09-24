@@ -425,7 +425,10 @@ self_update() (
     msg_warn "$(L MSG_MAIN_0016 "$remote_ver" "$FUSION_VER")"
     return 0
   }
-  source "$FUSION_BASE/src/lib/deploy.sh" || return 1
+  # 加载刚下载并已通过校验的那份 deploy.sh，而不是机器上旧版那份：部署动作属于新版本，
+  # 用旧文件会让 deploy.sh 里的改动（例如创建 fb/FB 快捷命令）推迟到下一次更新才落地。
+  bash -n "$tmpdir/$archive_root/src/lib/deploy.sh" || return 1
+  source "$tmpdir/$archive_root/src/lib/deploy.sh" || return 1
   fusion_validate_release "$tmpdir/$archive_root" || return 1
   fusion_deploy "$tmpdir/$archive_root" "$FUSION_BASE" || return 1
   FUSION_VER="$remote_ver"
