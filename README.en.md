@@ -54,7 +54,7 @@ One-click scripts are everywhere; what makes FusionBox different is **that it do
 # 1. Install (missing dependencies are filled in automatically)
 bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
 
-# 2. Enter the main menu, or call a module command directly
+# 2. Enter the main menu, or call a module command directly (install also creates the shortcuts fb / FB)
 fusionbox
 ```
 

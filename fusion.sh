@@ -483,6 +483,14 @@ self_uninstall() {
   rm -rf "$FUSION_BASE/src" "$FUSION_BASE/templates"
   rm -f "$FUSION_BASE/fusion.sh" "$FUSION_BASE/install.sh" "$FUSION_BASE/version.txt"
   rm -f /usr/local/bin/fusionbox
+  # 快捷命令只在确实指向本脚本时删除，同名的别人命令不碰
+  local _alias _target
+  for _alias in fb FB; do
+    _target="/usr/local/bin/$_alias"
+    if [[ -L "$_target" && "$(readlink -m -- "$_target")" == "$FUSION_BASE/fusion.sh" ]]; then
+      rm -f "$_target"
+    fi
+  done
   msg_info "$(L MSG_MAIN_0028 "$FUSION_BASE" "$FUSION_CONFIG_DIR")"
   # 清理 k 命令别名注入
   local rc
