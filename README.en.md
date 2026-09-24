@@ -178,7 +178,7 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 - **Panel list changes**: 1Panel one-click install added, Aapanel removed, the Baota install now passes an installation code; menu numbering unchanged, slot 3 is now 1Panel
 - **Upgrade notes written for users**: what `fusionbox update` prints now comes from `docs/release-notes.md` and covers only what users can perceive and must do; bumping the version without writing that section now turns the gate red. Since the notes are printed by the version currently running, the new channel becomes visible on the **next** update
 - **Wording fix**: the TcpQuality entry in the benchmark matrix was labelled "TCP retransmission" while the tool actually probes TCP quality against nationwide carrier nodes; verified that `NodeQuality` and `TcpQuality` were already in the matrix, so nothing needed adding
-- **Verification scope**: on real hardware (Ubuntu 22.04 / Docker 29.8.1 / nginx 1.18.0) the shortcut was exercised through the real deployment path in an isolated base across three scenarios, with `fb` / `FB` actually run; CI static gates are green. **The 193-item full gate suite and the complete real-machine regression were not re-run this version** (changes are confined to the installer, panel installers and wording)
+- **Verification scope**: on real hardware (Ubuntu 22.04 / Docker 29.8.1 / nginx 1.18.0) the shortcut was exercised through the real deployment path in an isolated base across three scenarios, with `fb` / `FB` actually run; CI static gates are green; after the release the 193-item gate suite (**193/193**) and the full regression (RC=0) were run on the server, which caught and fixed 3 stale checks
 
 ---
 
