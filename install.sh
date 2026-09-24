@@ -8,6 +8,9 @@ FUSION_REPO="https://github.com/motao123/FusionBox"
 FUSION_API="https://api.github.com/repos/motao123/FusionBox"
 FUSION_BRANCH="main"
 FUSION_BIN="/usr/local/bin/fusionbox"
+# GitHub 不可达时的下载镜像（CNB Release 资产与 GitHub 逐字节一致，SHA256SUMS 同源校验）。
+# 自建镜像可用环境变量 FUSION_MIRROR=... 覆盖。
+FUSION_MIRROR="${FUSION_MIRROR:-https://cnb.cool/code_free/FusionBox}"
 
 RED='\e[31m'; GREEN='\e[32m'; YELLOW='\e[33m'; CYAN='\e[36m'; BOLD='\e[1m'; RESET='\e[0m'
 msg()     { echo -e "$*"; }
@@ -74,6 +77,7 @@ _IL_ZH[MSG_INST_0017]="正在下载 FusionBox..."
 _IL_ZH[MSG_INST_0018]="main 分支快照下载失败"
 _IL_ZH[MSG_INST_0019]="Release 资产下载或 SHA256 校验失败；为避免降级安装未校验内容，安装已停止"
 _IL_ZH[MSG_INST_0034]="正在打开主菜单；退出后可随时用 fusionbox 再次进入"
+_IL_ZH[MSG_INST_0035]="GitHub 无法访问，改用镜像下载（Release 资产与 GitHub 逐字节一致，SHA256 校验通过后才会安装）"
 _IL_EN[MSG_INST_0001]="Please run as root"
 _IL_EN[MSG_INST_0002]="Unsupported architecture: %s"
 _IL_EN[MSG_INST_0003]="  %sFusionBox installer %s%s"
@@ -91,6 +95,7 @@ _IL_EN[MSG_INST_0017]="Downloading FusionBox..."
 _IL_EN[MSG_INST_0018]="Failed to download the main branch snapshot"
 _IL_EN[MSG_INST_0019]="Release asset download or SHA256 verification failed; installation stopped to avoid installing unverified content"
 _IL_EN[MSG_INST_0034]="Opening the main menu; run fusionbox again any time after you exit"
+_IL_EN[MSG_INST_0035]="GitHub unreachable; switching to the mirror download (release assets are byte-identical to GitHub and SHA256-verified before install)"
 
 [[ $EUID -ne 0 ]] && msg_err "$(L MSG_INST_0001)" && exit 1
 
@@ -199,9 +204,24 @@ _validate_archive() {
   done
 }
 
+_verify_downloaded() {
+  # 校验已下载到 $TMPDIR/fusionbox.tar.gz 的资产与 $TMPDIR/SHA256SUMS 中
+  # $1（资产名）声明的摘要一致。GitHub 与镜像两条下载路径共用。
+  local asset="$1" expected actual
+  expected="$(while read -r sum name rest; do
+    name="${name#\*}"
+    if [[ "$name" == "$asset" && -z "$rest" && "$sum" =~ ^[0-9a-fA-F]{64}$ ]]; then
+      printf '%s\n' "${sum,,}"
+    fi
+  done < "$TMPDIR/SHA256SUMS")"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || return 1
+  actual="$(sha256sum "$TMPDIR/fusionbox.tar.gz" | cut -d ' ' -f 1)"
+  [[ "$actual" == "$expected" ]] || return 1
+}
+
 _download_release() {
   local metadata="$TMPDIR/latest-release.json"
-  local tag asset checksum_url expected actual
+  local tag asset checksum_url
 
   if ! curl -fsSL --connect-timeout 10 --retry 2 \
       -H 'Accept: application/vnd.github+json' \
@@ -221,18 +241,38 @@ _download_release() {
   curl -fsSL --connect-timeout 10 --retry 2 \
     "$checksum_url" -o "$TMPDIR/SHA256SUMS" || return 1
 
-  expected="$(while read -r sum name rest; do
-    name="${name#\*}"
-    if [[ "$name" == "$asset" && -z "$rest" && "$sum" =~ ^[0-9a-fA-F]{64}$ ]]; then
-      printf '%s\n' "${sum,,}"
-    fi
-  done < "$TMPDIR/SHA256SUMS")"
-  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || return 1
-  actual="$(sha256sum "$TMPDIR/fusionbox.tar.gz" | cut -d ' ' -f 1)"
-  [[ "$actual" == "$expected" ]] || return 1
+  _verify_downloaded "$asset" || return 1
 
   DOWNLOAD_ROOT="FusionBox"
   DOWNLOAD_SOURCE="release $tag"
+}
+
+# CNB 镜像下载：最新 tag 由 /-/releases/latest 的 307 Location 匿名发现
+# （CNB 的匿名 raw/archive 是软 404 HTML，不能用于下载）；资产与 SHA256SUMS
+# 同源校验后才安装，校验不通过不会落盘到系统。
+_mirror_latest_tag() {
+  local loc
+  loc="$(curl -fsSI --connect-timeout 10 --retry 2 \
+    "$FUSION_MIRROR/-/releases/latest" 2>/dev/null | tr -d '\r' \
+    | sed -n 's#^[Ll]ocation:[[:space:]].*/-/releases/tag/##p' | tail -n 1)"
+  [[ "$loc" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  printf '%s' "$loc"
+}
+
+_download_mirror() {
+  local tag asset
+  msg_info "$(L MSG_INST_0035)"
+  tag="$(_mirror_latest_tag)" || return 1
+  asset="FusionBox-$tag.tar.gz"
+  curl -fsSL --connect-timeout 10 --retry 2 \
+    "$FUSION_MIRROR/-/releases/download/$tag/$asset" -o "$TMPDIR/fusionbox.tar.gz" || return 1
+  curl -fsSL --connect-timeout 10 --retry 2 \
+    "$FUSION_MIRROR/-/releases/download/$tag/SHA256SUMS" -o "$TMPDIR/SHA256SUMS" || return 1
+
+  _verify_downloaded "$asset" || return 1
+
+  DOWNLOAD_ROOT="FusionBox"
+  DOWNLOAD_SOURCE="mirror $tag"
 }
 
 _download_main_fallback() {
@@ -247,6 +287,7 @@ _download_main_fallback() {
 # 连通性探测不能用 curl：裸系统上 curl 正是下面那个循环要装的依赖，命令不存在时
 # `curl ...` 以 127 退出，会被误判成"网络不可用"而直接中止，自动补依赖永远走不到。
 _net_ok=0
+_net_mirror_ok=0
 if command -v curl >/dev/null 2>&1; then
   curl -s --connect-timeout 5 https://github.com >/dev/null 2>&1 && _net_ok=1
 elif command -v wget >/dev/null 2>&1; then
@@ -256,6 +297,14 @@ else
 fi
 
 if [[ $_net_ok == 0 ]]; then
+  # GitHub 不可达不等于断网：用 /dev/tcp（bash 内建，裸系统没有 curl/wget 也能探）
+  # 探测镜像主机。可达则照常装依赖（系统源不经 GitHub），随后走镜像下载。
+  _mirror_host="${FUSION_MIRROR#https://}"
+  _mirror_host="${_mirror_host%%/*}"
+  (exec 3<>"/dev/tcp/$_mirror_host/443") 2>/dev/null && _net_mirror_ok=1
+fi
+
+if [[ $_net_ok == 0 && $_net_mirror_ok == 0 ]]; then
   if [[ -f "$SCRIPT_DIR/fusion.sh" ]]; then
     _do_local_install
   fi
@@ -267,7 +316,8 @@ fi
 # "Unable to locate package"；首次装依赖前刷一次索引，失败不中止（让真正的安装步骤报错）。
 _dep_index_refreshed=0
 _ensure_dep_index() {
-  [[ $_dep_index_refreshed == 1 ]] && return 0
+  # --force：绕过一次性守卫，用于安装失败后的强制重刷（首次 update 可能只成功了一部分）
+  [[ $_dep_index_refreshed == 1 && "${1:-}" != "--force" ]] && return 0
   _dep_index_refreshed=1
   case "$OS" in
     ubuntu|debian) apt-get update -qq >/dev/null 2>&1 || true ;;
@@ -280,10 +330,19 @@ for dep in curl tar sha256sum sed grep; do
   command -v "$dep" &>/dev/null && continue
   msg_info "$(L MSG_INST_0014 "$dep")"
   _ensure_dep_index
+  # 首次安装可能撞上镜像池与索引瞬时不同步（真机 24.04 撞过 security 池 404），
+  # 失败后强制刷新索引重试一次；重试也失败时组内以 || true 收尾（set -e 下不得
+  # 裸死），落到下方 command -v 检查打印 MSG_INST_0016 后退出。
   case "$OS" in
-    ubuntu|debian) apt-get install -y curl tar coreutils sed grep ;;
-    centos|rhel|fedora) yum install -y curl tar coreutils sed grep ;;
-    alpine) apk add curl tar coreutils sed grep ;;
+    ubuntu|debian)
+      apt-get install -y curl tar coreutils sed grep \
+        || { _ensure_dep_index --force; apt-get install -y curl tar coreutils sed grep || true; } ;;
+    centos|rhel|fedora)
+      yum install -y curl tar coreutils sed grep \
+        || { _ensure_dep_index --force; yum install -y curl tar coreutils sed grep || true; } ;;
+    alpine)
+      apk add curl tar coreutils sed grep \
+        || { _ensure_dep_index --force; apk add curl tar coreutils sed grep || true; } ;;
     *) msg_err "$(L MSG_INST_0015 "$dep" "$OS")"; exit 1 ;;
   esac
   command -v "$dep" &>/dev/null || { msg_err "$(L MSG_INST_0016 "$dep")"; exit 1; }
@@ -297,16 +356,21 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 DOWNLOAD_ROOT=""
 DOWNLOAD_SOURCE=""
-if _download_release; then
-  :
-else
-  download_status=$?
-  if [[ $download_status -eq 2 ]]; then
-    _download_main_fallback || { msg_err "$(L MSG_INST_0018)"; exit 1; }
+if [[ $_net_ok == 1 ]]; then
+  if _download_release; then
+    :
   else
-    msg_err "$(L MSG_INST_0019)"
-    exit 1
+    download_status=$?
+    if [[ $download_status -eq 2 ]]; then
+      _download_main_fallback || _download_mirror || { msg_err "$(L MSG_INST_0018)"; exit 1; }
+    else
+      # Release 下载或校验失败：镜像资产与 GitHub 同源，值得一试再放弃
+      _download_mirror || { msg_err "$(L MSG_INST_0019)"; exit 1; }
+    fi
   fi
+else
+  # GitHub 整体不可达（探测阶段已确认镜像可达）：直接走镜像，仍然过 SHA256 校验
+  _download_mirror || { msg_err "$(L MSG_INST_0019)"; exit 1; }
 fi
 
 _validate_archive "$TMPDIR/fusionbox.tar.gz" "$DOWNLOAD_ROOT" || {

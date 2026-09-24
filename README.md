@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.3-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.4-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -57,6 +57,20 @@ bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/inst
 # 2. 进入主菜单，或直接调用模块命令（安装时会同时创建快捷命令 fb / FB）
 fusionbox
 ```
+
+<details>
+<summary><strong>GitHub 访问受限时的备用安装（CNB 镜像，资产与 GitHub 逐字节一致）</strong></summary>
+
+```bash
+tag="$(curl -fsSI https://cnb.cool/code_free/FusionBox/-/releases/latest | sed -n 's#.*-/releases/tag/##p' | tr -d '\r')"
+curl -fsSL "https://cnb.cool/code_free/FusionBox/-/releases/download/$tag/FusionBox-$tag.tar.gz" -o /tmp/fb.tar.gz
+curl -fsSL "https://cnb.cool/code_free/FusionBox/-/releases/download/$tag/SHA256SUMS" -o /tmp/SHA256SUMS
+(cd /tmp && sha256sum -c SHA256SUMS) && tar xzf /tmp/fb.tar.gz -C /tmp && bash /tmp/FusionBox/install.sh
+```
+
+安装器在 GitHub 不可达时也会**自动改走该镜像**（最新 tag 由 CNB 的 `-/releases/latest` 重定向发现，仍过 SHA256 校验）。
+
+</details>
 
 三条能立刻感受到差异的命令：
 
@@ -144,7 +158,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 层 | 项目 | 结果 |
 |---|---|---|
-| 静态门禁 | `bash tests/run_checks.sh` | **193 / 193**（root 与非 root 双跑都过） |
+| 静态门禁 | `bash tests/run_checks.sh` | **198 / 198**（root 与非 root 双跑都过；仅 Linux 全绿） |
 | 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **764** 项（34 模块），零失败 |
 | 真实自装 | 官方 `install.sh` | Release 资产下载 + SHA256 校验 → 安装 → `fusionbox help` / 模块帮助 / 非 root 拒绝 / 未知子命令退出码 2 全部符合预期 |
 | 真机验收 | `tests/acceptance/` 9 个脚本 | **9 / 9 通过**（见下表） |
@@ -169,15 +183,16 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.3** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.4** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **安装体验**：安装程序默认中文（修掉 `LANG` 未设置 / `C.UTF-8` 的服务器上装出英文界面的问题），交互式安装完成后直接进入主菜单；装完可直接敲 `fb` 或 `FB` 打开，与 `fusionbox` 等价，且不会覆盖系统里已有的同名命令
-- **面板清单调整**：新增 1Panel 一键安装，移除 Aapanel，宝塔安装改为携带安装码；面板菜单编号不变，第 3 项现为 1Panel
-- **升级说明改成人话**：`fusionbox update` 后打印的"本次更新内容"改自 `docs/release-notes.md`，只写使用者能感知的变化与需要做的动作；升了版本号却不写该说明会让闸门变红。因升级提示由正在运行的旧版本打印，该通道自**下一版**更新起才可见
-- **描述修正**：评测矩阵中 TcpQuality 一项原写成"TCP 重传"，实为向全国三网节点做 TCP 质量探测，已改准；`NodeQuality` 与 `TcpQuality` 经核对本已在矩阵内，无需新增
-- **验证口径**：真机（Ubuntu 22.04 / Docker 29.8.1 / nginx 1.18.0）在隔离目录跑真实部署流程验证快捷命令的三种情形并实跑 `fb` / `FB`；CI 静态闸门全绿；发布后补跑 193 项快闸门（**193/193**）与完整回归（RC=0），并抓到、修正 3 个陈旧检查
+- **GitHub 访问受限也能装**：安装器在 GitHub 不可达时自动改走 CNB 镜像下载发布资产（与 GitHub 逐字节一致，仍过 SHA256 校验）；README 补充纯镜像手动安装步骤，自建镜像可用 `FUSION_MIRROR` 指定
+- **`FUSION_LANG` 单次覆盖修复**：此前会被配置里的 `lang: auto` 永远压掉；现在 `auto` 表示"尚未选择"，环境变量可以生效，显式设置过的语言仍优先
+- **文档勘误与英文净化**：README「完整 Docker 卸载尚未实现」为过期说法（一键完整卸载早已提供），已按实际能力订正；README.en 品牌名改用官方英文名、命令占位符改英文，正文中文残留清零
+- **非 root 环境更安静**：HOME 不可写（如容器内的受限用户）时，帮助等只读命令不再被日志写入报错刷屏，日志自动停用、功能照常
+- **老用户请留意**：v1.43.3 前安装的配置里没有 `panels.bt_install_code`，宝塔安装不带渠道码（与宝塔默认行为一致）；加键方法见 [docs/release-notes.md](docs/release-notes.md) 的 v1.43.4 节
+- **验证口径**：Ubuntu 22.04 裸容器三条安装路径（GitHub 正常 / 屏蔽 GitHub 后自动镜像 / 本地树离线）+ 24.04 裸容器；`FUSION_LANG` 夹具矩阵与 nobody 零噪声实测；1.43.3→1.43.4 端到端升级含新版升级说明首次可见；静态门禁服务器 **198/198**
 
 ---
 
@@ -358,7 +373,7 @@ fusionbox web sitedata           # 站点数据管理
 服务器面板和常用工具管理：
 
 **Docker 完整管理 (`fusionbox panels docker`)：**
-- Docker 安装入口；完整 Docker 卸载尚未实现
+- Docker 一键安装；`fusionbox panels docker uninstall` 一键完整卸载（容器/镜像/卷/网络/软件包，数据可选保留，YES 门禁）
 - 容器管理 (启动/停止/重启/删除/日志/终端/资源占用)
 - 镜像管理、Docker Compose 项目管理
 - 旧容器端口开关已禁用（DNAT 映射缺失）；IPv6 网络配置入口保留
@@ -489,7 +504,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
 - 统计 Worker 已部署并使用 Cloudflare D1 聚合；Pages 显示的是去重后的累计匿名装机数
-- **双语口径**：核心层与 9 个模块层均已走语言包（zh_CN / en 各 3249 键，逐键对等），英文模式零中文；
+- **双语口径**：核心层与 9 个模块层均已走语言包（zh_CN / en 各 3250 键，逐键对等），英文模式零中文；
   全仓未抽取文案 0 条（由 scripts/i18n_audit.py 逐键强制），约定见 [docs/i18n.md](docs/i18n.md)
 - 第三方工具（docker/certbot/apt）的原始输出与品牌专有名词不做翻译
 - 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围

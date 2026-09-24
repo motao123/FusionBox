@@ -2,6 +2,57 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.4 审计跟进：安装镜像后备、FUSION_LANG 优先级、日志静默降级、文档勘误
+
+- **安装镜像后备（P1）**：实测发现 CNB 匿名 `-/raw/` 与 `-/archive/` 返回的是 HTTP 200 的
+  **软 404 HTML 页**（Content-Type: text/html，不能凭状态码判断可用性），只有 Release 资产
+  真实可用且与 GitHub 逐字节一致（`FusionBox-v1.43.3.tar.gz` sha256 双端均为 `f1c9168e…`），
+  `-/releases/latest` 以 307 Location 匿名暴露最新 tag。install.sh 据此新增 `_download_mirror`
+  （默认 `https://cnb.cool/code_free/FusionBox`，环境变量 `FUSION_MIRROR` 可覆盖）：
+  GitHub 探测失败时先探测镜像主机（bash 内建 `/dev/tcp`，裸系统无 curl/wget 也能判），
+  可达则照常补依赖（系统源不经 GitHub）后走镜像 Release 下载并过 SHA256SUMS 校验；
+  GitHub 可达但 Release 下载/校验失败时同样回落镜像。校验逻辑抽取为 `_verify_downloaded`
+  两条路径共用。新增 `MSG_INST_0035`，语言包 3249→3250，install.sh 内置表同步。
+  README 双语「30 秒上手」各补一个纯镜像手动安装 `<details>` 块（4 行：latest 发现 →
+  资产+SUMS 下载 → `sha256sum -c` → 解包跑 install.sh，GitHub 被屏时走本地安装路径）
+- **FUSION_LANG 优先级（P1）**：`common.sh::_load_config` 原先 env 先设、config 后覆盖，
+  而安装器总会写入 `general.lang`（哪怕值是 `auto`），导致 docs/i18n.md 承诺的
+  `FUSION_LANG=en` 单次覆盖在**所有已安装系统上永远无效**（真机夹具复现：config=auto +
+  env=en 输出仍中文）。改为显式配置 > 环境变量 > `auto`（跟随 `$LANG`）——`auto` 语义
+  即"尚未选择"，环境变量可打破平局，显式选择不被翻转
+- **日志静默降级（P2）**：HOME 不可写（如容器内 nobody）时 `_init_log` 的 `mkdir` 报错 +
+  每条 `_log_write` 的 append 报错会污染帮助输出（真机实测 4 行 stderr）。现 `mkdir`
+  失败置 `F_LOG_OK=0` 静默停用，`_log_write` 加守卫与 `2>/dev/null`；正常路径日志行为不变
+- **文档勘误（P1）**：README 双语"完整 Docker 卸载尚未实现"为过期假话——
+  `panels_docker_uninstall`（c5280aa，G30 起）是停删容器、清镜像/卷/网络、禁服务、
+  四类包管理器卸包、数据可选擦除、验证 docker 消失的完整实现，同文件命令参考也早已
+  列出 `fusionbox panels docker uninstall`；按实际能力订正双语各一处
+- **README.en 净化（P2）**：品牌名改官方英文（宝塔→BT Panel、哪吒监控→Nezha monitoring、
+  棉花云→Mianhua Cloud，与 `src/i18n/en.sh` 既有译法一致），命令占位符改英文
+  （`<名称>`→`<name>`、`<端口>`→`<port>`、`<关键词>`→`<keyword>`、`<应用>`→`<app>`），
+  正文中文残留清零；双语闸门 `CJK_ALLOW` 白名单清空，命令与行内代码比对引入
+  **占位符归一化**（`<...>` → `<#>` 后比对，两边可各用目标语言书写占位符，其余仍逐字）；
+  负向测试复跑：删 EN 命令、命令本体错字仍被抓住，占位符翻译正确放行
+- **依赖安装自动重试**：真机 Ubuntu 24.04 裸容器实测撞上 security 池与索引瞬时不同步
+  （`libcurl4t64 ... 404 Not Found`，apt 自身提示 "maybe run apt-get update"），而 `set -e`
+  让整个安装以 RC=100 裸死、无任何提示。现各包管理器分支在首次安装失败后
+  `_ensure_dep_index --force` 强制重刷索引并重试一次，仍失败才经既有 `MSG_INST_0016`
+  报错退出；`_ensure_dep_index` 增加 `--force` 绕过一次性守卫
+- **门禁 193→198**：新增 5 断言——FUSION_LANG 打破 auto（夹具 config + env 断言
+  `F_LANG`）、显式 config 仍优先于 env、日志静默降级（HOME 指向普通文件触发 mkdir 失败）、
+  安装器镜像后备存在（静态 grep）、依赖安装失败自动重试（静态 grep）；run_checks.sh 顶部
+  加 Windows 环境提示（自动 `PYTHONUTF8=1`；fcntl 类检查假红以 Linux 为准）；
+  tests/README.md（不入库）记录 Linux-only 口径、WindowsApps python3 stub 陷阱与假红清单
+- **版本计数同步**：README 双语静态门禁当前口径改 **197 / 197**（历史记录保留 193），
+  双语「双语口径」键数 3249→3250，index.html `data-fact="i18n_keys"` 同步（site_facts
+  棘轮强制）
+- **验证口径**：新验证服务器（Ubuntu 24.04，Docker 隔离）：Ubuntu 22.04 裸容器三条安装
+  路径（GitHub 正常 / `/etc/hosts` 屏蔽 GitHub 后自动镜像 / 分支树本地离线安装）+
+  24.04 裸容器真机安装（当场抓到并修复上述依赖 404）+ 注入一次性失败的 apt-get 包装器
+  确证重试路径；`FUSION_LANG` 夹具矩阵（auto+en→en、en+zh_CN→en）与 nobody 帮助
+  stderr=0 实测；1.43.3→1.43.4 端到端升级并确认升级说明通道首次以新版格式可见；
+  静态门禁服务器 **198/198**
+
 ## v1.43.3 安装体验与面板清单：默认中文、装完进主菜单、fb/FB 快捷命令、1Panel 进 Aapanel 出
 
 - **安装器语言默认值（PR #39）**：`install.sh` 原为 `case "${FUSION_LANG:-${LANG:-en}}"` 且只认

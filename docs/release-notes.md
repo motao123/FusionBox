@@ -6,6 +6,31 @@
 > 每个版本一节，节标题必须是 `## vX.Y.Z`（升级提示按版本号截取当前版本那一节）；
 > 版本号与 `version.txt` 的一致性由 CI 的"Release version consistency"检查强制。
 
+## v1.43.4
+
+- **GitHub 访问受限也能安装**：安装器检测到 GitHub 不可达时，会自动改走 CNB 镜像下载
+  发布资产——镜像资产与 GitHub 逐字节一致，仍通过 SHA256 校验后才安装。
+  纯镜像的手动安装步骤见 README「GitHub 访问受限时的备用安装」；自建镜像可用
+  环境变量 `FUSION_MIRROR=https://你的镜像仓库` 指定。
+- **依赖安装更抗抖动**：首次安装依赖若撞上软件源瞬时故障（如镜像池 404），安装器会
+  自动刷新软件源索引并重试一次，不再直接中断。
+- **语言一次性覆盖修复**：`FUSION_LANG=en fusionbox help` 这类单次覆盖，此前在任何
+  已安装的系统上都会被配置文件里的 `lang: auto` 压掉（等于永远无效）。现在 `auto`
+  表示"尚未选择"，环境变量可以生效；用 `fusionbox lang en` 显式设置过的语言仍然优先。
+- **英文文档更纯粹**：README.en 的品牌名统一为官方英文名（宝塔 → BT Panel、
+  哪吒监控 → Nezha monitoring、棉花云 → Mianhua Cloud），命令占位符改为英文
+  （`<name>`、`<port>`、`<keyword>`、`<app>`），正文中文残留清零。
+- **受限环境更安静**：HOME 不可写（例如容器内的受限用户）时，`fusionbox help` 等
+  只读命令不再打印日志写入报错；日志自动停用，功能不受影响。
+- **文档勘误**：README 曾写"完整 Docker 卸载尚未实现"，实际
+  `fusionbox panels docker uninstall` 早已提供一键完整卸载（容器/镜像/卷/网络/软件包，
+  数据可选保留，需输入 YES 确认），已按实际能力订正。
+- **老用户建议补一个配置键**：v1.43.3 之前安装的用户，配置文件里没有
+  `panels.bt_install_code`，`fusionbox panels bt` 会以不带渠道码的方式安装
+  （与宝塔官方默认行为一致，不影响使用）。如需携带渠道码，在
+  `~/.config/fusionbox/config.yaml` 的 `panels:` 段下加一行：
+  `bt_install_code: rU2tN9mZ`。新装用户无需任何操作。
+
 ## v1.43.3
 
 - **安装与升级更顺手**：安装程序默认中文（此前在 `LANG` 未设置或为 `C.UTF-8` 的服务器上会

@@ -26,18 +26,21 @@ LINK_RE = re.compile(r"\]\(([^)\s]+)")
 IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)")
 INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
 VERSION_BADGE_RE = re.compile(r"version-(\d+\.\d+\.\d+)")
-# 英文版允许出现的中文：仅品牌 / 面板等专有名词原名
+# 英文版不允许出现中文（语言切换器一行与 `<...>` 占位符除外）。
+# 品牌名一律用官方英文名（宝塔→BT Panel、哪吒监控→Nezha monitoring、棉花云→Mianhua Cloud，
+# 与 src/i18n/en.sh 的译法一致），不再保留中文原名白名单。
 CJK_RE = re.compile("[　-〿一-鿿＀-￯‘’“”—…]")
-CJK_ALLOW = {"棉花云", "哪吒监控", "宝塔"}
+CJK_ALLOW: set = set()
 # 命令块里必须逐字一致的起始词
 CMD_RE = re.compile(
     r"^\s*(fusionbox|bash|curl|sudo|systemctl|scp|ssh|git|python3?|k)\b.*"
 )
-# 命令行尾注是散文，允许翻译；命令本体必须逐字一致
+# 命令行尾注是散文，允许翻译；命令本体逐字一致（`<...>` 占位符除外，见下）
 TRAILING_COMMENT_RE = re.compile(r"\s+#.*$")
 # 两份 README 互链的语言切换器：链接目标天然不对称，单独校验其存在性
 SELF_LINKS = {"README.md", "README.en.md"}
-# 命令操作数占位符按设计原样镜像（<端口> / <应用> …），不计入中文残留
+# 命令操作数占位符（<端口> / <应用> / <port> / <app> …）：两边各自用目标语言书写，
+# 比对前统一归一化为 <#>，不计入中文残留
 PLACEHOLDER_RE = re.compile(r"<[^<>\n]{1,24}>")
 
 
@@ -87,18 +90,19 @@ def fingerprint(lines):
         "langs": langs,
         "table_rows": rows,
         "cells": cells,
-        "inline_spans": sorted(x for l in lines for x in INLINE_CODE_RE.findall(l)),
+        "inline_spans": sorted(PLACEHOLDER_RE.sub("<#>", x)
+                               for l in lines for x in INLINE_CODE_RE.findall(l)),
         "links": sorted(links),
         "images": sorted(IMG_RE.findall("\n".join(lines))),
     }
 
 
 def commands(lines):
-    """代码块内的可执行命令本体（注释译文不计，命令本身必须逐字一致）。"""
+    """代码块内的可执行命令本体（注释译文不计；占位符归一化后必须逐字一致）。"""
     out = []
     for raw, in_code in strip_tables_and_fences(lines):
         if in_code and CMD_RE.match(raw):
-            out.append(TRAILING_COMMENT_RE.sub("", raw).strip())
+            out.append(PLACEHOLDER_RE.sub("<#>", TRAILING_COMMENT_RE.sub("", raw).strip()))
     return out
 
 
