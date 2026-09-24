@@ -154,9 +154,13 @@ _load_config() {
     done < "$FUSION_CONFIG"
   fi
 
-  # Override with env vars
-  [[ -n "${FUSION_LANG:-}" ]] && F_LANG="$FUSION_LANG"
+  # 显式配置（lang: en / zh_CN）优先于环境变量；`auto` 表示"尚未选择"，
+  # 此时 FUSION_LANG 单次覆盖必须能生效——安装器总会写入 lang: auto，
+  # 若让 auto 也压过环境变量，docs/i18n.md 承诺的 FUSION_LANG=en 单次覆盖永远无效。
   F_LANG="${CONFIG_general_lang:-$F_LANG}"
+  if [[ -z "$F_LANG" || "$F_LANG" == "auto" ]] && [[ -n "${FUSION_LANG:-}" ]]; then
+    F_LANG="$FUSION_LANG"
+  fi
 
   # general.color=false 时清空全部 ANSI 变量：颜色在 msg()/msg_*() 层统一生效，
   # 置空即全局无色，无需改动任何调用点（i18n 文案不含内嵌转义码）。
@@ -567,12 +571,20 @@ _download() {
 # ---- Logging ----
 
 _init_log() {
-  mkdir -p "$FUSION_LOG_DIR"
+  # HOME 不可写（如容器里的 nobody、只读挂载）时静默停用日志：
+  # 帮助等只读路径不该被 mkdir/append 报错噪声污染，功能照常。
+  if mkdir -p "$FUSION_LOG_DIR" 2>/dev/null; then
+    F_LOG_OK=1
+  else
+    F_LOG_OK=0
+    return 0
+  fi
   _log_write "$(L MSG_COMMON_0026)"
 }
 
 _log_write() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$FUSION_LOG_DIR/fusionbox.log"
+  [[ "${F_LOG_OK:-1}" == 1 ]] || return 0
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$FUSION_LOG_DIR/fusionbox.log" 2>/dev/null
 }
 
 # ---- Dependency checks ----
