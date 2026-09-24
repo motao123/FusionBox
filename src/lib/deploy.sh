@@ -124,4 +124,22 @@ fusion_deploy() (
     fusion_owned_command "$bin" "$base" || exit 1
   fi
   committed=1
+
+  # 快捷命令：fb / FB 与 fusionbox 一样是指向 fusion.sh 的软链接，装完即可直接敲。
+  # 已存在但不是本脚本建的链接一律不动；这一步在提交之后执行，失败也不影响部署结果。
+  local alias_bin alias_dir alias_link alias_target
+  alias_bin="${bin:-/usr/local/bin/fusionbox}"
+  alias_dir="$(dirname "$alias_bin")"
+  for alias_link in fb FB; do
+    alias_target="$alias_dir/$alias_link"
+    if [[ -e "$alias_target" || -L "$alias_target" ]]; then
+      if [[ -L "$alias_target" && "$(readlink -m -- "$alias_target")" == "$base/fusion.sh" ]]; then
+        continue
+      fi
+      printf 'Shortcut left untouched (not created by FusionBox): %s
+' "$alias_target" >&2
+      continue
+    fi
+    ln -s -- "$base/fusion.sh" "$alias_target" || true
+  done
 )

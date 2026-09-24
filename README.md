@@ -54,7 +54,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/inst
 # 1. 安装（自动补齐缺失依赖）
 bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
 
-# 2. 进入主菜单，或直接调用模块命令
+# 2. 进入主菜单，或直接调用模块命令（安装时会同时创建快捷命令 fb / FB）
 fusionbox
 ```
 
