@@ -6,6 +6,20 @@
 > 每个版本一节，节标题必须是 `## vX.Y.Z`（升级提示按版本号截取当前版本那一节）；
 > 版本号与 `version.txt` 的一致性由 CI 的"Release version consistency"检查强制。
 
+## v1.43.6
+
+- **新增"系统一键重装"**：`fusionbox system tools` 菜单第 12 项。调用上游
+  [bin456789/reinstall](https://github.com/bin456789/reinstall)（13k+ 星、GPL-3.0、持续维护），
+  目标系统支持 Debian 12/13、Ubuntu 22.04/24.04、Alpine 3.22 与自定义 DD 镜像（https URL）。
+  GitHub 不可达时自动改走 CNB 镜像下载上游脚本，执行前展示脚本 SHA256 指纹。
+- **⚠ 使用前必读**：重装会**销毁整盘数据且不可回滚**。仅限 KVM/独立服务器（OpenVZ/LXC/
+  容器不支持）；仅在交互终端可用（脚本/CI 自动拒绝）；需要连续确认三次（风险告知、
+  输入 YES、最终确认）。新 root 密码可直接输入或由工具自动生成（只展示一次，请立即记录）。
+  写入引导后需重启才真正开始重装；安装期间可通过商家 VNC 观察进度，安装失败也可
+  SSH 救砖（上游自带 Alpine 救援路径）。
+- **建议先备份**：重装前请确认已备份网站数据、数据库与配置文件；FusionBox 的
+  `system backup` 只备份系统配置，不替代完整备份。
+
 ## v1.43.5
 
 - **GitHub 访问受限也能更新**：`fusionbox update` 检查更新遇到 GitHub 不可达时，自动改走

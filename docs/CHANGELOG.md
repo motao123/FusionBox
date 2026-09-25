@@ -2,6 +2,40 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.6 系统一键重装（DD）：集成 bin456789/reinstall，从严安全边界
+
+- **背景**：SKY-BOX 对标分析（2026-09-25）后，维护者拍板集成 DD 重装能力。上游选用
+  [bin456789/reinstall](https://github.com/bin456789/reinstall)：13.3k 星、GPL-3.0、
+  2026-09 仍在持续维护（对比 SKY-BOX 自身 2023-12 已停更）；FB 此前审计的结论是
+  "DD 不可回滚、不建议集成"，维护者以产品决策推翻，集成时把安全边界做到最严
+- **实现**（`src/modules/system.sh` 新增 `system_reinstall`，分发位 `system reinstall`，
+  工具菜单第 12 项）：
+  - **TTY 门禁**：`[[ ! -t 0 ]]` 直接拒绝（exit 2）——整盘销毁级操作不进脚本/CI 路径，
+    与"菜单只在交互终端出现"的项目原则一致
+  - **虚拟化守卫**：`systemd-detect-virt` 检测，openvz/lxc/lxc-libvirt/systemd-nspawn/
+    docker/podman 直接拒绝（与上游 README 的不支持清单一致）
+  - **三重确认**：风险告知（数据全毁/不可回滚/失联需 VNC 救砖）→ confirm y/N →
+    输入 YES → 最终确认再输 YES
+  - **目标选择**：debian 12/13、ubuntu 22.04/24.04、alpine 3.22、自定义 DD 镜像 URL
+    （`dd --img`，正则校验 https 前缀）；DD 模式跳过密码/端口交互——上游的
+    `--password` 在 DD 模式仅用于安装期观察日志，目标系统凭据由镜像自带
+  - **密码**：可手输（二次确认一致）或回车自动生成 20 位强密码（复用 G22 的
+    `_genpass_raw`，仅 A-Za-z0-9 避免上游 SSH 配置歧义），明文只展示一次
+  - **双源下载**：GitHub raw → CNB `-/git/raw/`（用户提供的国内源，实测返回真实
+    shell 内容而非软 404——CNB raw 可用性与仓库配置有关，FusionBox 自家仓库的
+    `-/raw/` 仍是软 404）；展示下载文件 SHA256 指纹，**不锁定上游版本**（滚动发布，
+    指纹每次执行前展示，诚实口径）
+  - **执行后**：写入引导成功才提示重启（y/N），记录日志（密码脱敏）；上游脚本
+    失败则提示未做任何更改可重试
+- **i18n**：新增 MSG_SYS_2170-2201 共 32 键（中英逐键对等），语言包 3250→**3282**；
+  EN 包文案严格避开 CJK 标点（破折号等会触发双语闸门残留检查）
+- **门禁 199→200**：新增断言 g——重装功能存在（函数 + TTY 门禁 + 虚拟化检测 +
+  上游 URL + CNB 源五项静态 grep）
+- **验证口径（诚实边界：重装主流程会抹盘，无法在任何测试环境安全实测）**：
+  容器实测虚拟化守卫拒绝路径（docker 被拒）、非 TTY 拒绝路径（exit 2）、双源下载
+  可达（CNB 源返回真实脚本内容）、上游 README 的 CLI/环境要求逐项核对；本地套件
+  与服务器静态门禁全绿；真机重装效果以上游仓库自身的测试与 13k+ 用户实践背书
+
 ## v1.43.5 更新检查镜像后备：fusionbox update 在 GitHub 不可达时自动改走 CNB 镜像
 
 - **背景**：v1.43.4 给安装器加了 CNB 镜像后备，但更新路径（`fusionbox update` /

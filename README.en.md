@@ -6,7 +6,7 @@
 
 9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.43.5-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.6-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -159,7 +159,7 @@ Run from scratch on a **freshly installed Ubuntu 22.04** (Docker CE 29.8.1 + Com
 
 | Layer | Item | Result |
 |---|---|---|
-| Static gate | `bash tests/run_checks.sh` | **199 / 199** (passes both as root and as non-root; Linux only for a full pass) |
+| Static gate | `bash tests/run_checks.sh` | **200 / 200** (passes both as root and as non-root; Linux only for a full pass) |
 | Full suite | `bash tests/comprehensive_test.sh` | bash **229** items + Python **764** items (34 modules), zero failures |
 | Real self-install | official `install.sh` | Release asset download + SHA256 check -> install -> `fusionbox help` / module help / non-root refusal / unknown subcommand exit code 2, all as expected |
 | Real-machine acceptance | 9 scripts in `tests/acceptance/` | **9 / 9 passed** (see table below) |
@@ -184,13 +184,13 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.5** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.43.6** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Updates work even when GitHub is unreachable**: `fusionbox update` now falls back to the CNB mirror for release assets when GitHub cannot be reached (byte-identical assets, still SHA256-verified); the main-branch snapshot remains the last resort. One mirror for both install and update
-- **When it takes effect**: the update runs inside the version you are on, so upgrading from an earlier release still uses the old path; **once on this version**, later updates get the mirror fallback
-- **Verification scope**: the mirror update path was exercised live in a bare container with GitHub blocked (tag discovery → download → SHA256 verify → install → upgrade notes printed); a same-version mirror answer skips the full download; server static gate **199/199** (new assertion: update mirror fallback exists)
+- **One-shot OS reinstall (DD)**: a 12th entry in the `system tools` menu calls the upstream [bin456789/reinstall](https://github.com/bin456789/reinstall) (13k+ stars, GPL-3.0, actively maintained); targets include Debian/Ubuntu/Alpine and custom DD images, and the upstream script is fetched via the CNB mirror automatically when GitHub is unreachable
+- **Safety boundaries are strict**: interactive terminal only (always refused in scripts/CI), KVM/dedicated servers only (containers/OpenVZ/LXC refused outright), triple confirmation (risk notice, typed YES, final check), and the upstream script's SHA256 fingerprint is shown before running; **it destroys all data and cannot be undone, so back up first**
+- **Verification scope**: the container tests exercised the virtualization guard and the non-TTY refusal paths, verified both download sources, i18n parity at 3282 keys, and a server static gate of **200/200**; the reinstall itself wipes the disk and cannot be safely exercised in any test environment (honest boundary)
 
 ---
 
@@ -271,8 +271,9 @@ Comprehensive system operations tooling:
 - **Firewall management**: UFW/iptables, port switching, IP bans, Fail2Ban
 - **Cron management**: add/remove/edit cron entries, automatic backup/cleanup
 - **Disk management**: partition/format/mount/expand/large-file scan/directory sizes
-- **Timezone management**: one-click switching across 29 common cities (Asia/Europe/Americas/Oceania/Africa) + custom IANA timezones + NTP sync
+- **Timezone management**: one-click switching across 29 common cities (Asia/Europe/America/Oceania/Africa) + custom IANA timezones + NTP sync
 - **Trash management**: safe delete/restore/empty
+- **One-shot OS reinstall**: calls the upstream [bin456789/reinstall](https://github.com/bin456789/reinstall) (GPL-3.0); KVM/dedicated servers only, interactive terminal only, double YES gate, the script's SHA256 fingerprint is shown before running; **destroys all data and cannot be undone**; targets include Debian/Ubuntu/Alpine and custom DD images
 
 ```bash
 fusionbox system info            # Show system information
@@ -283,6 +284,7 @@ fusionbox system backup          # Back up system configuration
 fusionbox system update          # Update system packages
 fusionbox system clean           # System cleanup
 fusionbox system tools           # System tools submenu
+fusionbox system reinstall       # One-shot OS reinstall (TTY only, YES gate, irreversible)
 fusionbox system sshkey          # SSH key management
 fusionbox system firewall        # Firewall management
 fusionbox system cron            # Cron job management
@@ -502,7 +504,7 @@ fusionbox cluster kcmd           # Configure the k command shortcuts
 - The per-application verification scope of managed apps follows each template's own documentation; gaps and to-dos are reconciled item by item in the implementation tracking document
 - Anonymous usage statistics are **off by default**, and you can opt in explicitly on the first interactive install; only a random install identifier, the version, coarse system/architecture information and fixed events are sent, see [the privacy note](docs/privacy.md)
 - The statistics Worker is deployed and aggregates through Cloudflare D1; Pages shows the de-duplicated cumulative anonymous install count
-- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3250 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
+- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3282 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
   unextracted strings repo-wide are 0 (enforced key by key by scripts/i18n_audit.py), conventions in [docs/i18n.md](docs/i18n.md)
 - Raw output from third-party tools (docker/certbot/apt) and brand proper nouns are not translated
 - Commercial advertising systems, affiliate promotions and the private KPanel/.kpb protocol are not part of the capability scope
