@@ -6,7 +6,7 @@
 
 9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.43.4-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.5-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -159,7 +159,7 @@ Run from scratch on a **freshly installed Ubuntu 22.04** (Docker CE 29.8.1 + Com
 
 | Layer | Item | Result |
 |---|---|---|
-| Static gate | `bash tests/run_checks.sh` | **198 / 198** (passes both as root and as non-root; Linux only for a full pass) |
+| Static gate | `bash tests/run_checks.sh` | **199 / 199** (passes both as root and as non-root; Linux only for a full pass) |
 | Full suite | `bash tests/comprehensive_test.sh` | bash **229** items + Python **764** items (34 modules), zero failures |
 | Real self-install | official `install.sh` | Release asset download + SHA256 check -> install -> `fusionbox help` / module help / non-root refusal / unknown subcommand exit code 2, all as expected |
 | Real-machine acceptance | 9 scripts in `tests/acceptance/` | **9 / 9 passed** (see table below) |
@@ -184,16 +184,13 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.4** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.43.5** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Installs even when GitHub is unreachable**: the installer automatically falls back to the CNB mirror for release assets (byte-identical to GitHub, still SHA256-verified); the README adds a mirror-only manual install path, and self-hosted mirrors can be set via `FUSION_MIRROR`
-- **`FUSION_LANG` one-shot override fixed**: it used to be permanently overridden by the config's `lang: auto`; now `auto` means "not chosen yet", so the environment variable takes effect while an explicitly chosen language keeps priority
-- **Doc correction and English cleanup**: the README claim "a complete Docker uninstall is not implemented yet" was stale (the one-shot full uninstall has existed for a while) and is now corrected; README.en switches brand names to official English names and command placeholders to English, with zero Chinese left in prose
-- **Quieter for restricted users**: when HOME is unwritable (e.g. a restricted user inside a container), read-only commands like help no longer spam log-write errors; logging disables itself silently
-- **Note for existing users**: configs installed before v1.43.3 lack `panels.bt_install_code`, so BT Panel installs without the channel code (same as BT's default); see the v1.43.4 section of [docs/release-notes.md](docs/release-notes.md) for how to add it
-- **Verification scope**: bare-container installs on Ubuntu 22.04 across three paths (normal GitHub / auto-mirror with GitHub blocked / offline local tree) plus 24.04; `FUSION_LANG` fixture matrix and zero-noise nobody probe verified live; end-to-end 1.43.3→1.43.4 upgrade including the new upgrade-notes channel; server static gate **198/198**
+- **Updates work even when GitHub is unreachable**: `fusionbox update` now falls back to the CNB mirror for release assets when GitHub cannot be reached (byte-identical assets, still SHA256-verified); the main-branch snapshot remains the last resort. One mirror for both install and update
+- **When it takes effect**: the update runs inside the version you are on, so upgrading from an earlier release still uses the old path; **once on this version**, later updates get the mirror fallback
+- **Verification scope**: the mirror update path was exercised live in a bare container with GitHub blocked (tag discovery → download → SHA256 verify → install → upgrade notes printed); a same-version mirror answer skips the full download; server static gate **199/199** (new assertion: update mirror fallback exists)
 
 ---
 

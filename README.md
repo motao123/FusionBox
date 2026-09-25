@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.4-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.5-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -158,7 +158,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 层 | 项目 | 结果 |
 |---|---|---|
-| 静态门禁 | `bash tests/run_checks.sh` | **198 / 198**（root 与非 root 双跑都过；仅 Linux 全绿） |
+| 静态门禁 | `bash tests/run_checks.sh` | **199 / 199**（root 与非 root 双跑都过；仅 Linux 全绿） |
 | 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **764** 项（34 模块），零失败 |
 | 真实自装 | 官方 `install.sh` | Release 资产下载 + SHA256 校验 → 安装 → `fusionbox help` / 模块帮助 / 非 root 拒绝 / 未知子命令退出码 2 全部符合预期 |
 | 真机验收 | `tests/acceptance/` 9 个脚本 | **9 / 9 通过**（见下表） |
@@ -183,16 +183,13 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.4** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.5** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **GitHub 访问受限也能装**：安装器在 GitHub 不可达时自动改走 CNB 镜像下载发布资产（与 GitHub 逐字节一致，仍过 SHA256 校验）；README 补充纯镜像手动安装步骤，自建镜像可用 `FUSION_MIRROR` 指定
-- **`FUSION_LANG` 单次覆盖修复**：此前会被配置里的 `lang: auto` 永远压掉；现在 `auto` 表示"尚未选择"，环境变量可以生效，显式设置过的语言仍优先
-- **文档勘误与英文净化**：README「完整 Docker 卸载尚未实现」为过期说法（一键完整卸载早已提供），已按实际能力订正；README.en 品牌名改用官方英文名、命令占位符改英文，正文中文残留清零
-- **非 root 环境更安静**：HOME 不可写（如容器内的受限用户）时，帮助等只读命令不再被日志写入报错刷屏，日志自动停用、功能照常
-- **老用户请留意**：v1.43.3 前安装的配置里没有 `panels.bt_install_code`，宝塔安装不带渠道码（与宝塔默认行为一致）；加键方法见 [docs/release-notes.md](docs/release-notes.md) 的 v1.43.4 节
-- **验证口径**：Ubuntu 22.04 裸容器三条安装路径（GitHub 正常 / 屏蔽 GitHub 后自动镜像 / 本地树离线）+ 24.04 裸容器；`FUSION_LANG` 夹具矩阵与 nobody 零噪声实测；1.43.3→1.43.4 端到端升级含新版升级说明首次可见；静态门禁服务器 **198/198**
+- **GitHub 访问受限也能更新**：`fusionbox update` 检查更新遇到 GitHub 不可达时，自动改走 CNB 镜像下载发布资产（与 GitHub 逐字节一致，仍过 SHA256 校验）；镜像与 GitHub 都不可用才回落 main 快照，行为与安装器同一套镜像
+- **生效时点说明**：更新由当前正在运行的版本执行，因此从更早版本升级到本版时仍走原路径；**升到本版之后**，后续更新即具备镜像后备能力
+- **验证口径**：屏蔽 GitHub 的裸容器实测镜像更新链路（tag 发现 → 下载 → SHA256 校验 → 安装 → 升级说明打印）；镜像与当前版本一致时免整包空下载；静态门禁服务器 **199/199**（新增断言：更新镜像后备存在）
 
 ---
 
