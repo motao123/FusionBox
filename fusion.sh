@@ -257,6 +257,9 @@ show_status() {
 # NOTE: keep the repo URL in sync with install.sh (single source of truth)
 FUSION_REPO="https://github.com/motao123/FusionBox"
 FUSION_API="https://api.github.com/repos/motao123/FusionBox"
+# 与 install.sh 同源的镜像后备：GitHub 不可达时更新检查改走 CNB Release
+# （资产与 GitHub 逐字节一致，仍过 SHA256SUMS 校验）。环境变量可覆盖。
+FUSION_MIRROR="${FUSION_MIRROR:-https://cnb.cool/code_free/FusionBox}"
 
 _update_json_string() {
   local key="$1"
@@ -275,6 +278,40 @@ _update_download() {
   shift 2
   command -v curl &>/dev/null || return 1
   curl -fsSL --connect-timeout 10 --retry 2 "$@" "$url" -o "$output"
+}
+
+# CNB 镜像更新后备（静默尝试，不打印提示、不新增语言包键）：307 Location 匿名
+# 发现最新 tag，Release 资产 + SHA256SUMS 同源校验，产物写入 $1/ 下与 GitHub 路径
+# 相同的文件名；通过校验返回 0 并把 tag 记入 _UPDATE_MIRROR_TAG。校验不过不落系统。
+_update_from_mirror() {
+  local tmpdir="$1" loc tag asset expected actual
+  [[ -n "$FUSION_MIRROR" ]] || return 1
+  loc="$(curl -fsSI --connect-timeout 10 --retry 2 \
+    "$FUSION_MIRROR/-/releases/latest" 2>/dev/null | tr -d '\r' \
+    | sed -n 's#^[Ll]ocation:[[:space:]].*/-/releases/tag/##p' | tail -n 1)"
+  [[ "$loc" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  tag="$loc"
+  asset="FusionBox-$tag.tar.gz"
+  if [[ "${tag#v}" == "$FUSION_VER" ]]; then
+    # 镜像最新版与当前一致：免去整包空下载，由调用方提前返回"已是最新"
+    _UPDATE_MIRROR_TAG="$tag"
+    _UPDATE_MIRROR_SAME=1
+    return 0
+  fi
+  _UPDATE_MIRROR_SAME=0
+  _update_download "$FUSION_MIRROR/-/releases/download/$tag/$asset" "$tmpdir/fusionbox.tar.gz" || return 1
+  _update_download "$FUSION_MIRROR/-/releases/download/$tag/SHA256SUMS" "$tmpdir/SHA256SUMS" || return 1
+  expected="$(while read -r sum name rest; do
+    name="${name#\*}"
+    if [[ "$name" == "$asset" && -z "$rest" && "$sum" =~ ^[0-9a-fA-F]{64}$ ]]; then
+      printf '%s\n' "${sum,,}"
+    fi
+  done < "$tmpdir/SHA256SUMS")"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || return 1
+  actual="$(sha256sum "$tmpdir/fusionbox.tar.gz" | cut -d ' ' -f 1)" || return 1
+  [[ "$actual" == "$expected" ]] || return 1
+  _UPDATE_MIRROR_TAG="$tag"
+  return 0
 }
 
 _update_validate_archive() {
@@ -397,11 +434,23 @@ self_update() (
   fi
 
   if [[ $download_status -eq 2 ]]; then
-    msg "$(L MSG_MAIN_0012 "${F_YELLOW}" "${F_RESET}")"
-    msg "$(L MSG_MAIN_0013 "${F_YELLOW}" "${F_RESET}")"
-    _update_download "$FUSION_REPO/archive/refs/heads/main.tar.gz" "$tmpdir/fusionbox.tar.gz" || return 1
-    archive_root="FusionBox-main"
-    tag=""
+    # GitHub 不可达或应答非法：先静默试 CNB 镜像（Release 资产与 GitHub 逐字节一致
+    # 且带 SHA256SUMS 校验，优于 main 快照回落）；镜像也失败才回落 main 快照。
+    if _update_from_mirror "$tmpdir"; then
+      if [[ "${_UPDATE_MIRROR_SAME:-0}" == 1 ]]; then
+        msg_ok "$(L MSG_MAIN_0008)"
+        return 0
+      fi
+      tag="$_UPDATE_MIRROR_TAG"
+      archive_root="FusionBox"
+      download_status=0
+    else
+      msg "$(L MSG_MAIN_0012 "${F_YELLOW}" "${F_RESET}")"
+      msg "$(L MSG_MAIN_0013 "${F_YELLOW}" "${F_RESET}")"
+      _update_download "$FUSION_REPO/archive/refs/heads/main.tar.gz" "$tmpdir/fusionbox.tar.gz" || return 1
+      archive_root="FusionBox-main"
+      tag=""
+    fi
   fi
 
   _update_validate_archive "$tmpdir/fusionbox.tar.gz" "$archive_root" "$tmpdir" || {

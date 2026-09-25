@@ -2,6 +2,30 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.5 更新检查镜像后备：fusionbox update 在 GitHub 不可达时自动改走 CNB 镜像
+
+- **背景**：v1.43.4 给安装器加了 CNB 镜像后备，但更新路径（`fusionbox update` /
+  `self_update_cron`）仍只走 GitHub——屏蔽 GitHub 的容器实测确认更新会失败。本轮补齐：
+  更新与安装共用同一套镜像常量（`FUSION_MIRROR`，默认 CNB，环境变量可覆盖）
+- **实现**：`fusion.sh` 新增 `_update_from_mirror`——307 Location 匿名发现最新 tag
+  （与 install.sh 同一机制），Release 资产 + SHA256SUMS 下载并同源校验，产物写入
+  与 GitHub 路径相同的临时文件名，通过校验后并入既有"已校验 Release 包"安装分支
+  （archive_root=FusionBox、tag 记录、版本比较、`_update_show_notes` 全部复用）。
+  **静默尝试**：不打印提示、不新增语言包键——更新由运行中的旧版 fusion.sh 执行，
+  新增键会在"新 fusion.sh + 旧语言包"窗口打印裸键名，复用既有键无此问题
+- **避免整包空下载**：镜像最新版与当前版本一致时（cron 定时更新的常态），提前返回
+  "已是最新"（复用 `MSG_MAIN_0008`），不下载 tarball；镜像落后于运行版本的极端情形
+  由既有的 `_version_is_newer` 降级保护兜底（warn 后拒绝）
+- **回落顺序**：GitHub Release →（不可达）CNB 镜像 Release →（也失败）main 分支快照
+  （无校验，沿用既有 MSG_MAIN_0012/0013 提示）→ 失败报错
+- **门禁 198→199**：新增断言——更新检查镜像后备存在（`_update_from_mirror` +
+  `FUSION_MIRROR` 静态 grep）
+- **验证口径**：屏蔽 GitHub 的裸容器实测：v1.43.4 经镜像装出（安装镜像后备）→
+  以新 fusion.sh 覆盖运行侧（version.txt 保持 1.43.4 模拟"已装旧版"）→
+  `fusionbox update` 静默走镜像发现 v1.43.5 → 下载 + SHA256 校验 → 升级成功且
+  升级说明打印；同版本场景提前返回不下载；镜像与 GitHub 资产 sha256 双端一致；
+  静态门禁服务器 **199/199**
+
 ## v1.43.4 审计跟进：安装镜像后备、FUSION_LANG 优先级、日志静默降级、文档勘误
 
 - **安装镜像后备（P1）**：实测发现 CNB 匿名 `-/raw/` 与 `-/archive/` 返回的是 HTTP 200 的
