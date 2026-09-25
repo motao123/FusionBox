@@ -81,6 +81,9 @@ main:
             python3 scripts/docs_readme_gate.py
             python3 scripts/site_facts.py
             python3 scripts/deploy_exposure_audit.py
+            # scripts/upstream_url_audit.py 有意不接入 CNB：探活需直连
+            # raw.githubusercontent.com 等域名，CN 出口不稳定会产生假红；
+            # 第三方 URL 巡检以 GitHub 侧流水线为准。
             echo "All shipped code checks passed"
 
   pull_request:

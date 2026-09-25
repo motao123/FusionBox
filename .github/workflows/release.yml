@@ -73,6 +73,13 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
 
+      - name: Upstream URL liveness audit (third-party matrix/tool sources)
+        run: |
+          set -e
+          python3 scripts/upstream_url_audit.py
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+
       - name: Release version consistency
         run: |
           set -e
