@@ -304,12 +304,17 @@ if [[ $_net_ok == 0 ]]; then
   (exec 3<>"/dev/tcp/$_mirror_host/443") 2>/dev/null && _net_mirror_ok=1
 fi
 
-if [[ $_net_ok == 0 && $_net_mirror_ok == 0 ]]; then
+if [[ $_net_ok == 0 ]]; then
+  # 本地树优先（与镜像后备引入前的行为一致）：脚本所在目录带完整安装树时
+  # 直接本地安装——镜像引导（README 四行）已对 tarball 做过 SHA256 校验，
+  # 不应再二次下载；仅当本地无树时才走镜像下载路径。
   if [[ -f "$SCRIPT_DIR/fusion.sh" ]]; then
     _do_local_install
   fi
-  msg_err "$(L MSG_INST_0013)"
-  exit 1
+  if [[ $_net_mirror_ok == 0 ]]; then
+    msg_err "$(L MSG_INST_0013)"
+    exit 1
+  fi
 fi
 
 # 干净镜像（尤其容器里的 Ubuntu）可能完全没有包索引，直接 install 会报
@@ -362,10 +367,10 @@ if [[ $_net_ok == 1 ]]; then
   else
     download_status=$?
     if [[ $download_status -eq 2 ]]; then
-      _download_main_fallback || _download_mirror || { msg_err "$(L MSG_INST_0018)"; exit 1; }
+      _download_main_fallback || _download_mirror || { [[ -f "$SCRIPT_DIR/fusion.sh" ]] && _do_local_install; msg_err "$(L MSG_INST_0018)"; exit 1; }
     else
       # Release 下载或校验失败：镜像资产与 GitHub 同源，值得一试再放弃
-      _download_mirror || { msg_err "$(L MSG_INST_0019)"; exit 1; }
+      _download_mirror || { [[ -f "$SCRIPT_DIR/fusion.sh" ]] && _do_local_install; msg_err "$(L MSG_INST_0019)"; exit 1; }
     fi
   fi
 else

@@ -551,6 +551,10 @@ self_uninstall() {
       sed -i '/fusionbox\/kcmd\/aliases\.sh/d' "$rc"
     fi
   done
+  # 收尾：整个主体目录移除（含部署拷入的 configs/ 与历史 .fusionbox-backup.*，
+  # 它们是程序体的一部分；用户数据在 $HOME/.config/fusionbox，设计上保留）。
+  # 上一行已断言 FUSION_BASE == /etc/fusionbox，此处整体删除是安全的。
+  rm -rf "$FUSION_BASE"
   msg_ok "$(L MSG_MAIN_0029)"
 }
 
