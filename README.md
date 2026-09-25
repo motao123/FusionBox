@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.6-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.7-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -51,7 +51,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/inst
 ## 30 秒上手
 
 ```bash
-# 1. 安装（自动补齐缺失依赖）
+# 1. 安装（自动补齐缺失依赖；命令本身需要系统已带 curl 或 wget）
 bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
 
 # 2. 进入主菜单，或直接调用模块命令（安装时会同时创建快捷命令 fb / FB）
@@ -158,7 +158,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 层 | 项目 | 结果 |
 |---|---|---|
-| 静态门禁 | `bash tests/run_checks.sh` | **200 / 200**（root 与非 root 双跑都过；仅 Linux 全绿） |
+| 静态门禁 | `bash tests/run_checks.sh` | **201 / 201**（root 与非 root 双跑都过；仅 Linux 全绿） |
 | 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **764** 项（34 模块），零失败 |
 | 真实自装 | 官方 `install.sh` | Release 资产下载 + SHA256 校验 → 安装 → `fusionbox help` / 模块帮助 / 非 root 拒绝 / 未知子命令退出码 2 全部符合预期 |
 | 真机验收 | `tests/acceptance/` 9 个脚本 | **9 / 9 通过**（见下表） |
@@ -183,13 +183,15 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.6** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.7** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **系统一键重装（DD）**：`system tools` 菜单新增第 12 项，调用上游 [bin456789/reinstall](https://github.com/bin456789/reinstall)（13k+ 星、GPL-3.0、持续维护），支持 Debian/Ubuntu/Alpine 与自定义 DD 镜像；国内网络自动走 CNB 镜像下载上游脚本
-- **安全边界从严**：仅限交互终端（脚本/CI 一律拒绝）、仅限 KVM/独立服务器（容器/OpenVZ/LXC 直接拒绝）、三重确认（风险告知 → 输入 YES → 最终确认）、执行前展示上游脚本 SHA256 指纹；**整盘数据销毁且不可回滚，请先备份**
-- **验证口径**：容器实测虚拟化守卫拒绝路径与非 TTY 拒绝路径、双源下载可达、i18n 3282 键逐键对等、静态门禁 **200/200**；重装主流程会抹盘，无法在测试环境安全实测（诚实边界）
+- **上游 URL 存活巡检**：评测矩阵与工具调用的第三方脚本地址（当前 21 个）纳入 CI 持续探活（GitHub 流水线），失效即红，不再等用户踩坑才发现；本轮基线实测 21/21 存活
+- **卸载收尾**：卸载后不再遗留空的主体目录（容器实测验证）
+- **文档口径**：安装命令注明需系统已带 curl/wget（裸系统上安装命令会静默失败的平台通病）；历史验收数据标注「历史基线」并与当前口径分离
+- **完整回归补跑**：服务器全套件（bash 229 + Python 764）覆盖 v1.43.4-6 全部改动，当场抓到并修正一处 CHANGELOG 违反外部引用策略的问题
+- **验证口径**：完整套件零失败、静态门禁 **201/201**、URL 探活 21/21 存活、容器卸载干净度实测；本地 Windows 口径 197/4（fcntl 等平台伪影）
 
 ---
 
@@ -497,7 +499,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 ## 诚实边界
 
 - 测试结论严格区分四档：**本地 mock / 隔离夹具 / 真机实测 / 未验证**，发布说明随版本附带精确范围
-- 当前真机口径（v1.43.0，Ubuntu 22.04 全新环境）：快速闸门 **193/193**（root 与非 root 双跑）、完整套件 bash **229** 项 + Python **764** 项（34 模块）零失败、9 个真机验收脚本全部通过
+- 历史基线（v1.43.0，Ubuntu 22.04 全新环境）：快速闸门 **193/193**（root 与非 root 双跑）、完整套件 bash **229** 项 + Python **764** 项（34 模块）零失败、9 个真机验收脚本全部通过；当前静态门禁口径见上方「真机验证」表
 - **已收口的凭据依赖项**：Cloudflare 联动（v1.41.0，最小权限 Token 真机验证）、ACME 签发两条路线（v1.39.0，本地 Pebble + Let's Encrypt staging 真实 HTTP-01）
 - **仍需真实条件才能验证**：Telegram 送达（需要 bot token）、真实 OCI 实例（Oracle 三件套）、真机关机分支；OCI G32 仅完成只读识别，lookbusy 负载、oci-helper（G33）与 root/IPv6（G34）尚未实现
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见实施跟踪文档

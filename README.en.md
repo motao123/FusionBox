@@ -6,7 +6,7 @@
 
 9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.43.6-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.7-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -51,7 +51,7 @@ One-click scripts are everywhere; what makes FusionBox different is **that it do
 ## Get Started in 30 Seconds
 
 ```bash
-# 1. Install (missing dependencies are filled in automatically)
+# 1. Install (missing dependencies are filled in automatically; the command itself needs curl or wget)
 bash <(curl -fsSL https://raw.githubusercontent.com/motao123/FusionBox/main/install.sh)
 
 # 2. Enter the main menu, or call a module command directly (install also creates the shortcuts fb / FB)
@@ -159,7 +159,7 @@ Run from scratch on a **freshly installed Ubuntu 22.04** (Docker CE 29.8.1 + Com
 
 | Layer | Item | Result |
 |---|---|---|
-| Static gate | `bash tests/run_checks.sh` | **200 / 200** (passes both as root and as non-root; Linux only for a full pass) |
+| Static gate | `bash tests/run_checks.sh` | **201 / 201** (passes both as root and as non-root; Linux only for a full pass) |
 | Full suite | `bash tests/comprehensive_test.sh` | bash **229** items + Python **764** items (34 modules), zero failures |
 | Real self-install | official `install.sh` | Release asset download + SHA256 check -> install -> `fusionbox help` / module help / non-root refusal / unknown subcommand exit code 2, all as expected |
 | Real-machine acceptance | 9 scripts in `tests/acceptance/` | **9 / 9 passed** (see table below) |
@@ -184,13 +184,15 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.6** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.43.7** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **One-shot OS reinstall (DD)**: a 12th entry in the `system tools` menu calls the upstream [bin456789/reinstall](https://github.com/bin456789/reinstall) (13k+ stars, GPL-3.0, actively maintained); targets include Debian/Ubuntu/Alpine and custom DD images, and the upstream script is fetched via the CNB mirror automatically when GitHub is unreachable
-- **Safety boundaries are strict**: interactive terminal only (always refused in scripts/CI), KVM/dedicated servers only (containers/OpenVZ/LXC refused outright), triple confirmation (risk notice, typed YES, final check), and the upstream script's SHA256 fingerprint is shown before running; **it destroys all data and cannot be undone, so back up first**
-- **Verification scope**: the container tests exercised the virtualization guard and the non-TTY refusal paths, verified both download sources, i18n parity at 3282 keys, and a server static gate of **200/200**; the reinstall itself wipes the disk and cannot be safely exercised in any test environment (honest boundary)
+- **Upstream URL liveness audit**: the third-party script sources behind the benchmark matrix and tools (21 today) are now probed continuously in CI (GitHub pipeline); a dead source turns the gate red instead of waiting for users to hit it. Baseline this round: 21/21 alive
+- **Cleaner uninstall**: the empty leftover body directory after uninstall is now removed (verified in a container)
+- **Sharper docs**: the install command now states it needs curl or wget present (the classic silent failure on bare systems); historical acceptance data is explicitly labelled a "historical baseline", separate from the current standing
+- **Full regression debt cleared**: the complete server suite (bash 229 + Python 764) now covers every v1.43.4-6 change, and it caught one CHANGELOG violation of the external reference policy, since fixed
+- **Verification scope**: full suite zero failures, static gate **201/201**, URL probe 21/21 alive, container uninstall cleanliness verified; local Windows standing 197/4 (fcntl et al. platform artifacts)
 
 ---
 
@@ -498,7 +500,7 @@ fusionbox cluster kcmd           # Configure the k command shortcuts
 ## Honest Boundaries
 
 - Test conclusions are strictly split into four tiers: **locally mocked / isolated fixture / verified on real hardware / unverified**, and release notes ship the precise scope with each version
-- Current real-machine standing (v1.43.0, fresh Ubuntu 22.04): quick gate **193/193** (run twice, as root and as non-root), full suite bash **229** items + Python **764** items (34 modules) with zero failures, all 9 real-machine acceptance scripts passed
+- Historical baseline (v1.43.0, fresh Ubuntu 22.04): quick gate **193/193** (run twice, as root and as non-root), full suite bash **229** items + Python **764** items (34 modules) with zero failures, all 9 real-machine acceptance scripts passed; for the current static-gate standing see the real-machine verification table above
 - **Credential-dependent items already closed out**: Cloudflare integration (v1.41.0, minimal-privilege Token verified on real hardware), both ACME issuance routes (v1.39.0, local Pebble + Let's Encrypt staging with real HTTP-01)
 - **Still needs real conditions before it can be verified**: Telegram delivery (needs a bot token), real OCI instances (the Oracle trio), the real power-off branch; OCI G32 has only completed read-only identification, and lookbusy load, oci-helper (G33) and root/IPv6 (G34) are not implemented
 - The per-application verification scope of managed apps follows each template's own documentation; gaps and to-dos are reconciled item by item in the implementation tracking document
