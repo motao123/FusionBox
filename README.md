@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.5-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.6-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -158,7 +158,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 层 | 项目 | 结果 |
 |---|---|---|
-| 静态门禁 | `bash tests/run_checks.sh` | **199 / 199**（root 与非 root 双跑都过；仅 Linux 全绿） |
+| 静态门禁 | `bash tests/run_checks.sh` | **200 / 200**（root 与非 root 双跑都过；仅 Linux 全绿） |
 | 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **764** 项（34 模块），零失败 |
 | 真实自装 | 官方 `install.sh` | Release 资产下载 + SHA256 校验 → 安装 → `fusionbox help` / 模块帮助 / 非 root 拒绝 / 未知子命令退出码 2 全部符合预期 |
 | 真机验收 | `tests/acceptance/` 9 个脚本 | **9 / 9 通过**（见下表） |
@@ -183,13 +183,13 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.5** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.6** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **GitHub 访问受限也能更新**：`fusionbox update` 检查更新遇到 GitHub 不可达时，自动改走 CNB 镜像下载发布资产（与 GitHub 逐字节一致，仍过 SHA256 校验）；镜像与 GitHub 都不可用才回落 main 快照，行为与安装器同一套镜像
-- **生效时点说明**：更新由当前正在运行的版本执行，因此从更早版本升级到本版时仍走原路径；**升到本版之后**，后续更新即具备镜像后备能力
-- **验证口径**：屏蔽 GitHub 的裸容器实测镜像更新链路（tag 发现 → 下载 → SHA256 校验 → 安装 → 升级说明打印）；镜像与当前版本一致时免整包空下载；静态门禁服务器 **199/199**（新增断言：更新镜像后备存在）
+- **系统一键重装（DD）**：`system tools` 菜单新增第 12 项，调用上游 [bin456789/reinstall](https://github.com/bin456789/reinstall)（13k+ 星、GPL-3.0、持续维护），支持 Debian/Ubuntu/Alpine 与自定义 DD 镜像；国内网络自动走 CNB 镜像下载上游脚本
+- **安全边界从严**：仅限交互终端（脚本/CI 一律拒绝）、仅限 KVM/独立服务器（容器/OpenVZ/LXC 直接拒绝）、三重确认（风险告知 → 输入 YES → 最终确认）、执行前展示上游脚本 SHA256 指纹；**整盘数据销毁且不可回滚，请先备份**
+- **验证口径**：容器实测虚拟化守卫拒绝路径与非 TTY 拒绝路径、双源下载可达、i18n 3282 键逐键对等、静态门禁 **200/200**；重装主流程会抹盘，无法在测试环境安全实测（诚实边界）
 
 ---
 
@@ -272,6 +272,7 @@ fusionbox proxy bbr              # 启用 BBR 加速
 - **磁盘管理**：分区/格式化/挂载/扩展/大文件扫描/目录大小
 - **时区管理**：29 个常用城市分区一键切换（亚洲/欧洲/美洲/大洋洲/非洲）+ 自定义 IANA 时区 + NTP 同步
 - **回收站管理**：安全删除/恢复/清空
+- **系统一键重装**：调用上游 [bin456789/reinstall](https://github.com/bin456789/reinstall)（GPL-3.0），仅限 KVM/独立服务器、仅限交互终端、双重 YES 门禁、执行前展示脚本 SHA256 指纹；**整盘数据销毁且不可回滚**，重装目标支持 Debian/Ubuntu/Alpine 与自定义 DD 镜像
 
 ```bash
 fusionbox system info            # 查看系统信息
@@ -282,6 +283,7 @@ fusionbox system backup          # 备份系统配置
 fusionbox system update          # 更新系统软件包
 fusionbox system clean           # 系统清理
 fusionbox system tools           # 系统工具子菜单
+fusionbox system reinstall       # 系统一键重装（仅 TTY，YES 门禁，不可回滚）
 fusionbox system sshkey          # SSH 密钥管理
 fusionbox system firewall        # 防火墙管理
 fusionbox system cron            # 定时任务管理
@@ -501,7 +503,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
 - 统计 Worker 已部署并使用 Cloudflare D1 聚合；Pages 显示的是去重后的累计匿名装机数
-- **双语口径**：核心层与 9 个模块层均已走语言包（zh_CN / en 各 3250 键，逐键对等），英文模式零中文；
+- **双语口径**：核心层与 9 个模块层均已走语言包（zh_CN / en 各 3282 键，逐键对等），英文模式零中文；
   全仓未抽取文案 0 条（由 scripts/i18n_audit.py 逐键强制），约定见 [docs/i18n.md](docs/i18n.md)
 - 第三方工具（docker/certbot/apt）的原始输出与品牌专有名词不做翻译
 - 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围

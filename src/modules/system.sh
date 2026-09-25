@@ -43,6 +43,7 @@ system_main() {
     genpass)          system_genpass "$@" ;;
     gai)              system_gai "$@" ;;
     locale)           system_locale "$@" ;;
+    reinstall)        system_reinstall ;;
     settings)         system_settings_menu ;;
     tools)            system_tools_menu ;;
     menu|main)        system_menu ;;
@@ -4074,6 +4075,7 @@ system_tools_menu() {
     msg "$(L MSG_SYS_2006 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_SYS_2007 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_SYS_2008 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_SYS_2200 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_SYS_1139 "${F_GREEN}" "${F_RESET}")"
     msg ""
     read -p "$(L MSG_SYS_2009)" tools_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
@@ -4089,6 +4091,7 @@ system_tools_menu() {
       9) system_hardening ;;
       10) system_swap ;;
       11) system_fail2ban ;;
+      12) system_reinstall ;;
       0) break ;;
     esac
   done
@@ -4550,6 +4553,124 @@ system_locale() {
   locale-gen "$lang" 2>/dev/null || msg_warn "$(L MSG_SYS_2112 "$lang")"
   update-locale "LANG=$lang" && msg_ok "$(L MSG_SYS_2113 "$lang")"
   _log_write "$(L MSG_SYS_2114 "$lang")"
+}
+
+# ---- 系统一键重装（DD，G35）：调用上游 bin456789/reinstall（GPL-3.0）----
+# 上游为滚动发布的第三方脚本：本工具每次实时下载、执行前展示 SHA256 指纹但不锁定
+# 版本；仅交互终端可用（整盘销毁级操作不进脚本/CI 路径），容器/OpenVZ/LXC 直接拒绝
+# （上游同样不支持）；目标为 dd 镜像时跳过密码/端口交互——DD 镜像自带凭据，
+# 上游的 --password 仅用于安装期观察日志。
+_REINSTALL_SCRIPT_GH="https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh"
+_REINSTALL_SCRIPT_CNB="https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh"
+
+system_reinstall() {
+  _require_root
+  if [[ ! -t 0 ]]; then
+    msg_err "$(L MSG_SYS_2171)"
+    return 2
+  fi
+
+  local virt="unknown"
+  command -v systemd-detect-virt >/dev/null 2>&1 && virt="$(systemd-detect-virt 2>/dev/null || true)"
+  [[ -n "$virt" ]] || virt="unknown"
+  case "$virt" in
+    openvz|lxc|lxc-libvirt|systemd-nspawn|docker|podman)
+      msg_err "$(L MSG_SYS_2173 "$virt")"
+      return 1 ;;
+  esac
+
+  msg_title "$(L MSG_SYS_2170)"
+  msg ""
+  msg_warn "$(L MSG_SYS_2174)"
+  msg ""
+  msg "$(L MSG_SYS_2172 "$virt")"
+  msg ""
+  confirm "$(L MSG_SYS_2175)" || { msg_info "$(L MSG_SYS_2176)"; return 1; }
+  local _reinstall_yes
+  read -r -p "$(L MSG_SYS_2175)" _reinstall_yes || { msg ""; return 1; }
+  [[ "$_reinstall_yes" == "YES" ]] || { msg_info "$(L MSG_SYS_2176)"; return 1; }
+
+  local -a r_args=()
+  msg ""
+  msg "$(L MSG_SYS_2177)"
+  msg "$(L MSG_SYS_2178)"
+  msg "$(L MSG_SYS_2179)"
+  msg "$(L MSG_SYS_2180)"
+  local choice
+  read -r -p "$(L MSG_SYS_2181)" choice || { msg ""; return 1; }
+  case "$choice" in
+    1) r_args=(debian 12) ;;
+    2) r_args=(debian 13) ;;
+    3) r_args=(ubuntu 24.04) ;;
+    4) r_args=(ubuntu 22.04) ;;
+    5) r_args=(alpine 3.22) ;;
+    6)
+      local img
+      read -r -p "$(L MSG_SYS_2182)" img || { msg ""; return 1; }
+      [[ "$img" =~ ^https?:// ]] || { msg_err "$(L MSG_SYS_2183)"; return 1; }
+      r_args=(dd --img "$img") ;;
+    *) msg_err "$(L MSG_SYS_2184 "$choice")"; return 1 ;;
+  esac
+
+  local pw="" pw2=""
+  if [[ "${r_args[0]}" != "dd" ]]; then
+    read -r -s -p "$(L MSG_SYS_2185)" pw || { msg ""; return 1; }
+    msg ""
+    if [[ -z "$pw" ]]; then
+      pw="$(_genpass_raw | tr -dc 'A-Za-z0-9' | head -c 20)"
+      msg_ok "$(L MSG_SYS_2186 "$pw")"
+    else
+      read -r -s -p "$(L MSG_SYS_2187)" pw2 || { msg ""; return 1; }
+      msg ""
+      [[ "$pw" == "$pw2" ]] || { msg_err "$(L MSG_SYS_2188)"; return 1; }
+    fi
+    local sport
+    read -r -p "$(L MSG_SYS_2189)" sport || { msg ""; return 1; }
+    [[ -z "$sport" || "$sport" =~ ^[0-9]+$ ]] || { msg_err "$(L MSG_SYS_2184 "$sport")"; return 1; }
+    [[ -n "$sport" ]] && r_args+=(--ssh-port "$sport")
+    r_args+=(--password "$pw")
+  fi
+
+  local script="/tmp/fb-reinstall.$$.sh" src=""
+  msg_info "$(L MSG_SYS_2190)"
+  if _download "$_REINSTALL_SCRIPT_GH" "$script"; then
+    src="github.com"
+  elif _download "$_REINSTALL_SCRIPT_CNB" "$script"; then
+    src="cnb.cool"
+  else
+    msg_err "$(L MSG_SYS_2191)"
+    return 1
+  fi
+  msg "$(L MSG_SYS_2192 "$src" "$(sha256sum "$script" | awk '{print $1}')")"
+
+  msg ""
+  msg_warn "$(L MSG_SYS_2193)"
+  local disp="bash reinstall.sh" a
+  for a in ${r_args[@]+"${r_args[@]}"}; do
+    [[ -n "$pw" && "$a" == "$pw" ]] && a="******"
+    disp+=" $a"
+  done
+  msg "  $disp"
+  read -r -p "$(L MSG_SYS_2175)" _reinstall_yes || { msg ""; return 1; }
+  [[ "$_reinstall_yes" == "YES" ]] || { msg_info "$(L MSG_SYS_2176)"; return 1; }
+
+  msg_info "$(L MSG_SYS_2194)"
+  if ! bash "$script" ${r_args[@]+"${r_args[@]}"}; then
+    msg_err "$(L MSG_SYS_2195)"
+    rm -f "$script"
+    return 1
+  fi
+  msg_ok "$(L MSG_SYS_2196)"
+  _log_write "$(L MSG_SYS_2197 "${r_args[*]/--password*/--password ******}")"
+  local rb
+  read -r -p "$(L MSG_SYS_2198)" rb || return 0
+  if [[ "$rb" =~ ^[Yy]$ ]]; then
+    msg_info "$(L MSG_SYS_2199)"
+    sleep 2
+    reboot
+  else
+    msg_info "$(L MSG_SYS_2201)"
+  fi
 }
 
 # ---- Help ----
