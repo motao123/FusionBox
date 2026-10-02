@@ -2820,6 +2820,7 @@ MSG_NET_0283="  %s9%s) VPS benchmark matrix"
 MSG_NET_0284="  %s10%s) NIC management"
 MSG_NET_0285="  %s0%s) Back to main menu"
 MSG_NET_0286="Please choose [0-10]: "
+MSG_NET_0287="UnixBench|Comprehensive|Classic UNIX benchmark: compiles byte-unixbench and runs CPU and file-copy items; a full run takes about 30 minutes|https://raw.githubusercontent.com/teddysun/across/master/unixbench.sh|intensive"
 
 # ---- market 模块 ----
 MSG_MARKET_0215="dev:Git:git:Version control system"
@@ -3236,6 +3237,7 @@ MSG_PROXY_0203="  %s8%s) Generate share link"
 MSG_PROXY_0204="  %s9%s) sing-box management (233boy)"
 MSG_PROXY_0205="  %s0%s) Back to main menu"
 MSG_PROXY_0206="Please choose [0-9]:"
+MSG_PROXY_0207="MTProto created: port %s, secret written to the config; use the tg:// link to add it in Telegram"
 
 # ---- warp 模块 ----
 MSG_WARP_0083="Install WARP"

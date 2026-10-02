@@ -2820,6 +2820,7 @@ MSG_NET_0283="  %s9%s) VPS 评测矩阵"
 MSG_NET_0284="  %s10%s) 网卡管理"
 MSG_NET_0285="  %s0%s) 返回主菜单"
 MSG_NET_0286="请选择 [0-10]: "
+MSG_NET_0287="UnixBench|综合评测|经典 UNIX 基准测试：编译 byte-unixbench 后运行 CPU 与文件拷贝项，完整一轮约 30 分钟|https://raw.githubusercontent.com/teddysun/across/master/unixbench.sh|intensive"
 
 # ---- market 模块 ----
 MSG_MARKET_0215="dev:Git:git:版本控制系统"
@@ -3236,6 +3237,7 @@ MSG_PROXY_0203="  %s8%s) 生成分享链接"
 MSG_PROXY_0204="  %s9%s) sing-box 管理 (233boy)"
 MSG_PROXY_0205="  %s0%s) 返回主菜单"
 MSG_PROXY_0206="请选择 [0-9]: "
+MSG_PROXY_0207="MTProto 已生成: 端口 %s，密钥已写入配置；用 tg:// 分享链接在 Telegram 中添加"
 
 # ---- warp 模块 ----
 MSG_WARP_0083="安装 WARP"

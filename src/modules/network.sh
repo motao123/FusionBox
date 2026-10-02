@@ -12,6 +12,7 @@ NETWORK_BENCH_ITEMS=(
   "$(L MSG_NET_0146)"
   "$(L MSG_NET_0147)"
   "$(L MSG_NET_0148)"
+  "$(L MSG_NET_0287)"
   # ---- 网络测试 ----
   "$(L MSG_NET_0149)"
   "$(L MSG_NET_0150)"
