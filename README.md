@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.9-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.10-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -158,7 +158,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 层 | 项目 | 结果 |
 |---|---|---|
-| 静态门禁 | `bash tests/run_checks.sh` | **202 / 202**（root 与非 root 双跑都过；仅 Linux 全绿） |
+| 静态门禁 | `bash tests/run_checks.sh` | **203 / 203**（root 与非 root 双跑都过；仅 Linux 全绿） |
 | 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **764** 项（34 模块），零失败 |
 | 真实自装 | 官方 `install.sh` | Release 资产下载 + SHA256 校验 → 安装 → `fusionbox help` / 模块帮助 / 非 root 拒绝 / 未知子命令退出码 2 全部符合预期 |
 | 真机验收 | `tests/acceptance/` 9 个脚本 | **9 / 9 通过**（见下表） |
@@ -183,12 +183,13 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.9** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.10** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **重装自动修复失效的快捷命令**：若 `fb` / `FB` 是指向已不存在目标的悬空软链（如历史安装的临时目录被清理后遗留——本轮在验证服务器上实际发生，用户敲 `fb` 得到 `fb: command not found`），重装/更新时自动重建，不再被"外部同名命令不覆盖"守卫误当成别人的命令
-- **验证口径**：容器实测断链 → 重装 → 自动重建；静态门禁 **202/202**（新增断言：快捷命令守卫）；本地 Windows 口径 197/4（平台伪影）
+- **内存压测**：`fusionbox system memtest <大小MB> <轮数>`（工具菜单第 13 项），memtester 封装——默认取可用内存的一半（下限 64MB），硬上限为可用内存 90%（宁可测得少，不把机器压 OOM）；缺失时交互确认自动安装，非交互只给提示
+- **测试卫生修复**：更新路径的快捷链守卫不再向 `/usr/local/bin` 泄漏指向测试临时目录的软链（v1.43.8 悬空链的根因）；部署 `base` 非标准位时跳过全局快捷链
+- **验证口径**：容器与宿主机实测（小容量压测通过 + 超限拒绝 + 缺包非交互提示）、静态门禁 **203/203**、本地 Windows 口径 198/4（平台伪影）
 
 ---
 
@@ -502,7 +503,7 @@ fusionbox cluster kcmd           # 配置 k 命令快捷方式
 - 受管应用逐项验证范围以各模板说明为准；缺口与待办逐项对账见实施跟踪文档
 - 匿名使用统计**默认关闭**，首次交互安装可明确选择；只发送随机安装标识、版本、粗粒度系统/架构和固定事件，详见 [隐私说明](docs/privacy.md)
 - 统计 Worker 已部署并使用 Cloudflare D1 聚合；Pages 显示的是去重后的累计匿名装机数
-- **双语口径**：核心层与 9 个模块层均已走语言包（zh_CN / en 各 3282 键，逐键对等），英文模式零中文；
+- **双语口径**：核心层与 9 个模块层均已走语言包（zh_CN / en 各 3295 键，逐键对等），英文模式零中文；
   全仓未抽取文案 0 条（由 scripts/i18n_audit.py 逐键强制），约定见 [docs/i18n.md](docs/i18n.md)
 - 第三方工具（docker/certbot/apt）的原始输出与品牌专有名词不做翻译
 - 商业广告系统、联盟推广及私有 KPanel/.kpb 协议不纳入能力范围

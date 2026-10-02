@@ -2,6 +2,25 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.10 内存压测 + 测试卫生：快捷链泄漏根因修复
+
+- **内存压测（P2，源自同类工具箱对标分析，覆盖 roadmap G32/G33 的负载类缺口）**：
+  `src/modules/system.sh` 新增 `system_memtest`（分发 `fusionbox system memtest [大小MB] [轮数]`，
+  工具菜单第 13 项），memtester 封装：默认取 `MemAvailable` 的一半（下限 64MB），
+  硬上限为其 90%——宁可测得少，不把机器压 OOM；大小/轮数参数校验（非数字报
+  MSG_SYS_2184）；memtester 缺失时交互确认自动安装（apt/yum/apk），非交互环境只打
+  `_pkg_install_hint` 提示不偷装包；结果诚实分档（通过/发现错误+建议），写日志
+  （MSG_SYS_2214）。语言包 3282→**3295**（MSG_SYS_2202-2214，13 键中英对等）
+- **测试卫生（悬空链根因）**：v1.43.8 的悬空链追因定位到 self_update 测试路径——
+  更新流不传 bin，`deploy.sh` 的快捷链守卫回退到 `/usr/local/bin` 创建指向测试临时
+  base 的软链并泄漏。修复：`base != /etc/fusionbox` 且未传 bin 时跳过全局快捷链
+  （生产 base 恒为标准位，行为不变；测试临时 base 不再泄漏）。与 v1.43.8 的悬空
+  重建分支互补：守卫既会自愈历史断链，也不再制造新断链
+- **门禁 202→203**：新增断言 j——memtest 封装存在（函数/memtester/MemAvailable/
+  非交互提示四项静态 grep）
+- **验证口径**：容器实测（缺包非交互提示、超限拒绝）+ 宿主机实跑小容量压测通过；
+  静态门禁服务器 203/203；本地 Windows 198/4
+
 ## v1.43.9 配置写入的注释缩进归一
 
 - **缺陷**：`_config_set_general`（`common.sh`）的正则 `^([[:space:]]+)key:[[:space:]]*[^#]*([[:space:]]*#.*)?$`

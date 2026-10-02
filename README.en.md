@@ -6,7 +6,7 @@
 
 9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.43.9-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.10-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -159,7 +159,7 @@ Run from scratch on a **freshly installed Ubuntu 22.04** (Docker CE 29.8.1 + Com
 
 | Layer | Item | Result |
 |---|---|---|
-| Static gate | `bash tests/run_checks.sh` | **202 / 202** (passes both as root and as non-root; Linux only for a full pass) |
+| Static gate | `bash tests/run_checks.sh` | **203 / 203** (passes both as root and as non-root; Linux only for a full pass) |
 | Full suite | `bash tests/comprehensive_test.sh` | bash **229** items + Python **764** items (34 modules), zero failures |
 | Real self-install | official `install.sh` | Release asset download + SHA256 check -> install -> `fusionbox help` / module help / non-root refusal / unknown subcommand exit code 2, all as expected |
 | Real-machine acceptance | 9 scripts in `tests/acceptance/` | **9 / 9 passed** (see table below) |
@@ -184,12 +184,13 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.9** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.43.10** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Reinstall now repairs broken shortcuts**: when `fb` / `FB` are dangling symlinks pointing at targets that no longer exist (e.g. leftovers of a historical install whose temp directory was cleaned up, which actually happened on the verification server, leaving users typing `fb` and getting `fb: command not found` forever), reinstalling or updating rebuilds them instead of letting the "never overwrite foreign commands" guard mistake them for someone else's
-- **Verification scope**: container test with a broken link then reinstall, shortcut rebuilt automatically; static gate **202/202** (new assertion: the shortcut guard); local Windows standing 197/4 (platform artifacts)
+- **Memory pressure test**: `fusionbox system memtest <SIZE_MB> <ROUNDS>` (tools menu entry 13), a memtester wrapper defaulting to half of available memory (min 64MB) with a hard cap of 90% of available (test less rather than OOM the machine); when memtester is missing it offers an interactive auto-install, and non-interactive runs only print the hint
+- **Test hygiene fix**: the update-path shortcut guard no longer leaks symlinks pointing into test temp directories into `/usr/local/bin` (the root cause of the v1.43.8 dangling links); global shortcuts are skipped when the deploy `base` is a non-standard location
+- **Verification scope**: container and host runs (small-capacity test passes, oversize refused, missing-package non-interactive hint), static gate **203/203**, local Windows standing 198/4 (platform artifacts)
 
 ---
 
@@ -503,7 +504,7 @@ fusionbox cluster kcmd           # Configure the k command shortcuts
 - The per-application verification scope of managed apps follows each template's own documentation; gaps and to-dos are reconciled item by item in the implementation tracking document
 - Anonymous usage statistics are **off by default**, and you can opt in explicitly on the first interactive install; only a random install identifier, the version, coarse system/architecture information and fixed events are sent, see [the privacy note](docs/privacy.md)
 - The statistics Worker is deployed and aggregates through Cloudflare D1; Pages shows the de-duplicated cumulative anonymous install count
-- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3282 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
+- **Bilingual scope**: both the core layer and all 9 module layers now run through the language packs (3295 keys each for zh_CN / en, aligned key by key); English mode has zero Chinese;
   unextracted strings repo-wide are 0 (enforced key by key by scripts/i18n_audit.py), conventions in [docs/i18n.md](docs/i18n.md)
 - Raw output from third-party tools (docker/certbot/apt) and brand proper nouns are not translated
 - Commercial advertising systems, affiliate promotions and the private KPanel/.kpb protocol are not part of the capability scope
