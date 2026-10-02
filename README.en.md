@@ -6,7 +6,7 @@
 
 9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.43.10-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.11-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -115,7 +115,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 
 | Module | Detailed capabilities |
 |---|---|
-| `proxy` | Xray-core / v2ray-core / **233boy sing-box (recommended)** / Clash.Meta; protocols VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5; transports TCP / WebSocket / gRPC / HTTPUpgrade; automatic merge of multiple configs, share-link generation, per-backend validation of protocol combinations |
+| `proxy` | Xray-core / v2ray-core / **233boy sing-box (recommended)** / Clash.Meta; protocols VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5, MTProto (Xray only, tg:// links); transports TCP / WebSocket / gRPC / HTTPUpgrade; automatic merge of multiple configs, share-link generation, per-backend validation of protocol combinations |
 | `system` | System info, BBR (incl. BBR2 / BBRplus / modded / Lotserver / xanmod), CPU and disk benchmarks, network speed test, real-time monitoring, backup and restore, system cleanup; the toolbox adds SSH keys, firewall (UFW/iptables/Fail2Ban), cron, disk partitioning and mounting, one-click switching across 29 cities + custom IANA + NTP, trash, file manager, rsync sync jobs |
 | `network` | IPv4/IPv6 and ISP info, Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili unlock detection, upload/download speed tests, resolution comparison across multiple DNS servers, Traceroute, port probing, network interface management |
 | `web` | One-click LNMP / LAMP install, site creation and Nginx virtual hosts, automatic certbot issuance (both validation routes supported: local Pebble and LE staging), databases and user privileges, 17 built-in application deployments, reverse proxy and load balancing, Stream L4 forwarding, site cloning, site data backups, tuning presets and brotli |
@@ -184,13 +184,13 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.10** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.43.11** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Memory pressure test**: `fusionbox system memtest <SIZE_MB> <ROUNDS>` (tools menu entry 13), a memtester wrapper defaulting to half of available memory (min 64MB) with a hard cap of 90% of available (test less rather than OOM the machine); when memtester is missing it offers an interactive auto-install, and non-interactive runs only print the hint
-- **Test hygiene fix**: the update-path shortcut guard no longer leaks symlinks pointing into test temp directories into `/usr/local/bin` (the root cause of the v1.43.8 dangling links); global shortcuts are skipped when the deploy `base` is a non-standard location
-- **Verification scope**: container and host runs (small-capacity test passes, oversize refused, missing-package non-interactive hint), static gate **203/203**, local Windows standing 198/4 (platform artifacts)
+- **Proxy protocol: MTProto**: Telegram-dedicated proxy, Xray backend only (v2ray-core deprecated that inbound); after adding a node you get the `tg://proxy` share link directly; protocol total **15 → 16**
+- **Benchmark matrix: UnixBench**: the classic UNIX benchmark (compiles byte-unixbench and runs CPU and file-copy items, about 30 minutes), upstream by the bench.sh author (teddysun/across), and covered by the URL liveness audit
+- **Verification scope**: container tests for MTProto config generation and tg:// link parsing, matrix count and i18n parity at 3297 keys, static gate **203/203**, local Windows standing 198/5 (fcntl et al. platform artifacts)
 
 ---
 
@@ -230,7 +230,7 @@ fusionbox update --cron on|off      # Automatic update switch (weekly)
 Multi-backend generic proxy management with one-click install and configuration:
 
 - **Supported backends**: Xray-core, v2ray-core, **233boy/sing-box (recommended)**, Clash.Meta
-- **Supported protocols**: VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5
+- **Supported protocols**: VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5, MTProto (Xray only)
 - **Transports**: TCP, WebSocket, gRPC, HTTPUpgrade
 - **Config management**: automatic merge of multiple configs, share-link generation
 - **Protocol fit**: FusionBox's own config generation targets the Xray/v2ray cores; the sing-box backend is handed to the community best-practice [233boy/sing-box](https://github.com/233boy/sing-box) script (it creates a REALITY config during install and supports all protocols such as TUIC/Hysteria2); when you add a config, protocol combinations unsupported by the backend are validated and rejected

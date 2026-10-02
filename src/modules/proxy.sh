@@ -33,6 +33,7 @@ P_PROTOCOLS=(
   "TUIC"            "tuic"    "udp"
   "Shadowsocks"     "shadowsocks" "tcp"
   "SOCKS5"          "socks"   "tcp"
+  "MTProto"         "mtproto" "tcp"
 )
 
 # ---- 随机密钥生成（128-bit hex，可用于 UUID 回退与协议密码） ----
@@ -447,7 +448,7 @@ _proxy_proto_supported() {
       [[ "$ptype" == "hysteria2" || "$ptype" == "tuic" ]] && return 1
       return 0 ;;
     v2ray)
-      [[ "$ptype" == "hysteria2" || "$ptype" == "tuic" || "$ptype" == "trojan" ]] && return 1
+      [[ "$ptype" == "hysteria2" || "$ptype" == "tuic" || "$ptype" == "trojan" || "$ptype" == "mtproto" ]] && return 1
       return 0 ;;
     *)
       return 1 ;;
@@ -522,7 +523,11 @@ proxy_add() {
 
   if [[ -f "$conf_file" ]]; then
     msg_ok "$(L MSG_PROXY_0142 "$p_name" "$conf_file")"
-    msg_info "$(L MSG_PROXY_0143 "$port" "$uuid")"
+    if [[ "$p_type" == "mtproto" ]]; then
+      msg_info "$(L MSG_PROXY_0207 "$port")"
+    else
+      msg_info "$(L MSG_PROXY_0143 "$port" "$uuid")"
+    fi
     _proxy_rebuild_config
     proxy_service "restart" 2>/dev/null
     _log_write "$(L MSG_PROXY_0144 "$p_name" "$port")"
@@ -656,6 +661,22 @@ JEOF
     "port": $port,
     "protocol": "socks",
     "settings": {"auth": "password", "accounts": [{"user": "fusionbox", "pass": "$pass"}]}
+  }],
+  "outbounds": [{"protocol": "freedom", "tag": "direct"}]
+}
+JEOF
+      ;;
+    mtproto)
+      # MTProto：仅 Xray 支持（v2ray-core 已弃用该 inbound）；密钥为 16 字节 hex，
+      # plain 模式（无 ee 前缀），客户端用 tg://proxy?secret=<hex> 添加。
+      cat > "$conf_file" << JEOF
+{
+  "inbounds": [{
+    "tag": "mtproto-in",
+    "listen": "0.0.0.0",
+    "port": $port,
+    "protocol": "mtproto",
+    "settings": {"users": [{"secret": "$pass"}]}
   }],
   "outbounds": [{"protocol": "freedom", "tag": "direct"}]
 }
@@ -891,10 +912,12 @@ proxy_url() {
   local proto=$(grep -o '"protocol": "[a-z]*' "$conf_file" | head -1 | cut -d'"' -f4)
   local uuid=$(grep -o '"id": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local pass=$(grep -o '"password": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
+  local secret=$(grep -o '"secret": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local ip="${F_IP:-$(curl -s4 --connect-timeout 5 ip.sb 2>/dev/null || echo "YOUR_IP")}"
 
   msg_title "$(L MSG_PROXY_0176)"
   case "$proto" in
+    mtproto) msg_tip "tg://proxy?server=$ip&port=$port&secret=$secret" ;;
     vless)   msg_tip "vless://$uuid@$ip:$port?type=tcp" ;;
     vmess)   msg_tip "vmess://$(echo -n "{\"v\":\"2\",\"add\":\"$ip\",\"port\":\"$port\",\"id\":\"$uuid\"}" | base64 -w0 2>/dev/null)" ;;
     trojan)  msg_tip "trojan://$pass@$ip:$port" ;;
