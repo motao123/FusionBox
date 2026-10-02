@@ -43,6 +43,7 @@ system_main() {
     genpass)          system_genpass "$@" ;;
     gai)              system_gai "$@" ;;
     locale)           system_locale "$@" ;;
+    memtest)          system_memtest "$@" ;;
     reinstall)        system_reinstall ;;
     settings)         system_settings_menu ;;
     tools)            system_tools_menu ;;
@@ -4076,6 +4077,7 @@ system_tools_menu() {
     msg "$(L MSG_SYS_2007 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_SYS_2008 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_SYS_2200 "${F_GREEN}" "${F_RESET}")"
+    msg "$(L MSG_SYS_2213 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_SYS_1139 "${F_GREEN}" "${F_RESET}")"
     msg ""
     read -p "$(L MSG_SYS_2009)" tools_choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
@@ -4092,6 +4094,7 @@ system_tools_menu() {
       10) system_swap ;;
       11) system_fail2ban ;;
       12) system_reinstall ;;
+      13) system_memtest ;;
       0) break ;;
     esac
   done
@@ -4671,6 +4674,63 @@ system_reinstall() {
   else
     msg_info "$(L MSG_SYS_2201)"
   fi
+}
+
+# ---- 内存压测（G35+）：memtester 封装，诚实输出 ----
+# 默认取 MemAvailable 的一半（下限 64MB），上限为其 90%——宁可测得少，不把机器压 OOM；
+# memtester 缺失时交互确认自动安装，非交互只给安装提示（管道/CI 不偷偷装包）。
+system_memtest() {
+  _require_root
+  local size_arg="${1:-}" rounds_arg="${2:-}"
+
+  if ! command -v memtester >/dev/null 2>&1; then
+    msg_warn "$(L MSG_SYS_2204)"
+    if [[ ! -t 0 ]]; then
+      msg "$(_pkg_install_hint memtester)"
+      return 1
+    fi
+    confirm "$(L MSG_SYS_2205)" || return 1
+    msg_info "$(L MSG_SYS_2206)"
+    case "$F_PKG_MGR" in
+      apt)  apt-get install -y memtester >/dev/null 2>&1 || { msg_err "$(L MSG_SYS_2207)"; return 1; } ;;
+      yum)  yum install -y memtester >/dev/null 2>&1 || { msg_err "$(L MSG_SYS_2207)"; return 1; } ;;
+      apk)  apk add memtester >/dev/null 2>&1 || { msg_err "$(L MSG_SYS_2207)"; return 1; } ;;
+      *)    msg_err "$(L MSG_SYS_2207)"; return 1 ;;
+    esac
+  fi
+
+  local avail_mb
+  avail_mb=$(awk '/^MemAvailable:/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
+  [[ "$avail_mb" =~ ^[0-9]+$ && "$avail_mb" -gt 0 ]] || avail_mb=512
+
+  local size round
+  if [[ -n "$size_arg" ]]; then
+    [[ "$size_arg" =~ ^[0-9]+$ ]] || { msg_err "$(L MSG_SYS_2184 "$size_arg")"; return 1; }
+    size=$size_arg
+  else
+    size=$(( avail_mb / 2 ))
+    (( size < 64 )) && size=64
+    msg "$(L MSG_SYS_2212 "$avail_mb" "$size")"
+  fi
+  local cap=$(( avail_mb * 9 / 10 ))
+  (( size > cap )) && { msg_err "$(L MSG_SYS_2208 "$size" "$avail_mb")"; return 1; }
+
+  round=1
+  if [[ -n "$rounds_arg" ]]; then
+    [[ "$rounds_arg" =~ ^[0-9]+$ && "$rounds_arg" -ge 1 ]] || { msg_err "$(L MSG_SYS_2184 "$rounds_arg")"; return 1; }
+    round=$rounds_arg
+  fi
+
+  msg_info "$(L MSG_SYS_2209 "$size" "$round")"
+  local rc=0
+  memtester "${size}M" "$round" || rc=$?
+  if (( rc == 0 )); then
+    msg_ok "$(L MSG_SYS_2210)"
+  else
+    msg_err "$(L MSG_SYS_2211)"
+  fi
+  _log_write "$(L MSG_SYS_2214 "$size" "$round" "$rc")"
+  return "$rc"
 }
 
 # ---- Help ----
