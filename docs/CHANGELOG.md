@@ -2,6 +2,20 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.9 配置写入的注释缩进归一
+
+- **缺陷**：`_config_set_general`（`common.sh`）的正则 `^([[:space:]]+)key:[[:space:]]*[^#]*([[:space:]]*#.*)?$`
+  中，贪婪的 `[[:space:]]*` 会吞掉行尾注释前的对齐空格，`BASH_REMATCH[2]` 只剩
+  `# 注释`——于是 `privacy` / `lang` 每次写配置都把注释粘到值上（宿主机实测产生
+  `stats: false# 匿名使用统计…`）。解析不受影响（`%%#*` 截断），纯可读性退化，
+  但每写一次就固定一次
+- **修复**：重写行时对注释组做缩进归一（非空且不以空白开头则补两格）；
+  夹具实测：已粘住的行一次写入即恢复 `stats: false  # 注释`，原对齐行保持不变
+- **验证口径**：本地夹具 + 服务器静态门禁 202/202；顺带记录：验证服务器
+  `~/.config/fusionbox/config.yaml` 曾出现 `stats: true`（默认应为 false），
+  系回归期间某测试写真实 HOME 所致，已用 `fusionbox privacy off` 恢复默认关闭，
+  污染源待定位（疑为 tmux 回归窗口的未隔离用例）——列入后续观察
+
 ## v1.43.8 快捷命令守卫：悬空 fb/FB 软链自动重建
 
 - **缺陷来源**：验证服务器上用户实测敲 `fb` 得到 command not found——排查发现宿主机
