@@ -129,6 +129,11 @@ fusion_deploy() (
   # 已存在但不是本脚本建的链接一律不动；这一步在提交之后执行，失败也不影响部署结果。
   # 例外：悬空软链（目标已不存在，如历史安装的临时目录被清理后遗留）没有任何保留
   # 价值，视同未占用直接重建——否则重装会被自己的断链挡住，用户敲 fb 永远 not found。
+  # 更新路径不传 bin；此时若 base 不是标准安装位（测试用临时 base），跳过全局快捷链，
+  # 否则测试会把指向临时目录的软链泄漏进 /usr/local/bin（v1.43.8 的悬空链即此来源）。
+  if [[ -z "$bin" && "$base" != "/etc/fusionbox" ]]; then
+    return 0
+  fi
   local alias_bin alias_dir alias_link alias_target
   alias_bin="${bin:-/usr/local/bin/fusionbox}"
   alias_dir="$(dirname "$alias_bin")"
