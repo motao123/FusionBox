@@ -6,7 +6,7 @@
 
 9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.43.7-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.8-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -159,7 +159,7 @@ Run from scratch on a **freshly installed Ubuntu 22.04** (Docker CE 29.8.1 + Com
 
 | Layer | Item | Result |
 |---|---|---|
-| Static gate | `bash tests/run_checks.sh` | **201 / 201** (passes both as root and as non-root; Linux only for a full pass) |
+| Static gate | `bash tests/run_checks.sh` | **202 / 202** (passes both as root and as non-root; Linux only for a full pass) |
 | Full suite | `bash tests/comprehensive_test.sh` | bash **229** items + Python **764** items (34 modules), zero failures |
 | Real self-install | official `install.sh` | Release asset download + SHA256 check -> install -> `fusionbox help` / module help / non-root refusal / unknown subcommand exit code 2, all as expected |
 | Real-machine acceptance | 9 scripts in `tests/acceptance/` | **9 / 9 passed** (see table below) |
@@ -184,15 +184,12 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.7** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.43.8** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Upstream URL liveness audit**: the third-party script sources behind the benchmark matrix and tools (21 today) are now probed continuously in CI (GitHub pipeline); a dead source turns the gate red instead of waiting for users to hit it. Baseline this round: 21/21 alive
-- **Cleaner uninstall**: the empty leftover body directory after uninstall is now removed (verified in a container)
-- **Sharper docs**: the install command now states it needs curl or wget present (the classic silent failure on bare systems); historical acceptance data is explicitly labelled a "historical baseline", separate from the current standing
-- **Full regression debt cleared**: the complete server suite (bash 229 + Python 764) now covers every v1.43.4-6 change, and it caught one CHANGELOG violation of the external reference policy, since fixed
-- **Verification scope**: full suite zero failures, static gate **201/201**, URL probe 21/21 alive, container uninstall cleanliness verified; local Windows standing 197/4 (fcntl et al. platform artifacts)
+- **Reinstall now repairs broken shortcuts**: when `fb` / `FB` are dangling symlinks pointing at targets that no longer exist (e.g. leftovers of a historical install whose temp directory was cleaned up, which actually happened on the verification server, leaving users typing `fb` and getting `fb: command not found` forever), reinstalling or updating rebuilds them instead of letting the "never overwrite foreign commands" guard mistake them for someone else's
+- **Verification scope**: container test with a broken link then reinstall, shortcut rebuilt automatically; static gate **202/202** (new assertion: the shortcut guard); local Windows standing 197/4 (platform artifacts)
 
 ---
 

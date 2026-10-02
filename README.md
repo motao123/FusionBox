@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.7-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.8-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -158,7 +158,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 层 | 项目 | 结果 |
 |---|---|---|
-| 静态门禁 | `bash tests/run_checks.sh` | **201 / 201**（root 与非 root 双跑都过；仅 Linux 全绿） |
+| 静态门禁 | `bash tests/run_checks.sh` | **202 / 202**（root 与非 root 双跑都过；仅 Linux 全绿） |
 | 完整套件 | `bash tests/comprehensive_test.sh` | bash **229** 项 + Python **764** 项（34 模块），零失败 |
 | 真实自装 | 官方 `install.sh` | Release 资产下载 + SHA256 校验 → 安装 → `fusionbox help` / 模块帮助 / 非 root 拒绝 / 未知子命令退出码 2 全部符合预期 |
 | 真机验收 | `tests/acceptance/` 9 个脚本 | **9 / 9 通过**（见下表） |
@@ -183,15 +183,12 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.7** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.8** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **上游 URL 存活巡检**：评测矩阵与工具调用的第三方脚本地址（当前 21 个）纳入 CI 持续探活（GitHub 流水线），失效即红，不再等用户踩坑才发现；本轮基线实测 21/21 存活
-- **卸载收尾**：卸载后不再遗留空的主体目录（容器实测验证）
-- **文档口径**：安装命令注明需系统已带 curl/wget（裸系统上安装命令会静默失败的平台通病）；历史验收数据标注「历史基线」并与当前口径分离
-- **完整回归补跑**：服务器全套件（bash 229 + Python 764）覆盖 v1.43.4-6 全部改动，当场抓到并修正一处 CHANGELOG 违反外部引用策略的问题
-- **验证口径**：完整套件零失败、静态门禁 **201/201**、URL 探活 21/21 存活、容器卸载干净度实测；本地 Windows 口径 197/4（fcntl 等平台伪影）
+- **重装自动修复失效的快捷命令**：若 `fb` / `FB` 是指向已不存在目标的悬空软链（如历史安装的临时目录被清理后遗留——本轮在验证服务器上实际发生，用户敲 `fb` 得到 `fb: command not found`），重装/更新时自动重建，不再被"外部同名命令不覆盖"守卫误当成别人的命令
+- **验证口径**：容器实测断链 → 重装 → 自动重建；静态门禁 **202/202**（新增断言：快捷命令守卫）；本地 Windows 口径 197/4（平台伪影）
 
 ---
 
