@@ -1,4 +1,6 @@
-# 当前实施状态（v1.43.10）
+# 当前实施状态（v1.43.11）
+
+2026-09-25 本轮（1.43.11）落地最后两个可选项：**MTProto 协议**（P_PROTOCOLS 第 16 项，仅 Xray——v2ray-core 已弃用；配置模板 `settings.users[].secret` 16 字节 hex plain 模式；`proxy_url` 输出 `tg://proxy` 分享链接；添加流程专用提示替代 UUID 行；协议数 15→16 全链路联动）与 **UnixBench 评测项**（矩阵第 15 项，上游 teddysun/across——bench.sh 同作者长期维护，实测可达并纳入 URL 存活巡检；运行器为通用"下载→bash"结构零改动）。语言包 3295→**3297**。验证口径：容器实测 MTProto 配置生成（合法 JSON + hex secret）与 tg:// 链接解析、bench list 计 15 项、静态门禁与 i18n/site_facts 全绿。
 
 2026-09-25 本轮（1.43.10）新增**内存压测**并修复测试卫生：①`system_memtest`（分发 `fusionbox system memtest [大小MB] [轮数]`，工具菜单第 13 项）——memtester 封装，默认取 MemAvailable 一半（下限 64MB）、硬上限 90%（宁少测不 OOM），参数校验，缺失时交互确认自动装（apt/yum/apk）、非交互只提示，结果诚实分档并记日志；语言包 3282→**3295**（MSG_SYS_2202-2214，13 键）；②悬空链根因修复——self_update 测试路径不传 bin 时快捷链守卫回退 /usr/local/bin 产生指向临时 base 的泄漏软链，现 `base != /etc/fusionbox` 且未传 bin 即跳过全局快捷链（生产行为不变）。门禁 **202→203**（断言 j）。验证口径：容器实测（缺包非交互提示/超限拒绝）+ 宿主机小容量压测通过；静态门禁 203/203；本地 Windows 198/4。
 

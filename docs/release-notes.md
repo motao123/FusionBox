@@ -6,6 +6,17 @@
 > 每个版本一节，节标题必须是 `## vX.Y.Z`（升级提示按版本号截取当前版本那一节）；
 > 版本号与 `version.txt` 的一致性由 CI 的"Release version consistency"检查强制。
 
+## v1.43.11
+
+- **代理新增 MTProto 协议**：Telegram 专用代理。`fusionbox proxy add` 选择 MTProto
+  （仅 Xray 后端支持；v2ray-core 已弃用该 inbound），生成配置后直接给出
+  `tg://proxy?server=…&port=…&secret=…` 分享链接，在 Telegram 里点开即用。
+  协议总数 15 → 16。
+- **评测矩阵新增 UnixBench**：经典 UNIX 基准测试，编译 byte-unixbench 后运行
+  CPU 与文件拷贝项，完整一轮约 30 分钟（重型档）。上游为 bench.sh 同作者的
+  teddysun/across 仓库，已纳入上游 URL 存活巡检。
+- **协议计数同步**：主页与 README 的协议总数已更新为 16 种。
+
 ## v1.43.10
 
 - **新增内存压测**：`fusionbox system memtest [大小MB] [轮数]`，也可在

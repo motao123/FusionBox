@@ -6,7 +6,7 @@
 
 9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.43.10-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.43.11-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -115,7 +115,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 模块 | 详细能力 |
 |---|---|
-| `proxy` | Xray-core / v2ray-core / **233boy sing-box（推荐）** / Clash.Meta；协议 VLESS（含 Reality）、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5；传输 TCP / WebSocket / gRPC / HTTPUpgrade；多配置自动合并、分享链接生成、按后端校验协议组合 |
+| `proxy` | Xray-core / v2ray-core / **233boy sing-box（推荐）** / Clash.Meta；协议 VLESS（含 Reality）、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5、MTProto（仅 Xray，tg:// 链接）；传输 TCP / WebSocket / gRPC / HTTPUpgrade；多配置自动合并、分享链接生成、按后端校验协议组合 |
 | `system` | 系统信息、BBR（含 BBR2 / BBRplus / 魔改 / Lotserver / xanmod）、CPU 与磁盘基准、网络测速、实时监控、备份恢复、系统清理；工具箱含 SSH 密钥、防火墙（UFW/iptables/Fail2Ban）、cron、磁盘分区与挂载、29 城市时区一键切换 + IANA 自定义 + NTP、回收站、文件管理器、rsync 同步任务 |
 | `network` | IPv4/IPv6 与 ISP 信息、Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili 解锁检测、上下行测速、多 DNS 解析对比、Traceroute、端口探测、网卡管理 |
 | `web` | LNMP / LAMP 一键安装、站点创建与 Nginx 虚拟主机、certbot 自动签发（支持本地 Pebble 与 LE staging 两条验证路线）、数据库与用户权限、17 种应用内置部署、反代与负载均衡、Stream L4 转发、站点克隆、站点数据备份、调优档位与 brotli |
@@ -183,13 +183,13 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.10** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.43.11** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **内存压测**：`fusionbox system memtest <大小MB> <轮数>`（工具菜单第 13 项），memtester 封装——默认取可用内存的一半（下限 64MB），硬上限为可用内存 90%（宁可测得少，不把机器压 OOM）；缺失时交互确认自动安装，非交互只给提示
-- **测试卫生修复**：更新路径的快捷链守卫不再向 `/usr/local/bin` 泄漏指向测试临时目录的软链（v1.43.8 悬空链的根因）；部署 `base` 非标准位时跳过全局快捷链
-- **验证口径**：容器与宿主机实测（小容量压测通过 + 超限拒绝 + 缺包非交互提示）、静态门禁 **203/203**、本地 Windows 口径 198/4（平台伪影）
+- **代理协议新增 MTProto**：Telegram 专用代理，仅 Xray 后端（v2ray-core 已弃用该 inbound），添加后直接给 `tg://proxy` 分享链接；协议总数 **15 → 16**
+- **评测矩阵新增 UnixBench**：经典 UNIX 基准测试（编译 byte-unixbench 跑 CPU 与文件拷贝项，约 30 分钟），上游为 bench.sh 同作者（teddysun/across），已纳入 URL 存活巡检
+- **验证口径**：容器实测 MTProto 配置生成与 tg:// 链接解析、矩阵计数与 i18n 3297 键逐键对等、静态门禁 **203/203**、本地 Windows 口径 198/5（fcntl 等平台伪影）
 
 ---
 
@@ -229,7 +229,7 @@ fusionbox update --cron on|off      # 自动更新开关 (每周)
 多后端通用代理管理，支持一键安装和配置：
 
 - **支持后端**：Xray-core、v2ray-core、**233boy/sing-box（推荐）**、Clash.Meta
-- **支持协议**：VLESS(含 Reality)、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5
+- **支持协议**：VLESS(含 Reality)、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5、MTProto（仅 Xray）
 - **传输方式**：TCP、WebSocket、gRPC、HTTPUpgrade
 - **配置管理**：自动合并多配置、分享链接生成
 - **协议适配**：FusionBox 自带配置生成针对 Xray/v2ray 内核；sing-box 后端由社区最佳实践的 [233boy/sing-box](https://github.com/233boy/sing-box) 脚本接管（安装时自动创建 REALITY 配置，支持 TUIC/Hysteria2 等全协议）；添加配置时自动校验拒绝后端不支持的协议组合

@@ -2,6 +2,25 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.11 MTProto 协议 + UnixBench 评测项
+
+- **MTProto（P3）**：`P_PROTOCOLS` 新增 `"MTProto" "mtproto" "tcp"`（协议 15→**16**，
+  site_facts/README/Pages 联动）；`_proxy_proto_supported` 将 mtproto 列为 v2ray 不支持
+  （v2ray-core 已弃用该 inbound，仅 Xray）；`_proxy_generate_config` 新增 mtproto 分支
+  （`settings.users[].secret` 为 16 字节 hex，plain 模式无 ee 前缀，密钥复用
+  `_proxy_gen_secret`）；`proxy_url` 新增 secret 提取与 `tg://proxy?server=&port=&secret=`
+  分享链接；添加流程对 mtproto 打印专用提示（MSG_PROXY_0207）替代 UUID 行
+  （MTProto 无 UUID 概念）。语言包 3295→**3297**（MSG_NET_0287 + MSG_PROXY_0207）
+- **UnixBench（P3）**：评测矩阵新增第 14 项 `MSG_NET_0287`（综合评测/重型档）——
+  上游选定 teddysun/across（bench.sh 同作者，长期维护；实测 200 可达，已纳入上游
+  URL 存活巡检）。bench 运行器为通用"下载 URL → bash"结构，零运行器改动
+- **门禁**：计数不变（203/203，两项均为数据驱动扩展，由 i18n 棘轮 + site_facts 派生 +
+  URL 巡检覆盖）；本地套件 198/5（fcntl 链 + 3 个 docker 消息检查 + 版本一致性过渡态
+  为平台/流程伪影）
+- **验证口径**：容器实测——`_proxy_generate_config MTProto mtproto tcp` 生成合法 JSON
+  （含 32 位 hex secret）、`proxy_url` 正确输出 `tg://proxy` 链接、`network bench list`
+  计 15 项含 UnixBench；静态门禁全绿
+
 ## v1.43.10 内存压测 + 测试卫生：快捷链泄漏根因修复
 
 - **内存压测（P2，源自同类工具箱对标分析，覆盖 roadmap G32/G33 的负载类缺口）**：
