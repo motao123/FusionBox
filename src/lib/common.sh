@@ -203,7 +203,11 @@ _config_set_general() (
         fi
       fi
       if (( in_general )) && [[ "$line" =~ ^([[:space:]]+)${key}:[[:space:]]*[^#]*([[:space:]]*#.*)?$ ]]; then
-        printf '%s%s: %s%s\n' "${BASH_REMATCH[1]}" "$key" "$value" "${BASH_REMATCH[2]}" >> "$tmp"
+        # 注释缩进归一：贪婪的 [[:space:]]* 会吃掉注释前的对齐空格（BASH_REMATCH[2]
+        # 只剩 "# ..."），不补位则每次写配置都会把注释粘到值上（如 stats: false# 匿名…）
+        local cmt="${BASH_REMATCH[2]}"
+        [[ -z "$cmt" || "$cmt" == \ * || "$cmt" == $'\t'* ]] || cmt="  $cmt"
+        printf '%s%s: %s%s\n' "${BASH_REMATCH[1]}" "$key" "$value" "$cmt" >> "$tmp"
         found_key=1
       else
         printf '%s\n' "$line" >> "$tmp"
