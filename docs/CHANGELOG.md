@@ -2,6 +2,23 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.43.8 快捷命令守卫：悬空 fb/FB 软链自动重建
+
+- **缺陷来源**：验证服务器上用户实测敲 `fb` 得到 command not found——排查发现宿主机
+  残留两条悬空软链 `/usr/local/bin/{fb,FB} -> /tmp/fusionbox-install-*/installed/fusion.sh`，
+  系完整套件的安装器测试在宿主机运行时创建（测试清理了临时目录但没清理全局软链）。
+  随后的正式安装被 `deploy.sh` 的"外部同名命令不覆盖"守卫挡住：守卫对 `-L` 为真的
+  链接一律跳过，分不清"别人的命令"和"本程序遗留的断链"
+- **修复**（`src/lib/deploy.sh` 快捷命令守卫）：悬空软链（`-L` 为真且 `-e` 为假，即目标
+  已不存在）没有任何保留价值，视同未占用、`ln -sfn` 重建为本程序快捷命令，并打印
+  `Replacing dangling shortcut` 英文诊断（沿用 deploy.sh 既有英文诊断语气，不新增
+  语言包键）；正常文件与有效的他人软链仍一律不碰
+- **门禁 201→202**：新增断言 i——悬空软链重建分支存在（静态 grep）
+- **验证口径**：容器实测——安装 v1.43.7 → 手工把 fb 断链指向 /tmp/dead → 以新树重装
+  （走"既有主体"部署路径）→ 软链重建为 /etc/fusionbox/fusion.sh 且 `fb version` 正常；
+  服务器静态门禁 **202/202**；本地 Windows 口径 197/4。附带说明：安装器测试泄漏全局
+  软链的问题由此守卫自愈（每次重装自动清理断链），测试侧无需额外清理
+
 ## v1.43.7 终审跟进：上游 URL 存活巡检、卸载收尾、文档口径、完整回归补跑
 
 - **上游 URL 存活巡检（P2）**：新增 `scripts/upstream_url_audit.py`——从双语语言包与
