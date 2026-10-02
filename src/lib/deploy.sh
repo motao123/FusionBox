@@ -127,6 +127,8 @@ fusion_deploy() (
 
   # 快捷命令：fb / FB 与 fusionbox 一样是指向 fusion.sh 的软链接，装完即可直接敲。
   # 已存在但不是本脚本建的链接一律不动；这一步在提交之后执行，失败也不影响部署结果。
+  # 例外：悬空软链（目标已不存在，如历史安装的临时目录被清理后遗留）没有任何保留
+  # 价值，视同未占用直接重建——否则重装会被自己的断链挡住，用户敲 fb 永远 not found。
   local alias_bin alias_dir alias_link alias_target
   alias_bin="${bin:-/usr/local/bin/fusionbox}"
   alias_dir="$(dirname "$alias_bin")"
@@ -136,8 +138,12 @@ fusion_deploy() (
       if [[ -L "$alias_target" && "$(readlink -m -- "$alias_target")" == "$base/fusion.sh" ]]; then
         continue
       fi
-      printf 'Shortcut left untouched (not created by FusionBox): %s
-' "$alias_target" >&2
+      if [[ -L "$alias_target" && ! -e "$alias_target" ]]; then
+        printf 'Replacing dangling shortcut: %s -> %s\n' "$alias_target" "$(readlink -- "$alias_target")" >&2
+        ln -sfn -- "$base/fusion.sh" "$alias_target" || true
+        continue
+      fi
+      printf 'Shortcut left untouched (not created by FusionBox): %s\n' "$alias_target" >&2
       continue
     fi
     ln -s -- "$base/fusion.sh" "$alias_target" || true
