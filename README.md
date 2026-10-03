@@ -4,7 +4,7 @@
 
 **一条命令，接管整台 Linux 服务器**
 
-9 大模块 · 70+ 软件市场 · 受管应用生命周期 · 每一步都可回滚
+9 大模块 · 75 款软件市场 · 受管应用生命周期 · 每一步都可回滚
 
 [![version](https://img.shields.io/badge/version-1.43.11-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
@@ -105,7 +105,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 | 网络工具 | `fusionbox network` | IP 查询、流媒体检测、测速、DNS、路由追踪、端口检测 |
 | 网站部署 | `fusionbox web` | LNMP、SSL、17 种应用部署、反向代理、L4 转发、站点备份 |
 | 面板工具 | `fusionbox panels` | Docker 完整管理、宝塔 / 1Panel / FRP / Aria2 / 哪吒 |
-| 应用市场 | `fusionbox market` | 70+ 软件一键安装（10 个分类）+ 受管模板生命周期 |
+| 应用市场 | `fusionbox market` | 75 款软件一键安装（10 个分类）+ 受管模板生命周期 |
 | WARP 管理 | `fusionbox warp` | Cloudflare WARP 安装、Proxy 模式、流媒体解锁 |
 | 后台工作区 | `fusionbox workspace` | 编号工作区 w1–w10（tmux / screen 自动选择） |
 | 集群控制 | `fusionbox cluster` | 多机批量管理、游戏服务端、OCI 只读识别、k 命令、中文速查表 |
@@ -120,7 +120,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 | `network` | IPv4/IPv6 与 ISP 信息、Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili 解锁检测、上下行测速、多 DNS 解析对比、Traceroute、端口探测、网卡管理 |
 | `web` | LNMP / LAMP 一键安装、站点创建与 Nginx 虚拟主机、certbot 自动签发（支持本地 Pebble 与 LE staging 两条验证路线）、数据库与用户权限、17 种应用内置部署、反代与负载均衡、Stream L4 转发、站点克隆、站点数据备份、调优档位与 brotli |
 | `panels` | Docker 安装与完整管理（容器/镜像/Compose/网络/卷/清理/备份迁移/daemon.json）、容器端口封禁（DOCKER-USER）、宝塔 / 1Panel / X-UI、Aria2 / Rclone / FRP / 哪吒监控 |
-| `market` | 70+ 软件、10 个分类；`managed` 子命令为数据驱动 Compose 生命周期（见下节） |
+| `market` | 75 款软件、10 个分类；`managed` 子命令为数据驱动 Compose 生命周期（见下节） |
 | `warp` | WARP 安装卸载、Proxy 模式（不断 SSH）、IP 与解锁状态检测、出站配置示例 |
 | `workspace` | 编号工作区 w1–w10，tmux / screen 自动选择，支持命令注入 |
 | `cluster` | 节点增删、批量执行、文件同步、SSH 出站收藏；游戏服务端（Minecraft Java/Bedrock、Terraria、Palworld）；OCI 只读识别与保活状态；`k` 命令快捷方式 |
@@ -147,6 +147,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 | openlist | 网盘 / WebDAV | 8088 | 多存储文件列表（Alist 分支） |
 | navidrome | 音乐流媒体 | 8089 | data + music 双卷（music 只读） |
 | umami | 网站分析 | 8090 | 应用 + PostgreSQL 双服务（db 健康后才启动；支持复用数据重装、按服务换镜像） |
+| rocketchat | 团队协作 | 8091 | 应用 + MongoDB 双服务（依赖顺序启动；首访网页向导创建管理员；单机 Mongo 模式） |
 
 > 模板清单以 `fusionbox market managed catalog` 实际输出为准；声明式目录与高权限边界见 [docs/market-catalog.md](docs/market-catalog.md)。
 
@@ -183,14 +184,14 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.43.11** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.44.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **代理协议新增 MTProto**：Telegram 专用代理，仅 Xray 后端（v2ray-core 已弃用该 inbound），添加后直接给 `tg://proxy` 分享链接；协议总数 **15 → 16**
-- **评测矩阵新增 UnixBench**：经典 UNIX 基准测试（编译 byte-unixbench 跑 CPU 与文件拷贝项，约 30 分钟），上游为 bench.sh 同作者（teddysun/across），已纳入 URL 存活巡检
-- **验证口径**：容器实测 MTProto 配置生成与 tg:// 链接解析、矩阵计数与 i18n 3297 键逐键对等、静态门禁 **203/203**、本地 Windows 口径 198/5（fcntl 等平台伪影）
-
+- **受管应用新增 RocketChat**（A6 第三档首个）：MongoDB 双容器、digest 固定、依赖顺序启动，仅 localhost:8091；受管加固模型的两处实证适配（mongo 以 user 999:999 直跑、镜像自带 VOLUME 声明为具名卷）与 bash /dev/tcp 健康探针
+- **README 软件数派生对齐**：两份 README 的市场应用数改为与源码派生值一致（75），并由 site_facts 闸门强制（禁止过期下限口径）——「70+ vs 75」的口径分叉就此消除
+- **验证口径**：宿主机完整生命周期 E2E（安装→healthy→HTTP 200→卸载保留 3 卷→复用重装→清场零残留）、静态门禁 **203/203**、本地 Windows 口径 199/4（平台伪影）
 ---
 
 ## 命令参考
@@ -398,7 +399,7 @@ fusionbox panels nezha           # 安装哪吒监控
 <details>
 <summary><strong>6. 应用市场 (<code>fusionbox market</code>)</strong></summary>
 
-70+ 常用软件一键安装，覆盖十大分类（数量以 `fusionbox market list` 实际输出为准）：
+75 款常用软件一键安装，覆盖十大分类（数量以 `fusionbox market list` 实际输出为准）：
 
 | 分类 | 应用 |
 |------|------|

@@ -4,7 +4,7 @@
 
 **One command to take over an entire Linux server**
 
-9 modules · 70+ software market · managed application lifecycle · every step can be rolled back
+9 modules · 75-application software market · managed application lifecycle · every step can be rolled back
 
 [![version](https://img.shields.io/badge/version-1.43.11-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
@@ -105,7 +105,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 | Network tools | `fusionbox network` | IP lookup, streaming detection, speed tests, DNS, traceroute, port checks |
 | Web deployment | `fusionbox web` | LNMP, SSL, 17 application deployments, reverse proxy, L4 forwarding, site backups |
 | Panel tools | `fusionbox panels` | Full Docker management, BT Panel / 1Panel / FRP / Aria2 / Nezha monitoring |
-| Application market | `fusionbox market` | 70+ one-click installs (10 categories) + managed template lifecycle |
+| Application market | `fusionbox market` | 75 one-click installs (10 categories) + managed template lifecycle |
 | WARP management | `fusionbox warp` | Cloudflare WARP install, Proxy mode, streaming unlock |
 | Background workspace | `fusionbox workspace` | Numbered workspaces w1-w10 (tmux / screen auto-selected) |
 | Cluster control | `fusionbox cluster` | Multi-machine batch management, game servers, OCI read-only identification, k command, Chinese quick-reference sheet |
@@ -120,7 +120,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 | `network` | IPv4/IPv6 and ISP info, Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili unlock detection, upload/download speed tests, resolution comparison across multiple DNS servers, Traceroute, port probing, network interface management |
 | `web` | One-click LNMP / LAMP install, site creation and Nginx virtual hosts, automatic certbot issuance (both validation routes supported: local Pebble and LE staging), databases and user privileges, 17 built-in application deployments, reverse proxy and load balancing, Stream L4 forwarding, site cloning, site data backups, tuning presets and brotli |
 | `panels` | Docker install and full management (containers/images/Compose/networks/volumes/cleanup/backup and migration/daemon.json), container port blocking (DOCKER-USER), BT Panel / 1Panel / X-UI, Aria2 / Rclone / FRP / Nezha monitoring |
-| `market` | 70+ applications, 10 categories; the `managed` subcommand is a data-driven Compose lifecycle (next section) |
+| `market` | 75 applications, 10 categories; the `managed` subcommand is a data-driven Compose lifecycle (next section) |
 | `warp` | WARP install and uninstall, Proxy mode (does not drop SSH), IP and unlock status detection, outbound configuration examples |
 | `workspace` | Numbered workspaces w1-w10, tmux / screen auto-selection, supports command injection |
 | `cluster` | Add and remove nodes, batch execution, file sync, SSH outbound favorites; game servers (Minecraft Java/Bedrock, Terraria, Palworld); OCI read-only identification and keep-alive status; `k` command shortcuts |
@@ -148,6 +148,7 @@ are **verified item by item on real hardware**.
 | openlist | Netdisk / WebDAV | 8088 | Multi-storage file list (Alist fork) |
 | navidrome | Music streaming | 8089 | data + music dual volume (music read-only) |
 | umami | Web analytics | 8090 | app + PostgreSQL dual service (starts only after db is healthy; reinstall onto existing data and per-service image swap supported) |
+| rocketchat | Team chat | 8091 | app + MongoDB dual service (dependency-ordered startup; admin created via the first-visit web wizard; single-node Mongo mode) |
 
 > The template list follows the actual output of `fusionbox market managed catalog`; for the declarative catalog and the high-privilege boundary see [docs/market-catalog.md](docs/market-catalog.md).
 
@@ -184,14 +185,14 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.43.11** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.44.0** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Proxy protocol: MTProto**: Telegram-dedicated proxy, Xray backend only (v2ray-core deprecated that inbound); after adding a node you get the `tg://proxy` share link directly; protocol total **15 → 16**
-- **Benchmark matrix: UnixBench**: the classic UNIX benchmark (compiles byte-unixbench and runs CPU and file-copy items, about 30 minutes), upstream by the bench.sh author (teddysun/across), and covered by the URL liveness audit
-- **Verification scope**: container tests for MTProto config generation and tg:// link parsing, matrix count and i18n parity at 3297 keys, static gate **203/203**, local Windows standing 198/5 (fcntl et al. platform artifacts)
-
+- **Managed app: RocketChat** (first tier-3 entry of A6): MongoDB dual container, digest-pinned, dependency-ordered startup, localhost:8091 only; two evidence-backed adaptations to the managed hardening model (mongo runs as user 999:999, image-declared VOLUME becomes a named volume) and a bash /dev/tcp health probe
+- **README counts now derived**: both READMEs state the market app count aligned with the source-derived value (75), enforced by the site_facts gate (stale floor wording banned); the "70+ vs 75" divergence is gone
+- **Verification scope**: full lifecycle E2E on the host (install → healthy → HTTP 200 → uninstall keeping 3 volumes → reuse-data reinstall → clean teardown), static gate **203/203**, local Windows standing 199/4 (platform artifacts)
 ---
 
 ## Command Reference
@@ -399,7 +400,7 @@ fusionbox panels nezha           # Install Nezha monitoring
 <details>
 <summary><strong>6. Application market (<code>fusionbox market</code>)</strong></summary>
 
-70+ common applications with one-click install across ten categories (counts follow the actual output of `fusionbox market list`):
+75 common applications with one-click install across ten categories (counts follow the actual output of `fusionbox market list`):
 
 | Category | Applications |
 |------|------|

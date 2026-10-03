@@ -1,4 +1,8 @@
-# 当前实施状态（v1.43.11）
+# 当前实施状态（v1.44.0）
+
+# 当前实施状态（v1.44.0）
+
+2026-09-25 本轮（1.44.0）落地 A6 第三档首个多容器应用 **RocketChat**（market-catalog.v1.json 声明式第 5 项：db(mongo 6.0)+app(rocket.chat 6.11.0)，digest 固定、depends_on、仅 localhost:8091）。受管加固模型的三处实证适配全部由宿主机 E2E 发现并修复：mongo entrypoint 的 chown/gosu 在 cap_drop ALL 下不可用 → user 999:999 直跑；镜像自带 VOLUME /data/configdb 产生匿名卷触发所有权校验拒绝 → 声明为具名卷；部署层健康检查 2s 超时对 mongosh 必超 → bash /dev/tcp 探针（框架级 health_timeout 字段列入下批次）。另将 README 市场应用数从「70+」下限口径改为派生精确值（75）并由 site_facts 断言强制。验证口径：宿主机完整生命周期 E2E 全通；静态门禁 203/203；本地 199/4。
 
 2026-09-25 本轮（1.43.11）落地最后两个可选项：**MTProto 协议**（P_PROTOCOLS 第 16 项，仅 Xray——v2ray-core 已弃用；配置模板 `settings.users[].secret` 16 字节 hex plain 模式；`proxy_url` 输出 `tg://proxy` 分享链接；添加流程专用提示替代 UUID 行；协议数 15→16 全链路联动）与 **UnixBench 评测项**（矩阵第 15 项，上游 teddysun/across——bench.sh 同作者长期维护，实测可达并纳入 URL 存活巡检；运行器为通用"下载→bash"结构零改动）。语言包 3295→**3297**。验证口径：容器实测 MTProto 配置生成（合法 JSON + hex secret）与 tg:// 链接解析、bench list 计 15 项、静态门禁与 i18n/site_facts 全绿。
 

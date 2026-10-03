@@ -2,6 +2,26 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.44.0 受管应用 RocketChat（A6 第三档首个）+ README 计数派生对齐
+
+- **RocketChat（P2，A6 第三档首个多容器应用）**：market-catalog.v1.json 新增声明式条目
+  （id rocketchat，db(mongo 6.0) + app(rocket.chat 6.11.0) 双服务，digest 固定，
+  app depends_on db，仅 localhost:8091）。受管加固模型的三处实证适配（全部由宿主机
+  E2E 过程发现）：①mongo 官方镜像 entrypoint 的 chown/gosu 在 cap_drop ALL 下
+  Operation not permitted → db 以 user 999:999 直跑（与 umami postgres user 70:70
+  同一模式，非 root 启动时 entrypoint 直接 exec mongod）；②mongo 镜像 Dockerfile 自带
+  VOLUME /data/configdb → 容器创建即产生匿名卷，所有权校验（实际挂载 == 声明挂载）
+  拒绝 → 声明为具名卷 configdb 一并持久化；③部署层健康检查超时硬编码 2s，mongosh
+  启动需 2-4s 必超时 → 探针改用 bash /dev/tcp 端口探测（<50ms；框架级 per-service
+  health_timeout 字段列入下批次）。**失败即保留现场的受管语义在调试全程生效**
+  （拒绝收养孤儿登记/拒绝缺卷复用/存储不匹配拒绝卸载）
+- **README 软件数派生对齐（终审 P2）**：site_facts 新增 README 断言——两份 README
+  必须包含派生的市场应用数（75）且禁止过期的「70+ 软件市场」等下限短语（按短语
+  匹配，不误伤发布说明里的历史叙述）；README 四处 70+ 已改为 75
+- **验证口径**：宿主机完整生命周期 E2E（安装→双容器 healthy→HTTP 200→status→
+  卸载保留 3 卷→reinstall --reuse-data healthy→清场零残留）；静态门禁 203/203；
+  本地 Windows 199/4
+
 ## v1.43.11 MTProto 协议 + UnixBench 评测项
 
 - **MTProto（P3）**：`P_PROTOCOLS` 新增 `"MTProto" "mtproto" "tcp"`（协议 15→**16**，
