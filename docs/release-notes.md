@@ -6,6 +6,15 @@
 > 每个版本一节，节标题必须是 `## vX.Y.Z`（升级提示按版本号截取当前版本那一节）；
 > 版本号与 `version.txt` 的一致性由 CI 的"Release version consistency"检查强制。
 
+## v1.44.0
+
+- **受管应用新增 RocketChat 团队聊天**：`fusionbox market managed install rocketchat --confirm`。
+  MongoDB 双容器、镜像摘要固定、依赖顺序启动，仅监听 localhost:8091（公网访问请用
+  `fusionbox web` 配反向代理 + TLS）。首次访问网页向导创建管理员。支持复用数据重装
+  与按服务换镜像。
+- **README 软件数与源码派生值对齐**：市场应用计数在主页与两份 README 之间不再有
+  「下限口径」与「精确口径」的分歧，统一由源码派生并由闸门强制。
+
 ## v1.43.11
 
 - **代理新增 MTProto 协议**：Telegram 专用代理。`fusionbox proxy add` 选择 MTProto

@@ -13,3 +13,7 @@ telemetry-worker/.wrangler/
 .scratch/
 # 测试资产只存本地与验证服务器，不入库
 tests/
+
+# 会话导出/工具记忆（含敏感信息，禁止入库）
+优化测试提示词_*.md
+.workbuddy/

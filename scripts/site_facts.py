@@ -179,14 +179,19 @@ def main():
     if missing:
         print(f"  note  已派生但主页未展示的数：{', '.join(missing)}")
 
-    # README 软件数与派生值对齐：禁止出现过期的「70+」下限口径，
+    # README 软件数与派生值对齐：市场计数的过期「70+」下限口径按具体短语禁止
+    # （按短语而非裸 "70+" 匹配，避免误伤发布说明里的历史叙述），
     # 且派生计数必须出现在两份 README 中（应用增删时 README 同步更新）
     n_apps = facts.get("market_apps")
+    stale_phrases = ("70+ 软件市场", "70+ 软件一键安装", "70+ 软件、", "70+ 常用软件",
+                     "70+ one-click", "70+ applications", "70+ software market",
+                     "70+ common applications")
     for name in ("README.md", "README.en.md"):
         path = os.path.join(ROOT, name)
         text = open(path, encoding="utf-8").read()
-        if "70+" in text:
-            print(f"FAIL  {name} 仍含过期的「70+」口径，应写派生值 {n_apps}")
+        hit = [s for s in stale_phrases if s in text]
+        if hit:
+            print(f"FAIL  {name} 仍含过期的下限口径 {hit}，应写派生值 {n_apps}")
             return 1
         if n_apps and str(n_apps) not in text:
             print(f"FAIL  {name} 缺少与源码派生一致的软件数 {n_apps}")
