@@ -3237,7 +3237,9 @@ MSG_PROXY_0203="  %s8%s) Generate share link"
 MSG_PROXY_0204="  %s9%s) sing-box management (233boy)"
 MSG_PROXY_0205="  %s0%s) Back to main menu"
 MSG_PROXY_0206="Please choose [0-9]:"
-MSG_PROXY_0207="MTProto created: port %s, secret written to the config; use the tg:// link to add it in Telegram"
+MSG_PROXY_0207="Config validation failed: the new config is not active and the previous one was restored; check kernel errors with fusionbox proxy log"
+MSG_PROXY_0208="Installing the unzip dependency..."
+MSG_PROXY_0209="Failed to install unzip; install it manually (apt/yum/apk install unzip) and retry"
 
 # ---- warp 模块 ----
 MSG_WARP_0083="Install WARP"

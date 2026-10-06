@@ -6,6 +6,15 @@
 > 每个版本一节，节标题必须是 `## vX.Y.Z`（升级提示按版本号截取当前版本那一节）；
 > 版本号与 `version.txt` 的一致性由 CI 的"Release version consistency"检查强制。
 
+## v1.44.1
+
+- **移除 MTProto 协议**（v1.43.11 引入）：实测发现 Xray 与 v2ray 的当前版本都已
+  不支持 MTProto 入站（配置会被内核拒绝，且一个坏配置会拖垮该后端下的全部代理
+  配置）。协议总数回到 15 种。
+- **代理配置加内核校验**：添加/修改代理配置时会先用内核的 test 模式校验，失败
+  自动回滚旧配置——坏配置不再可能影响正在运行的代理。
+- **安装代理内核更省心**：Xray/v2ray 发行包解包所需的 unzip 缺失时会自动安装。
+
 ## v1.44.0
 
 - **受管应用新增 RocketChat 团队聊天**：`fusionbox market managed install rocketchat --confirm`。

@@ -6,7 +6,7 @@
 
 9 modules · 75-application software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.44.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.44.1-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -115,7 +115,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 
 | Module | Detailed capabilities |
 |---|---|
-| `proxy` | Xray-core / v2ray-core / **233boy sing-box (recommended)** / Clash.Meta; protocols VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5, MTProto (Xray only, tg:// links); transports TCP / WebSocket / gRPC / HTTPUpgrade; automatic merge of multiple configs, share-link generation, per-backend validation of protocol combinations |
+| `proxy` | Xray-core / v2ray-core / **233boy sing-box (recommended)** / Clash.Meta; protocols VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5; transports TCP / WebSocket / gRPC / HTTPUpgrade; automatic merge of multiple configs, share-link generation, per-backend validation of protocol combinations |
 | `system` | System info, BBR (incl. BBR2 / BBRplus / modded / Lotserver / xanmod), CPU and disk benchmarks, network speed test, real-time monitoring, backup and restore, system cleanup; the toolbox adds SSH keys, firewall (UFW/iptables/Fail2Ban), cron, disk partitioning and mounting, one-click switching across 29 cities + custom IANA + NTP, trash, file manager, rsync sync jobs |
 | `network` | IPv4/IPv6 and ISP info, Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili unlock detection, upload/download speed tests, resolution comparison across multiple DNS servers, Traceroute, port probing, network interface management |
 | `web` | One-click LNMP / LAMP install, site creation and Nginx virtual hosts, automatic certbot issuance (both validation routes supported: local Pebble and LE staging), databases and user privileges, 17 built-in application deployments, reverse proxy and load balancing, Stream L4 forwarding, site cloning, site data backups, tuning presets and brotli |
@@ -185,7 +185,7 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.44.0** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.44.1** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
@@ -231,7 +231,7 @@ fusionbox update --cron on|off      # Automatic update switch (weekly)
 Multi-backend generic proxy management with one-click install and configuration:
 
 - **Supported backends**: Xray-core, v2ray-core, **233boy/sing-box (recommended)**, Clash.Meta
-- **Supported protocols**: VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5, MTProto (Xray only)
+- **Supported protocols**: VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5
 - **Transports**: TCP, WebSocket, gRPC, HTTPUpgrade
 - **Config management**: automatic merge of multiple configs, share-link generation
 - **Protocol fit**: FusionBox's own config generation targets the Xray/v2ray cores; the sing-box backend is handed to the community best-practice [233boy/sing-box](https://github.com/233boy/sing-box) script (it creates a REALITY config during install and supports all protocols such as TUIC/Hysteria2); when you add a config, protocol combinations unsupported by the backend are validated and rejected
