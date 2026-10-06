@@ -1,5 +1,6 @@
-# 当前实施状态（v1.44.0）
+# 当前实施状态（v1.44.1）
 
+2026-09-25 本轮（1.44.1）移除 MTProto 并加代理配置内核校验守卫：宿主机实测发现 Xray 26.3.27 与 v2fly 5.53.0 都拒绝 mtproto inbound（`unknown config id`），v1.43.11 新增的协议配置拖死统一配置（一个坏 inbound 拖垮全部入站，服务崩溃循环）。全部移除（P_PROTOCOLS 16→15、配置模板、tg:// 分支、支持矩阵；index.html/README 联动还原）；`_proxy_rebuild_config` 新增内核校验守卫（写前备份 → xray run -test / v2ray test / sing-box check / clash -t → 失败回滚 + MSG_PROXY_0207）；proxy 安装补 unzip 依赖自动安装（MSG_PROXY_0208/0209，最小化系统缺失导致发行包解包失败——宿主机 E2E 实测发现）。验证：坏配置移除后重建校验通过、fusionbox-proxy active、VLESS 端口恢复监听；三闸门全绿。
 # 当前实施状态（v1.44.0）
 
 2026-09-25 本轮（1.44.0）落地 A6 第三档首个多容器应用 **RocketChat**（market-catalog.v1.json 声明式第 5 项：db(mongo 6.0)+app(rocket.chat 6.11.0)，digest 固定、depends_on、仅 localhost:8091）。受管加固模型的三处实证适配全部由宿主机 E2E 发现并修复：mongo entrypoint 的 chown/gosu 在 cap_drop ALL 下不可用 → user 999:999 直跑；镜像自带 VOLUME /data/configdb 产生匿名卷触发所有权校验拒绝 → 声明为具名卷；部署层健康检查 2s 超时对 mongosh 必超 → bash /dev/tcp 探针（框架级 health_timeout 字段列入下批次）。另将 README 市场应用数从「70+」下限口径改为派生精确值（75）并由 site_facts 断言强制。验证口径：宿主机完整生命周期 E2E 全通；静态门禁 203/203；本地 199/4。

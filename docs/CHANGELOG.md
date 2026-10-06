@@ -2,6 +2,25 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.44.1 移除 MTProto + 代理配置内核校验守卫
+
+- **移除 MTProto（纠正 v1.43.11）**：v1.43.11 新增的 MTProto 协议在宿主机实测中被内核
+  拒绝——Xray 26.3.27 与 v2fly 5.53.0 均报 `unknown config id: mtproto`（两大主流内核
+  都已移除该 inbound，sing-box/Clash.Meta 从未支持），且一个坏 inbound 会拖死统一
+  配置里的全部入站（服务崩溃循环）。本次全部移除：P_PROTOCOLS（协议 16→15）、
+  配置模板、分享链接分支、支持矩阵；index.html/README 协议数联动还原。
+  **教训**：v1.43.11 只验证了"配置生成"，未验证"内核接受"——协议类改动必须先过
+  内核 test 模式
+- **代理配置内核校验守卫（本轮 E2E 发现的缺陷修复）**：`_proxy_rebuild_config` 在
+  写入统一 config.json 前备份旧配置，写入后用当前内核的 test/check 模式校验
+  （xray run -test / v2ray test / sing-box check / clash -t），失败即回滚旧配置并报
+  MSG_PROXY_0207——坏配置不再可能拖死运行中的代理服务
+- **unzip 依赖（随本轮验证发现）**：proxy 安装 xray/v2ray 需要 unzip，最小化系统常
+  缺失且无依赖检查——现缺失时自动按包管理器安装（MSG_PROXY_0208/0209），非交互
+  场景亦可用
+- **验证口径**：宿主机实测——移除坏配置后重建校验通过、fusionbox-proxy active、
+  VLESS 端口恢复监听；本地套件与三闸门全绿
+
 ## v1.44.0 受管应用 RocketChat（A6 第三档首个）+ README 计数派生对齐
 
 - **RocketChat（P2，A6 第三档首个多容器应用）**：market-catalog.v1.json 新增声明式条目

@@ -33,7 +33,6 @@ P_PROTOCOLS=(
   "TUIC"            "tuic"    "udp"
   "Shadowsocks"     "shadowsocks" "tcp"
   "SOCKS5"          "socks"   "tcp"
-  "MTProto"         "mtproto" "tcp"
 )
 
 # ---- 随机密钥生成（128-bit hex，可用于 UUID 回退与协议密码） ----
@@ -207,6 +206,23 @@ proxy_install() {
   progress_step "$(_tr MSG_PROXY_STAGES_1)"
   local tmpdir=$(mktemp -d)
 
+  # xray/v2ray 的发行包是 zip：解包依赖 unzip。最小化系统（如容器/云镜像）常缺失，
+  # 缺失时按包管理器自动安装（与 install.sh 的依赖补齐同语义），失败则给出提示。
+  if [[ "$be_name" == "xray" || "$be_name" == "v2ray" ]] && ! command -v unzip >/dev/null 2>&1; then
+    msg_info "$(L MSG_PROXY_0121b)"
+    case "$F_PKG_MGR" in
+      apt)  apt-get install -y unzip >/dev/null 2>&1 || true ;;
+      yum)  yum install -y unzip >/dev/null 2>&1 || true ;;
+      apk)  apk add unzip >/dev/null 2>&1 || true ;;
+    esac
+    command -v unzip >/dev/null 2>&1 || {
+      msg_err "$(L MSG_PROXY_0121c)"
+      rm -rf "$tmpdir"
+      progress_end
+      return 1
+    }
+  fi
+
   case "$be_name" in
     xray)      _proxy_download_xray "$tmpdir" "$arch" ;;
     v2ray)     _proxy_download_v2ray "$tmpdir" "$arch" ;;
@@ -358,6 +374,29 @@ $all_inbounds
 }
 MEOF
   chmod 600 "$P_CONF_DIR/config.json"   # 合并后的配置含全部入站密钥
+
+  # 内核配置校验：一个坏 inbound 会拖死统一配置里的全部入站，绝不允许上线。
+  # 写入前备份旧配置，校验失败即回滚并报错（调用方终止，服务维持旧配置运行）。
+  local probe_bin="" be
+  for be in xray v2ray sing-box clash-meta; do
+    [[ -x "$P_BIN_DIR/$be" ]] && { probe_bin="$P_BIN_DIR/$be"; break; }
+  done
+  if [[ -n "$probe_bin" ]]; then
+    cp -f "$P_CONF_DIR/config.json" "$P_CONF_DIR/.config.json.prev" 2>/dev/null || true
+    local test_ok=1
+    case "$(basename "$probe_bin")" in
+      xray)       "$probe_bin" run -test -c "$P_CONF_DIR/config.json" >/dev/null 2>&1 || test_ok=0 ;;
+      v2ray)      "$probe_bin" test -c "$P_CONF_DIR/config.json" >/dev/null 2>&1 || test_ok=0 ;;
+      sing-box)   "$probe_bin" check -c "$P_CONF_DIR/config.json" >/dev/null 2>&1 || test_ok=0 ;;
+      clash-meta) "$probe_bin" -t -d "$P_CONF_DIR" -f "$P_CONF_DIR/config.json" >/dev/null 2>&1 || test_ok=0 ;;
+    esac
+    if (( ! test_ok )); then
+      [[ -f "$P_CONF_DIR/.config.json.prev" ]] && mv -f "$P_CONF_DIR/.config.json.prev" "$P_CONF_DIR/config.json"
+      msg_err "$(L MSG_PROXY_0210)"
+      return 1
+    fi
+    rm -f "$P_CONF_DIR/.config.json.prev"
+  fi
 }
 
 # ---- 安装 systemd 服务 ----
@@ -448,7 +487,7 @@ _proxy_proto_supported() {
       [[ "$ptype" == "hysteria2" || "$ptype" == "tuic" ]] && return 1
       return 0 ;;
     v2ray)
-      [[ "$ptype" == "hysteria2" || "$ptype" == "tuic" || "$ptype" == "trojan" || "$ptype" == "mtproto" ]] && return 1
+      [[ "$ptype" == "hysteria2" || "$ptype" == "tuic" || "$ptype" == "trojan" ]] && return 1
       return 0 ;;
     *)
       return 1 ;;
@@ -523,11 +562,7 @@ proxy_add() {
 
   if [[ -f "$conf_file" ]]; then
     msg_ok "$(L MSG_PROXY_0142 "$p_name" "$conf_file")"
-    if [[ "$p_type" == "mtproto" ]]; then
-      msg_info "$(L MSG_PROXY_0207 "$port")"
-    else
-      msg_info "$(L MSG_PROXY_0143 "$port" "$uuid")"
-    fi
+    msg_info "$(L MSG_PROXY_0143 "$port" "$uuid")"
     _proxy_rebuild_config
     proxy_service "restart" 2>/dev/null
     _log_write "$(L MSG_PROXY_0144 "$p_name" "$port")"
@@ -661,22 +696,6 @@ JEOF
     "port": $port,
     "protocol": "socks",
     "settings": {"auth": "password", "accounts": [{"user": "fusionbox", "pass": "$pass"}]}
-  }],
-  "outbounds": [{"protocol": "freedom", "tag": "direct"}]
-}
-JEOF
-      ;;
-    mtproto)
-      # MTProto：仅 Xray 支持（v2ray-core 已弃用该 inbound）；密钥为 16 字节 hex，
-      # plain 模式（无 ee 前缀），客户端用 tg://proxy?secret=<hex> 添加。
-      cat > "$conf_file" << JEOF
-{
-  "inbounds": [{
-    "tag": "mtproto-in",
-    "listen": "0.0.0.0",
-    "port": $port,
-    "protocol": "mtproto",
-    "settings": {"users": [{"secret": "$pass"}]}
   }],
   "outbounds": [{"protocol": "freedom", "tag": "direct"}]
 }
@@ -912,12 +931,10 @@ proxy_url() {
   local proto=$(grep -o '"protocol": "[a-z]*' "$conf_file" | head -1 | cut -d'"' -f4)
   local uuid=$(grep -o '"id": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local pass=$(grep -o '"password": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
-  local secret=$(grep -o '"secret": "[^"]*"' "$conf_file" | head -1 | cut -d'"' -f4)
   local ip="${F_IP:-$(curl -s4 --connect-timeout 5 ip.sb 2>/dev/null || echo "YOUR_IP")}"
 
   msg_title "$(L MSG_PROXY_0176)"
   case "$proto" in
-    mtproto) msg_tip "tg://proxy?server=$ip&port=$port&secret=$secret" ;;
     vless)   msg_tip "vless://$uuid@$ip:$port?type=tcp" ;;
     vmess)   msg_tip "vmess://$(echo -n "{\"v\":\"2\",\"add\":\"$ip\",\"port\":\"$port\",\"id\":\"$uuid\"}" | base64 -w0 2>/dev/null)" ;;
     trojan)  msg_tip "trojan://$pass@$ip:$port" ;;

@@ -6,7 +6,7 @@
 
 9 大模块 · 75 款软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.44.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.44.1-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -115,7 +115,7 @@ fusionbox panels docker help          # 子分发也能取帮助
 
 | 模块 | 详细能力 |
 |---|---|
-| `proxy` | Xray-core / v2ray-core / **233boy sing-box（推荐）** / Clash.Meta；协议 VLESS（含 Reality）、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5、MTProto（仅 Xray，tg:// 链接）；传输 TCP / WebSocket / gRPC / HTTPUpgrade；多配置自动合并、分享链接生成、按后端校验协议组合 |
+| `proxy` | Xray-core / v2ray-core / **233boy sing-box（推荐）** / Clash.Meta；协议 VLESS（含 Reality）、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5；传输 TCP / WebSocket / gRPC / HTTPUpgrade；多配置自动合并、分享链接生成、按后端校验协议组合 |
 | `system` | 系统信息、BBR（含 BBR2 / BBRplus / 魔改 / Lotserver / xanmod）、CPU 与磁盘基准、网络测速、实时监控、备份恢复、系统清理；工具箱含 SSH 密钥、防火墙（UFW/iptables/Fail2Ban）、cron、磁盘分区与挂载、29 城市时区一键切换 + IANA 自定义 + NTP、回收站、文件管理器、rsync 同步任务 |
 | `network` | IPv4/IPv6 与 ISP 信息、Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili 解锁检测、上下行测速、多 DNS 解析对比、Traceroute、端口探测、网卡管理 |
 | `web` | LNMP / LAMP 一键安装、站点创建与 Nginx 虚拟主机、certbot 自动签发（支持本地 Pebble 与 LE staging 两条验证路线）、数据库与用户权限、17 种应用内置部署、反代与负载均衡、Stream L4 转发、站点克隆、站点数据备份、调优档位与 brotli |
@@ -184,7 +184,7 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.44.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.44.1** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
@@ -230,7 +230,7 @@ fusionbox update --cron on|off      # 自动更新开关 (每周)
 多后端通用代理管理，支持一键安装和配置：
 
 - **支持后端**：Xray-core、v2ray-core、**233boy/sing-box（推荐）**、Clash.Meta
-- **支持协议**：VLESS(含 Reality)、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5、MTProto（仅 Xray）
+- **支持协议**：VLESS(含 Reality)、VMess、Trojan、Hysteria2、TUIC、Shadowsocks、SOCKS5
 - **传输方式**：TCP、WebSocket、gRPC、HTTPUpgrade
 - **配置管理**：自动合并多配置、分享链接生成
 - **协议适配**：FusionBox 自带配置生成针对 Xray/v2ray 内核；sing-box 后端由社区最佳实践的 [233boy/sing-box](https://github.com/233boy/sing-box) 脚本接管（安装时自动创建 REALITY 配置，支持 TUIC/Hysteria2 等全协议）；添加配置时自动校验拒绝后端不支持的协议组合
