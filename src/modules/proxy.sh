@@ -209,14 +209,27 @@ proxy_install() {
   # xray/v2ray 的发行包是 zip：解包依赖 unzip。最小化系统（如容器/云镜像）常缺失，
   # 缺失时按包管理器自动安装（与 install.sh 的依赖补齐同语义），失败则给出提示。
   if [[ "$be_name" == "xray" || "$be_name" == "v2ray" ]] && ! command -v unzip >/dev/null 2>&1; then
-    msg_info "$(L MSG_PROXY_0121b)"
-    case "$F_PKG_MGR" in
-      apt)  apt-get install -y unzip >/dev/null 2>&1 || true ;;
-      yum)  yum install -y unzip >/dev/null 2>&1 || true ;;
-      apk)  apk add unzip >/dev/null 2>&1 || true ;;
-    esac
+    msg_info "$(L MSG_PROXY_0208)"
+    # 首次失败后刷新包索引再试一次：最小化系统的 apt/yum 索引常是过期的，
+    # 而这恰恰是最可能缺 unzip 的场景（与 install.sh 的依赖补齐同语义）。
+    _proxy_install_unzip() {
+      case "$F_PKG_MGR" in
+        apt)  apt-get install -y unzip >/dev/null 2>&1 ;;
+        yum)  yum install -y unzip >/dev/null 2>&1 ;;
+        apk)  apk add unzip >/dev/null 2>&1 ;;
+        *)    return 1 ;;
+      esac
+    }
+    if ! _proxy_install_unzip; then
+      case "$F_PKG_MGR" in
+        apt)  apt-get update -qq >/dev/null 2>&1 || true ;;
+        yum)  yum -q makecache >/dev/null 2>&1 || true ;;
+        apk)  apk update >/dev/null 2>&1 || true ;;
+      esac
+      _proxy_install_unzip || true
+    fi
     command -v unzip >/dev/null 2>&1 || {
-      msg_err "$(L MSG_PROXY_0121c)"
+      msg_err "$(L MSG_PROXY_0209)"
       rm -rf "$tmpdir"
       progress_end
       return 1
@@ -365,6 +378,14 @@ $inbound"
     fi
   done
 
+  # 写入前备份旧配置：校验失败时要能真正回滚。
+  # 必须在 cat > 之前——写在后面等于备份的是刚写坏的新配置，回滚就成了空操作。
+  local prev_cfg=""
+  if [[ -f "$P_CONF_DIR/config.json" ]]; then
+    prev_cfg="$P_CONF_DIR/.config.json.prev"
+    cp -f "$P_CONF_DIR/config.json" "$prev_cfg" 2>/dev/null || prev_cfg=""
+  fi
+
   cat > "$P_CONF_DIR/config.json" << MEOF
 {
   "inbounds": [
@@ -376,27 +397,37 @@ MEOF
   chmod 600 "$P_CONF_DIR/config.json"   # 合并后的配置含全部入站密钥
 
   # 内核配置校验：一个坏 inbound 会拖死统一配置里的全部入站，绝不允许上线。
-  # 写入前备份旧配置，校验失败即回滚并报错（调用方终止，服务维持旧配置运行）。
-  local probe_bin="" be
-  for be in xray v2ray sing-box clash-meta; do
-    [[ -x "$P_BIN_DIR/$be" ]] && { probe_bin="$P_BIN_DIR/$be"; break; }
-  done
+  # 必须用「当前活动后端」校验：拿别的内核去 test 这份配置会把合法配置误判为坏配置。
+  local backend probe_bin=""
+  backend=$(cat "$P_BASE_DIR/current_backend" 2>/dev/null)
+  if [[ -n "$backend" && -x "$P_BIN_DIR/$backend" ]]; then
+    probe_bin="$P_BIN_DIR/$backend"
+  fi
   if [[ -n "$probe_bin" ]]; then
-    cp -f "$P_CONF_DIR/config.json" "$P_CONF_DIR/.config.json.prev" 2>/dev/null || true
     local test_ok=1
     case "$(basename "$probe_bin")" in
       xray)       "$probe_bin" run -test -c "$P_CONF_DIR/config.json" >/dev/null 2>&1 || test_ok=0 ;;
       v2ray)      "$probe_bin" test -c "$P_CONF_DIR/config.json" >/dev/null 2>&1 || test_ok=0 ;;
       sing-box)   "$probe_bin" check -c "$P_CONF_DIR/config.json" >/dev/null 2>&1 || test_ok=0 ;;
       clash-meta) "$probe_bin" -t -d "$P_CONF_DIR" -f "$P_CONF_DIR/config.json" >/dev/null 2>&1 || test_ok=0 ;;
+      *)          test_ok=1 ;;   # 未知内核：不校验（保守放行，避免误杀合法配置）
     esac
     if (( ! test_ok )); then
-      [[ -f "$P_CONF_DIR/.config.json.prev" ]] && mv -f "$P_CONF_DIR/.config.json.prev" "$P_CONF_DIR/config.json"
-      msg_err "$(L MSG_PROXY_0210)"
+      if [[ -n "$prev_cfg" && -f "$prev_cfg" ]]; then
+        mv -f "$prev_cfg" "$P_CONF_DIR/config.json"
+        chmod 600 "$P_CONF_DIR/config.json" 2>/dev/null || true
+      else
+        # 无旧配置可回滚：宁可不留配置，也不能让坏配置被服务加载
+        rm -f "$P_CONF_DIR/config.json"
+      fi
+      msg_err "$(L MSG_PROXY_0207)"
       return 1
     fi
-    rm -f "$P_CONF_DIR/.config.json.prev"
   fi
+  # 注意不能用 `[[ -n "$prev_cfg" ]] && rm -f ...` 收尾：首次安装时 prev_cfg 为空，
+  # && 短路会让整个函数返回 1，把「校验通过」误报成失败（调用方据此中止并清理）。
+  if [[ -n "$prev_cfg" ]]; then rm -f "$prev_cfg"; fi
+  return 0
 }
 
 # ---- 安装 systemd 服务 ----
@@ -563,7 +594,8 @@ proxy_add() {
   if [[ -f "$conf_file" ]]; then
     msg_ok "$(L MSG_PROXY_0142 "$p_name" "$conf_file")"
     msg_info "$(L MSG_PROXY_0143 "$port" "$uuid")"
-    _proxy_rebuild_config
+    # 校验失败（已回滚旧配置）时绝不能 restart：否则等于把坏配置加载进运行中的服务
+    _proxy_rebuild_config || { rm -f "$conf_file"; return 1; }
     proxy_service "restart" 2>/dev/null
     _log_write "$(L MSG_PROXY_0144 "$p_name" "$port")"
   else
@@ -779,8 +811,17 @@ proxy_del() {
   fi
 
   confirm "$(L MSG_PROXY_0153 "$(basename "$conf_file")")" || return
+  # 删除前留一份：若重建后内核校验失败，需要把子配置还原，
+  # 否则会出现「子配置已删、主配置却回滚到含它的旧版」的不一致状态。
+  # 备份名不以 .json 结尾，不会被重建时的 *.json 通配收进去。
+  local conf_bak="$conf_file.fb-del-bak"
+  cp -f "$conf_file" "$conf_bak" 2>/dev/null || conf_bak=""
   rm -f "$conf_file"
-  _proxy_rebuild_config
+  if ! _proxy_rebuild_config; then
+    [[ -n "$conf_bak" && -f "$conf_bak" ]] && mv -f "$conf_bak" "$conf_file"
+    return 1
+  fi
+  [[ -n "$conf_bak" ]] && rm -f "$conf_bak"
   msg_ok "$(L MSG_PROXY_0154)"
   proxy_service "restart" 2>/dev/null
   _log_write "$(L MSG_PROXY_0155 "$(basename "$conf_file")")"

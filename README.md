@@ -6,7 +6,7 @@
 
 9 大模块 · 75 款软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.44.1-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.44.2-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -184,14 +184,16 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.44.1** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.44.2** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **受管应用新增 RocketChat**（A6 第三档首个）：MongoDB 双容器、digest 固定、依赖顺序启动，仅 localhost:8091；受管加固模型的两处实证适配（mongo 以 user 999:999 直跑、镜像自带 VOLUME 声明为具名卷）与 bash /dev/tcp 健康探针
-- **README 软件数派生对齐**：两份 README 的市场应用数改为与源码派生值一致（75），并由 site_facts 闸门强制（禁止过期下限口径）——「70+ vs 75」的口径分叉就此消除
-- **验证口径**：宿主机完整生命周期 E2E（安装→healthy→HTTP 200→卸载保留 3 卷→复用重装→清场零残留）、静态门禁 **203/203**、本地 Windows 口径 199/4（平台伪影）
+- **修复代理配置校验守卫的三个实际缺陷**（v1.44.1 引入）：回滚此前是空操作——备份发生在写入之后，坏配置会被原样写回，旧的好配置在写入时就已丢失；校验用的是磁盘上第一个存在的内核而非当前活动后端；三处提示的 i18n 键名写错，用户看到的是 `MSG_PROXY_xxxx` 而不是文案
+- **校验失败不再重启服务**：`proxy add` / `proxy del` 现在会中止，坏配置不可能被加载进运行中的代理
+- **unzip 依赖安装补索引刷新兜底**：apt/yum/apk 索引过期的最小化系统上不再一次失败就退出
+- **新增门禁**：i18n 审计现在校验「源码引用的每个键都在语言包中存在」——上面那类键名写错以后会直接让 CI 变红，而不是静默输出乱码
+
 ---
 
 ## 命令参考

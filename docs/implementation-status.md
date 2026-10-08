@@ -1,4 +1,6 @@
-# 当前实施状态（v1.44.1）
+# 当前实施状态（v1.44.2）
+
+2026-10-08 本轮（1.44.2）修复 v1.44.1 引入的代理配置校验守卫缺陷（代码评审发现，全部经反向验证）：**P0** 备份时机在写入之后导致「回滚」是空操作（旧配置在写入时已丢失）→ 备份前移，无旧配置时删除坏配置；**P0** 三处 i18n 键名写错（引用 0121b/0121c/0210，定义 0208/0209/0207）导致用户看到键名乱码 → 改正；**P1** 校验用磁盘第一个内核而非 current_backend → 改读活动后端，未知内核保守放行；**P1** proxy add/del 忽略 return 1 仍 restart → 失败即中止；**P2** unzip 安装缺索引刷新兜底 → 补 install.sh 同语义；**P3** 尾部 `&&` 短路使首次安装误返回 1 → 显式 return 0。门禁：i18n_audit 新增「源码引用键 ⊆ 语言包定义键」断言（3685 处引用零悬空），此前悬空引用对 CI 隐形。验收：ConfigValidationGuard 8 项 + 反向验证 5/5 注入均变红。核实澄清：_proxy_proto_supported 拒绝 sing-box/clash-meta 是有意设计（配置格式不同），非缺陷；但 clash-meta 缺 proxy_install 提前引导 + systemd ExecStart 为 xray 语法，「能装出起不来的服务」列为后续 UX 项。验证：本地语法全绿、审计通过、8/8 测试。（tests/ 不入库，回归在本地与验证服务器执行）
 
 2026-09-25 本轮（1.44.1）移除 MTProto 并加代理配置内核校验守卫：宿主机实测发现 Xray 26.3.27 与 v2fly 5.53.0 都拒绝 mtproto inbound（`unknown config id`），v1.43.11 新增的协议配置拖死统一配置（一个坏 inbound 拖垮全部入站，服务崩溃循环）。全部移除（P_PROTOCOLS 16→15、配置模板、tg:// 分支、支持矩阵；index.html/README 联动还原）；`_proxy_rebuild_config` 新增内核校验守卫（写前备份 → xray run -test / v2ray test / sing-box check / clash -t → 失败回滚 + MSG_PROXY_0207）；proxy 安装补 unzip 依赖自动安装（MSG_PROXY_0208/0209，最小化系统缺失导致发行包解包失败——宿主机 E2E 实测发现）。验证：坏配置移除后重建校验通过、fusionbox-proxy active、VLESS 端口恢复监听；三闸门全绿。
 # 当前实施状态（v1.44.0）

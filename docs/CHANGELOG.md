@@ -2,6 +2,53 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.44.2 代理配置校验守卫的三个实际缺陷修复 + i18n 悬空键门禁
+
+> 本轮由代码评审（open-code-review delegate 模式取规则 + 逐项实证核验）发现，
+> 全部缺陷均经「注入 bug → 对应测试变红」的反向验证，确认可被回归捕获。
+
+- **P0 回滚是空操作**：`_proxy_rebuild_config` 的备份（`cp config.json .config.json.prev`）
+  发生在 `cat > config.json` **之后**，备份到的是刚写坏的新配置；校验失败时的「回滚」
+  等于把坏配置原样写回，而旧的好配置在写入那一刻就已永久丢失——v1.44.1 声称要防的
+  「坏 inbound 拖死全部入站」完全没防住。修复：备份移到写入之前；无旧配置可回滚时
+  删除坏配置（宁可无配置，也不能让服务加载坏配置）
+- **P0 三处 i18n 键名写错**：源码引用 `MSG_PROXY_0121b` / `0121c` / `0210`，语言包里
+  定义的是 `0208` / `0209` / `0207`——引用集与定义集零交集。`L` 对未知键原样返回键名
+  且 rc=0，所以用户在「正在安装 unzip」「unzip 安装失败」「配置校验失败已回滚」三处
+  看到的都是 `MSG_PROXY_xxxx` 乱码；其中第三处正是回滚路径的报错，最需要解释清楚的地方
+  恰好不可读。提交信息里写的键名是对的，代码里敲错了
+- **P1 校验内核选错**：`for be in xray v2ray sing-box clash-meta` 取磁盘上第一个存在的
+  二进制，而实际运行配置的后端在 `$P_BASE_DIR/current_backend`（systemd
+  `ExecStart=$P_BIN_DIR/$backend`）。机器上存在多个内核时会用错内核校验，把合法配置
+  误判为坏配置。修复：改读 current_backend；未知内核保守放行（不误杀）
+- **P1 调用点忽略返回值**：`proxy add` / `proxy del` 两处都不检查
+  `_proxy_rebuild_config` 的 `return 1`，紧接着照样 `proxy_service restart`——与 P0
+  叠加即「坏配置回滚无效 + 仍然重启」，恰好把坏配置加载进运行中的服务。修复：失败即中止
+- **P2 unzip 安装缺索引刷新兜底**：注释称「与 install.sh 的依赖补齐同语义」，但
+  install.sh 是 `install || { 刷新索引; install; }`，proxy.sh 只有一次尝试。apt 索引
+  过期的最小化系统（恰是最可能缺 unzip 的场景）会直接失败
+- **P3 修复自身引入的返回码陷阱**：函数以 `[[ -n "$prev_cfg" ]] && rm -f "$prev_cfg"`
+  收尾，首次安装时 `prev_cfg` 为空、`&&` 短路使整个函数返回 1，把「校验通过」误报成
+  失败（调用方据此中止并清理刚生成的子配置）。修复：显式 `return 0`
+- **门禁补强（防回归）**：`scripts/i18n_audit.py` 新增 `check_referenced_keys_exist`，
+  断言「源码引用的每个键 ⊆ 两套语言包定义的键」。此前 `test_no_key_is_unresolvable`
+  只遍历语言包已有的键、`*_fully_extracted` 只查未抽取的中文字面量，而
+  `L MSG_PROXY_0121b` 本身是合法调用形式，因此悬空引用对 CI 完全隐形——这正是上面
+  P0 能过 CI 的原因。现审计口径：源码 3233 个键 / 3685 处引用全部可解析
+- **验收测试**：`tests/test_proxy_lifecycle.py` 新增 `ConfigValidationGuard` 8 项
+  （回滚恢复旧配置 / 首次安装失败不留坏配置 / 用活动内核而非诱饵内核 / 报错渲染真实文案
+  且无键名乱码 / 校验失败不 restart / 校验通过正常 restart / 删除失败还原子配置 /
+  删除成功不留备份）。反向验证：逐个注入上述 5 个缺陷，对应测试全部变红
+- **顺带核实（非缺陷，勿误报）**：`_proxy_proto_supported` 对 sing-box / clash-meta
+  一律 `return 1` 是**有意设计**（proxy.sh 注释：两者配置格式与本模块生成的 Xray JSON
+  不同，一律拒绝以免配置写入后服务起不来）；sing-box 在 `proxy_install` 中提前 return
+  交给 233boy 脚本，不走 `proxy_add`。但 clash-meta 未做同样的提前引导，且 systemd
+  `ExecStart` 用的是 xray 语法（`$backend run -c config.json`），存在「能装出起不来的
+  服务」的 UX 缺口——列为后续项，本轮不动
+- **验证口径**：本地全量 shell 语法 OK；i18n 审计通过（zh/en 各 3299 键、占位符一致、
+  英文包无中文、3685 处引用零悬空）；`ConfigValidationGuard` 8/8；反向验证 5/5 注入
+  均被捕获。`tests/` 按仓库策略不入库，完整回归在本地与验证服务器执行
+
 ## v1.44.1 移除 MTProto + 代理配置内核校验守卫
 
 - **移除 MTProto（纠正 v1.43.11）**：v1.43.11 新增的 MTProto 协议在宿主机实测中被内核
