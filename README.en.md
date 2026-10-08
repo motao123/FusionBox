@@ -6,7 +6,7 @@
 
 9 modules · 75-application software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.44.1-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.44.2-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -185,14 +185,16 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.44.1** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.44.2** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Managed app: RocketChat** (first tier-3 entry of A6): MongoDB dual container, digest-pinned, dependency-ordered startup, localhost:8091 only; two evidence-backed adaptations to the managed hardening model (mongo runs as user 999:999, image-declared VOLUME becomes a named volume) and a bash /dev/tcp health probe
-- **README counts now derived**: both READMEs state the market app count aligned with the source-derived value (75), enforced by the site_facts gate (stale floor wording banned); the "70+ vs 75" divergence is gone
-- **Verification scope**: full lifecycle E2E on the host (install → healthy → HTTP 200 → uninstall keeping 3 volumes → reuse-data reinstall → clean teardown), static gate **203/203**, local Windows standing 199/4 (platform artifacts)
+- **Fixed three real defects in the proxy config validation guard** (introduced in v1.44.1): the rollback was a no-op — the backup was taken *after* the write, so a bad config was restored verbatim while the previous good config was already lost; validation used the first kernel binary found on disk instead of the active backend; three i18n key names were misspelled, so users saw `MSG_PROXY_xxxx` instead of the actual message
+- **No service restart on validation failure**: `proxy add` / `proxy del` now abort, so a bad config can never be loaded into a running proxy
+- **unzip dependency install now retries after refreshing the package index**: no longer gives up on the first failure on minimal systems with a stale apt/yum/apk index
+- **New gate**: the i18n audit now verifies that every key referenced by the source exists in both language packs — a misspelled key name turns CI red instead of silently printing garbled output
+
 ---
 
 ## Command Reference

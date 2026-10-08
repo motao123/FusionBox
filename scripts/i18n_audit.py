@@ -93,6 +93,47 @@ def check_install_table(zh, en, problems):
                 problems.append('install.sh %s[%s] 与语言包漂移: %r != %r' % (lang, key, val, want))
 
 
+# 源码里的取值调用形态：L <KEY> / _tr <KEY>。
+# 键名允许小写字母后缀（历史上出现过 MSG_PROXY_0121b 这类），字符类必须含 a-z，
+# 否则会把键名截断、漏掉悬空引用。
+LOOKUP_RE = re.compile(r'\b(?:L|_tr)\s+([A-Za-z][A-Za-z0-9_]*)')
+# install.sh 的内置早期表（语言包加载前就要能出文案），也算「已被引用」
+INSTALL_TABLE_RE = re.compile(r'_IL_(?:ZH|EN)\[([A-Za-z][A-Za-z0-9_]*)\]')
+
+
+def check_referenced_keys_exist(zh, en, problems):
+    """源码引用的每个键都必须在两套语言包里存在。
+
+    L 对未知键的行为是「原样返回键名且 rc=0」，所以悬空引用不会让任何命令失败——
+    用户只会看到 MSG_XXX_0123 这样的乱码。v1.44.1 就因为键名写错（0121b/0121c/0210
+    实际应为 0208/0209/0207）把三处新提示全变成了乱码，而当时的测试只遍历语言包里
+    已有的键，对此完全隐形。这里做的是反向断言：引用集 ⊆ 定义集。
+    """
+    refs = {}   # key -> [(rel, lineno)]
+    for rel in ALL_FILES:
+        p = os.path.join(ROOT, rel.replace('/', os.sep))
+        if not os.path.isfile(p):
+            continue
+        for ln, line in enumerate(
+                io.open(p, encoding='utf-8', errors='replace').read().split('\n'), 1):
+            if line.lstrip().startswith('#'):
+                continue          # 注释里的示例不算引用
+            for m in LOOKUP_RE.finditer(line):
+                refs.setdefault(m.group(1), []).append((rel, ln))
+        for m in INSTALL_TABLE_RE.finditer(io.open(p, encoding='utf-8', errors='replace').read()):
+            refs.setdefault(m.group(1), []).append((rel, 0))
+
+    total = sum(len(v) for v in refs.values())
+    for key in sorted(refs):
+        if key not in zh:
+            where = ', '.join('%s:%d' % (r, n) for r, n in refs[key][:3])
+            problems.append('源码引用了语言包中不存在的键 %s（%s）——运行时会原样打印键名' % (key, where))
+        elif key not in en:
+            where = ', '.join('%s:%d' % (r, n) for r, n in refs[key][:3])
+            problems.append('en.sh 缺键 %s（%s 引用）——英文模式会回落中文' % (key, where))
+    return len(refs), total
+
+
 def count_untranslated(files):
     """统计仍未抽取的文案行数（复用 i18n_extract 的抽取器，覆盖全部出口形态）。"""
     sys.path.insert(0, os.path.join(ROOT, 'scripts'))
@@ -171,6 +212,7 @@ def main():
     check_parity(zh, en, problems)
     check_en_purity(en, problems)
     check_install_table(zh, en, problems)
+    n_keys, n_refs = check_referenced_keys_exist(zh, en, problems)
     arrays, entries = check_data_arrays(ALL_FILES, problems)
 
     if args.coverage:
@@ -193,9 +235,10 @@ def main():
         return 1
     if not args.quiet:
         print('i18n 审计通过：zh_CN %d 键 / en %d 键，键与占位符完全一致，英文包无中文，'
-              'install.sh 内置表与语言包同步；数据数组扫描 %d 个 / %d 条目，'
-              '棘轮数组 %s 保持全量键式'
-              % (len(zh), len(en), arrays, entries, '/'.join(sorted(KEYED_ARRAYS))))
+              'install.sh 内置表与语言包同步；源码 %d 个键 / %d 处引用全部可解析；'
+              '数据数组扫描 %d 个 / %d 条目，棘轮数组 %s 保持全量键式'
+              % (len(zh), len(en), n_keys, n_refs, arrays, entries,
+                 '/'.join(sorted(KEYED_ARRAYS))))
     return 0
 
 
