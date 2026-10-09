@@ -564,7 +564,11 @@ _cpu_cores_display() {
 _download() {
   local url="$1"; local output="$2"
   if command -v curl &>/dev/null; then
-    curl -sL --connect-timeout 10 --retry 3 -o "$output" "$url"
+    # -f：HTTP >=400 时不写文件并非零退出。没有它，404/500 的错误页会被当成
+    # 「下载成功」存下来——上游 URL 一旦腐烂，调用方会拿错误页当脚本执行、
+    # 或把错误页当二进制安装，且全程无报错（真机验证在 official 入口上复现过）。
+    # wget 分支本就在 4xx/5xx 返回非零，行为一致。
+    curl -fsL --connect-timeout 10 --retry 3 -o "$output" "$url"
   elif command -v wget &>/dev/null; then
     wget -qO "$output" --timeout=10 --tries=3 "$url"
   else
