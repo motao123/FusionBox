@@ -6,7 +6,7 @@
 
 9 大模块 · 75 款软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.44.3-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.45.0-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -184,14 +184,15 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.44.3** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.45.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **移除不可用的 Clash.Meta 后端**：它的配置格式（YAML，`proxies`/`rules`）与 FusionBox 生成的 Xray JSON（`inbounds`/`outbounds`）不兼容，此前虽然装得上，却加不了节点、服务也起不来。安装菜单现在只提供 Xray / v2ray / sing-box
-- **已有 Clash.Meta 安装仍能清理**：`fusionbox proxy uninstall` 保留了对历史安装的识别与清除，升级后不会留下清不掉的遗留服务或软链接
-- **Xray / v2ray / sing-box 的使用方式完全不变**，本次改动不影响任何现有配置与节点
+- **新增「官方脚本安装」入口**：有些应用装不进受管模型（需要特权容器、Elasticsearch，或必须占用公网裸端口），对它们不再强行接入，而是提供一条直通上游官方安装脚本的路——`fusionbox market official install <id>`。首批收录 **JumpServer**（堡垒机）与 **SafeLine 雷池**（WAF）
+- **执行前你会看到脚本指纹**：下载后先展示来源与 SHA256，并打印脚本地址，需输入 `YES` 才执行；脚本会创建特权容器或改动系统，所以只在交互终端可用（脚本/CI 中直接拒绝）
+- **这些应用装完归上游管**：本工具不接管其升级、卸载与备份，装完请按上游官方文档操作
+- **下载更可靠了**：以往上游地址返回 404 时，错误页会被当成文件悄悄存下来（拿它当脚本执行不会有任何报错）；现在 HTTP 错误会直接判为失败并明确提示
 
 ---
 

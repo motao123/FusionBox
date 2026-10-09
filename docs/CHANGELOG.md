@@ -2,6 +2,42 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.45.0 官方脚本安装入口（不受管）+ _download 校验 HTTP 状态
+
+- **背景**：`roadmap.md` A6 第三档候选（JumpServer / ONLYOFFICE Community Server /
+  RustDesk 服务端 / 雷池）在动手前逐个查官方源核实，**全部与受管模型冲突**——
+  JumpServer 的 `koko` 需要 `privileged`（官方 `compose/koko.yml` 第 9 行
+  `privileged: ${KOKO_PRIVILEGED:-true}`，另有 `cap_addon.yml`）；ONLYOFFICE CS 依赖
+  Elasticsearch（需 `vm.max_map_count`，而 `SYSCTLS` 白名单仅 3 键）；RustDesk 客户端
+  走裸 TCP/UDP；雷池需拦截流量。硬塞要放开安全模型，代价过大。
+- **做法**：不做受管接入，改为复用仓库既有先例（`system_reinstall` 调上游
+  `bin456789/reinstall`、sing-box 交 233boy、面板走官方命令），新增
+  `market official list|install <id>`（market 菜单第 7 项）。数据表
+  `MARKET_OFFICIAL` 格式 `id|显示名|URL|CNB镜像`——**必须用 `|` 分列**，URL 含 `://`，
+  用 `:` 会把字段切坏。行为：非交互终端拒绝 → 下载 → 展示 SHA256 → 打印脚本 URL →
+  要求 `YES` → 执行；完成后明确告知按上游文档操作。首批 JumpServer + SafeLine。
+- **上游 URL 不进 `upstream_url_audit.py`（有意）**：该脚本提取口径为
+  `src/i18n/*.sh` + `install.sh`，**明确排除 `src/modules/`**（模块级域名按地域可达性
+  波动大，纳入会产生假红，而 flaky 闸门会训练人忽略红灯）。改由 `run_checks` 的
+  **不联网结构断言**（条目 4 段 / URL 为 https / 渲染函数与菜单路由接线齐全）覆盖，
+  真实可达性由真机验收负责。
+- **真机验证抓到两个真问题（都修了）**：
+  - **`_download` 缺 `-f`**：`curl -sL` 在 HTTP 404 时仍以 0 退出，错误页被当作
+    「下载成功」存下来——实测 404 响应体是 14 字节的 `404: Not Found`，却照样被算出
+    SHA256 并打印。上游 URL 一旦腐烂，后果是「拿错误页当脚本执行」且全程无报错，
+    正是「上游 URL 腐烂无人知」要防的场景。加 `-f` 后 HTTP ≥400 非零退出
+    （wget 分支本就是此语义）。**影响所有 `_download` 调用方**，非新功能独有。
+  - **URL 分支写错**：`jumpserver/installer` 的默认分支是 `dev`（我写了 `main`，实测 404）；
+    `dev` 返回真实脚本（2482B / 82 行，`#!` 开头）。另核实**雷池 `setup.sh` 可用**
+    （11059B / 290 行）；**RustDesk 官方仓库根目录只有 compose/kubernetes/systemd，
+    没有安装 `.sh`**，故不收录。
+- **验证**：i18n 审计通过（3322 键 / 3716 处引用全可解析）；`run_checks` 结构断言 9/9；
+  真机复验 404 按失败处理、两条目均下到 `#!` 开头的真脚本；真机入口行为四项全过
+  （列表渲染 / 非交互拒绝 rc=2 / PTY 下真实下载+SHA256+取消 / 未知条目报错）。
+- **踩坑**：新增 i18n 键会让 `site_facts.py` 派生的 `i18n_keys` 变，而它是主页
+  `data-fact` —— 第一轮 CI 因此变红（主页 3299 / 派生 3322），须跑
+  `site_facts.py --write` 回写。
+
 ## v1.44.3 移除不可用的 Clash.Meta 后端
 
 - **问题**：`proxy install` 的菜单把 Clash.Meta 列为可安装后端，但装完是死路——

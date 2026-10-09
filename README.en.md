@@ -6,7 +6,7 @@
 
 9 modules · 75-application software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.44.3-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.45.0-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -185,14 +185,15 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.44.3** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.45.0** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Removed the unusable Clash.Meta backend**: its config format (YAML, `proxies`/`rules`) is incompatible with the Xray JSON FusionBox generates (`inbounds`/`outbounds`), so it installed but could not accept nodes and its service would not start. The install menu now offers Xray / v2ray / sing-box only
-- **Existing Clash.Meta installs can still be cleaned up**: `fusionbox proxy uninstall` keeps detecting and removing legacy installs, so an upgrade leaves no orphaned service or symlink behind
-- **Xray / v2ray / sing-box usage is completely unchanged** - this change affects no existing config or node
+- **New "official install script" entry**: some apps cannot fit the managed model (they need privileged containers, Elasticsearch, or a raw public port). Instead of forcing them in, FusionBox now offers a direct path to the upstream official installer - `fusionbox market official install <id>`. First entries: **JumpServer** (bastion host) and **SafeLine** (WAF)
+- **You see the script fingerprint first**: after download it shows the source and SHA256, prints the script URL, and requires you to type `YES`. Because such scripts create privileged containers or change the system, this only works in an interactive terminal (refused in scripts/CI)
+- **These apps stay under upstream's management**: FusionBox does not manage their upgrade, uninstall or backup - follow the upstream documentation after install
+- **More reliable downloads**: previously a 404 from an upstream URL was silently saved as if it were the file (running it produced no error at all); HTTP errors are now treated as a failure with a clear message
 
 ---
 
