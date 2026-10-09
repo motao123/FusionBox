@@ -91,3 +91,15 @@ main:
       docker: *ci-docker
       env: *ci-env
       stages: *ci-stages
+    # PR 自动安全审计：CI 只发一条 @ 评论去召唤 NPC，不需要检出代码，
+    # 所以 git.enable=false（省去 clone 与凭据注入）。
+    # 前提：在 CNB 上「关注」npc/code-security 仓库，NPC 才会生效。
+    # 该 NPC 只读代码、只发评论，不 push / 不建分支 / 不改代码。
+    - name: security-review
+      git:
+        enable: false
+      stages:
+        - name: 安全审核
+          image: cnbcool/cnb-cli:latest
+          script:
+            cnb pulls comment --body "@npc/code-security(安全审计员) 安全审计"
