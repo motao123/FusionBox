@@ -181,7 +181,11 @@ code{font-family:var(--mono)}
 @media(max-width:1040px){
   .flow{flex-wrap:wrap}
   .fl{flex:1 1 45%}
-  .fl:nth-child(2n)::before{display:none}
+  /* 两列换行后，行首卡（第 1/3/5 张，即奇数）左边是容器边缘，
+     不该有 .fl+.fl::before 的竖分隔线（那是给右列卡与其左邻居用的）。
+     原来写成 2n（偶数）恰好把该保留的第 2/4 张藏了、该隐藏的第 3/5 张留着，
+     于是第 3、5 张卡左侧出现孤立竖线——即"窄屏卡片错位"。 */
+  .fl:nth-child(2n+1)::before{display:none}
   .fl:nth-child(n+3){border-top:1px solid var(--line2)}
   .mech{grid-template-columns:minmax(0,1fr)}
   .fr{grid-template-columns:minmax(0,1fr);gap:12px}
@@ -195,9 +199,13 @@ code{font-family:var(--mono)}
   .hero h1{letter-spacing:-1px}
   .sec{padding:62px 0}
   .fl{flex:1 1 100%}
+  /* 窄屏单列：不再负 margin 上压（避免第一张卡压到 hero 的 trust 徽章），
+     并让每张非首卡都保留同一条上边框——原来 .fl:nth-child(n+3){border-top:none}
+     与 .fl + .fl{border-top:1px} specificity 相同、后者被覆盖，导致第 3-5 张卡
+     丢掉分隔线、视觉上粘在一起（即"窄屏卡片重叠/错位"）。 */
+  .flow{margin-top:0}
   .fl + .fl{border-top:1px solid var(--line2)}
   .fl + .fl::before{display:none}
-  .fl:nth-child(n+3){border-top:none}
   .bar{flex-wrap:wrap}.bar button{width:100%}
   .pipe .tag{margin-left:0;width:100%}
   .wrap{padding:0 20px}
