@@ -225,6 +225,27 @@
 
 **依赖**：真实模型 API 凭据（否则只能验证到「启动并监听」）。
 
+> **核实结论（2026-10-09，实现前先查）**：设计稿写得很完整，但**没有定"管哪个上游"**——
+> 全文只出现 `hermes`（作为例子）和占位符式环境变量名（`HERMES_API_BASE` / `HERMES_MODEL` /
+> `HERMES_API_KEY_FILE`），**既无线程地址也无镜像名**，`grep` 全仓也确认该词只存在于
+> 本设计稿与状态文档。实测搜索「hermes LLM harness docker」得到的全是 AI 生成的劣质博客
+> （镜像名互相矛盾：`hermes/agent:latest` / `hermes-agent/hermes:latest`），**环境变量也与
+> 设计稿不一致**（博客用 `HERMES_API_KEY` / `HERMES_LLM_*`）。**结论：按字面实现 hermes 会把
+> 契约建立在不存在的上游之上。**
+>
+> 但设计稿 §0 的描述（「模型代理/网关类单容器服务：上游是模型 API、本地只暴露一个 HTTP
+> 端点、无自有数据库、凭据为最高敏感物」）**有真实且活跃的对应物**，首选 **LiteLLM**
+> （`BerriAI/litellm`，60k★、当日仍在提交、官方有 `Dockerfile.non_root` / compose / `.env.example`）。
+>
+> **LiteLLM 带来一个框架级前置条件（重要）**：官方 compose 强制
+> `LITELLM_MASTER_KEY` / `LITELLM_SALT_KEY`（`${VAR:?set it in .env}`，安装时用 `openssl rand -hex 32`
+> 生成），而
+> - 本框架的 `environment` **只接受静态字符串**（`market_catalog.py:122` 校验 `isinstance(v, str)`），
+>   **没有任何「安装时生成/插值」机制**（`grep generate|secret|interpolat` 无命中）；
+> - 设计稿 §3 想要的是相反方向：凭据**只存 0600 文件、不走 env**（`HERMES_API_KEY_FILE`）。
+>
+> 因此 A7 不是「加个目录条目」，第一步是要么扩展框架（**新增「安装时生成、0600 落盘、compose 引用文件」的凭据机制**，属新能力且要过完整加固验收），要么让 LiteLLM 用「无主密钥」模式（需核实其是否安全可用）。**这一步需要在动手前明确。**
+
 ---
 
 ## 3. B 类：环境受限 —— 关键是「怎么把条件造出来」
