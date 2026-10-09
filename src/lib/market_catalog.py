@@ -166,12 +166,21 @@ def _service(value, where):
             raise ValueError('Invalid tmpfs path at ' + where)
     if 'read_only' in value and type(value['read_only']) is not bool:
         raise ValueError('Invalid read_only at ' + where)
-    # `secret_env` (optional bool) marks a service that should receive the
-    # application's generated secrets. Scoped per service so a master key is
-    # never handed to sibling containers (e.g. the database) that do not need it.
-    # The name list is validated app-level, once `secrets` is known.
-    if 'secret_env' in value and type(value['secret_env']) is not bool:
-        raise ValueError('Invalid secret_env at ' + where)
+    # `secret_env` marks a service that should receive the application's
+    # generated secrets: `true` for all of them, or a list of specific names.
+    # Compose `env_file` is all-or-nothing per file, so a shared file would hand
+    # every variable to every service; the name list is therefore resolved into a
+    # *per-service* file (see market_apps.write_secrets).
+    if 'secret_env' in value:
+        marker = value['secret_env']
+        if type(marker) is bool:
+            pass
+        elif isinstance(marker, list):
+            if (not marker or any(not isinstance(n, str) or not ENV.fullmatch(n) for n in marker)
+                    or len(set(marker)) != len(marker)):
+                raise ValueError('Invalid secret_env list at ' + where)
+        else:
+            raise ValueError('Invalid secret_env at ' + where)
     return result
 
 
@@ -316,13 +325,21 @@ def parse(raw):
         if uses_nas != app['nas_path']:
             raise ValueError('nas_path must exactly match bind templates at ' + where)
         secrets = _secrets(app['secrets'], where) if 'secrets' in app else None
-        if secrets:
-            # The env_file name is derived, never authored: one deterministic file
-            # per application, so a catalog can never scatter secret files around.
-            app = dict(app, env_file=app['id'] + '.env')
         flagged = [s['id'] for s in services if s.get('secret_env')]
         if bool(secrets) != bool(flagged):
             raise ValueError('secret_env services and app secrets must be declared together at ' + where)
+        # A `secret_env` name list must only reference secrets this app declares:
+        # a typo would otherwise surface as a missing variable at install time
+        # (inside a container) instead of as a catalog validation error.
+        if secrets:
+            declared = {entry['name'] for entry in secrets}
+            for service in services:
+                marker = service.get('secret_env')
+                if isinstance(marker, list):
+                    unknown = [name for name in marker if name not in declared]
+                    if unknown:
+                        raise ValueError('secret_env references undeclared secret at ' + where +
+                                         ': ' + unknown[0])
         apps[app['id']] = dict(app, services=services, **({'secrets': secrets} if secrets else {}))
     return {'schema_version': SCHEMA_VERSION, 'catalog_id': value['catalog_id'],
             'revision': value['revision'], 'apps': apps}

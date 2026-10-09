@@ -188,7 +188,6 @@ def manifest_document(record):
     spec = record_spec(record)
     labels = {'io.fusionbox.market': record['market']['token']}
     project = record['project']
-    secrets_file = secrets_path(record) if spec.get('secrets') else None
     result = {'services': {}, 'volumes': {}}
     for item in spec['services']:
         service = {
@@ -235,11 +234,14 @@ def manifest_document(record):
             service['tmpfs'] = list(item['tmpfs'])
         if item.get('read_only'):
             service['read_only'] = True
-        # Only services flagged `secret_env` receive the generated secrets. The
-        # file lands on the host (0600), never inside the compose document, so a
-        # key cannot leak through `docker inspect`, the rendered YAML or backups.
-        if secrets_file and item.get('secret_env'):
-            service['env_file'] = [secrets_file]
+        # Only services declaring `secret_env` receive generated secrets, and each
+        # gets its **own** file: Compose `env_file` is all-or-nothing per file, so
+        # a shared file would hand the master key to sibling containers (the
+        # database) that have no use for it. The file lives on the host (0600) and
+        # is referenced by path, so a key never enters the compose document,
+        # the command line or `docker inspect`.
+        if spec.get('secrets') and item.get('secret_env'):
+            service['env_file'] = [secrets_path(record, item['id'])]
         if not spec['high_privilege']:
             service.update(init=True, cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
         result['services'][item['id']] = service
@@ -316,29 +318,62 @@ def _secret_values(spec, generate=None):
     return values
 
 
-def secrets_path(record):
-    """Host path of the 0600 env file Compose reads for this application."""
-    return str(cb.BASE / (record['project'] + '.secrets.env'))
+def secrets_path(record, service=None):
+    """Host path of the 0600 env file Compose reads for this application.
+
+    One file **per service** that declares `secret_env`: Compose `env_file` is
+    all-or-nothing per file, so a single shared file would hand every variable to
+    every service (the database container would receive the master key).
+    """
+    suffix = '' if service is None else '.' + service
+    return str(cb.BASE / (record['project'] + '.secrets' + suffix + '.env'))
+
+
+def _secret_names(spec, service):
+    """Resolve a service's `secret_env` marker into concrete secret names."""
+    all_names = [entry['name'] for entry in spec.get('secrets', [])]
+    marker = service.get('secret_env')
+    if marker is True:
+        return all_names
+    if isinstance(marker, list):
+        unknown = [name for name in marker if name not in all_names]
+        if unknown:
+            raise ValueError('secret_env references undeclared secret: ' + unknown[0])
+        return list(marker)
+    return []
 
 
 def write_secrets(record, spec=None, generate=None):
-    """Generate secrets (once) and write them to a 0600 file, returning its path.
+    """Generate secrets (once) and write per-service 0600 env files.
 
-    Idempotent: an existing file is never regenerated — rotating a secret would
-    silently invalidate credentials already stored in the application's own
-    database (LiteLLM warns about exactly this for its salt key).
+    Returns {service_id: path}. Idempotent: an existing file is never regenerated
+    — rotating a secret would silently invalidate credentials already stored in
+    the application's own database (LiteLLM warns about exactly this for its
+    salt key).
     """
     spec = spec if spec is not None else record_spec(record)
     if not spec.get('secrets'):
-        return None
-    path = secrets_path(record)
-    if Path(path).is_file():
-        return path
-    values = _secret_values(spec, generate=generate)
-    # atomic() writes via mkstemp + chmod(0600) before rename, so the file is
-    # never world-readable, not even briefly.
-    atomic(Path(path), ''.join('%s=%s\n' % (name, value) for name, value in values.items()))
-    return path
+        return {}
+    values = None
+    written = {}
+    for service in spec['services']:
+        names = _secret_names(spec, service)
+        if not names:
+            continue
+        path = secrets_path(record, service['id'])
+        written[service['id']] = path
+        if Path(path).is_file():
+            continue
+        if values is None:
+            values = _secret_values(spec, generate=generate)
+        # Values are re-rendered per service so a template that references a name
+        # this service does not receive is still resolvable (templates only refer
+        # to generated secrets, never to other templates).
+        body = ''.join('%s=%s\n' % (name, values[name]) for name in names)
+        # atomic() writes via mkstemp + chmod(0600) before rename, so the file is
+        # never world-readable, not even briefly.
+        atomic(Path(path), body)
+    return written
 
 
 def write_compose(record, image=None):
@@ -906,11 +941,13 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 print('Uninstalled; named data volume, registry and configuration retained')
                 # Secrets are retained too: the application's own database stores
                 # data encrypted with them, so deleting them would make a
-                # `--reuse-data` reinstall unreadable. Surface the location instead
-                # of silently keeping a credential file around.
-                if spec.get('secrets') and Path(secrets_path(record)).is_file():
-                    print('Generated secrets retained at ' + secrets_path(record) +
-                          ' (0600). Remove that file only if you will not reinstall with --reuse-data.')
+                # `--reuse-data` reinstall unreadable. Surface the locations instead
+                # of silently keeping credential files around.
+                kept = [secrets_path(record, s['id']) for s in spec['services']
+                        if s.get('secret_env') and Path(secrets_path(record, s['id'])).is_file()]
+                if kept:
+                    print('Generated secrets retained (0600): ' + ', '.join(kept))
+                    print('Remove those files only if you will not reinstall with --reuse-data.')
                 return
             if record['market']['state'] != 'healthy' or health(record) != 'healthy':
                 raise ValueError('Update requires healthy managed app; manual recovery required')

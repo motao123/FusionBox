@@ -289,6 +289,91 @@
      "health_retries": 150
     }
    ]
+  },
+  {
+   "id": "litellm",
+   "name": "LiteLLM",
+   "description": "Model gateway / proxy for 100+ LLM APIs. Two services (gateway + PostgreSQL for keys and spend logs); the master key and database password are generated at install time into a 0600 file and never appear in the compose document. Localhost only; no domain/TLS mapping.",
+   "revoked": false,
+   "high_privilege": false,
+   "domain": false,
+   "bytes": 3221225472,
+   "nas_path": false,
+   "secrets": [
+    {
+     "name": "LITELLM_MASTER_KEY",
+     "bytes": 32,
+     "prefix": "sk-"
+    },
+    {
+     "name": "DB_PASSWORD",
+     "bytes": 32,
+     "template": "postgresql://litellm:{LITELLM_MASTER_KEY}@db:5432/litellm"
+    }
+   ],
+   "services": [
+    {
+     "id": "db",
+     "image": "postgres@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
+     "environment": {
+      "POSTGRES_USER": "litellm",
+      "POSTGRES_DB": "litellm"
+     },
+     "secret_env": [
+      "DB_PASSWORD"
+     ],
+     "user": "70:70",
+     "ports": [],
+     "volumes": [
+      {
+       "name": "data",
+       "target": "/var/lib/postgresql/data",
+       "read_only": false
+      }
+     ],
+     "binds": [],
+     "devices": [],
+     "network_mode": "bridge",
+     "docker_socket": false,
+     "memory": "256m",
+     "cpus": "0.50",
+     "pids_limit": 128,
+     "shm_size": "64m",
+     "health": [
+      "CMD-SHELL",
+      "pg_isready -U litellm -d litellm"
+     ],
+     "health_retries": 40
+    },
+    {
+     "id": "app",
+     "image": "docker.litellm.ai/berriai/litellm@sha256:3d88bd757134a00e8c00237b85a021ab1f6d54abb9c1df750f411dbe7256a500",
+     "secret_env": true,
+     "depends_on": [
+      "db"
+     ],
+     "ports": [
+      {
+       "published": 8097,
+       "target": 4000,
+       "protocol": "tcp"
+      }
+     ],
+     "volumes": [],
+     "binds": [],
+     "devices": [],
+     "network_mode": "bridge",
+     "docker_socket": false,
+     "memory": "1024m",
+     "cpus": "1.00",
+     "pids_limit": 512,
+     "health": [
+      "CMD-SHELL",
+      "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness',timeout=3).status==200 else 1)\""
+     ],
+     "health_retries": 60
+    }
+   ]
   }
  ]
 }
