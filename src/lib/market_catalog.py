@@ -275,6 +275,7 @@ def parse(raw):
     if not isinstance(value['apps'], list) or not value['apps']:
         raise ValueError('Catalog apps must be a non-empty list')
     apps = {}
+    seen_ports = {}
     for index, app in enumerate(value['apps']):
         where = 'apps[%s]' % index
         _exact(app, ('id', 'name', 'description', 'revoked', 'high_privilege', 'risk_acknowledgement',
@@ -340,6 +341,15 @@ def parse(raw):
                     if unknown:
                         raise ValueError('secret_env references undeclared secret at ' + where +
                                          ': ' + unknown[0])
+        # Published ports are fixed per entry, so two entries sharing one would be
+        # mutually uninstallable: whichever is installed first occupies the port,
+        # and the second fails at install time (preflight). Catch it here instead,
+        # while the catalog is validated.
+        for port in published_ports:
+            if port in seen_ports:
+                raise ValueError('Published port %s/%s is already declared by application %s at %s'
+                                 % (port[0], port[1], seen_ports[port], where))
+            seen_ports[port] = app['id']
         apps[app['id']] = dict(app, services=services, **({'secrets': secrets} if secrets else {}))
     return {'schema_version': SCHEMA_VERSION, 'catalog_id': value['catalog_id'],
             'revision': value['revision'], 'apps': apps}

@@ -6,7 +6,7 @@
 
 9 modules · 75-application software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.45.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.47.0-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -185,15 +185,15 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.45.0** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.47.0** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **New "official install script" entry**: some apps cannot fit the managed model (they need privileged containers, Elasticsearch, or a raw public port). Instead of forcing them in, FusionBox now offers a direct path to the upstream official installer - `fusionbox market official install <id>`. First entries: **JumpServer** (bastion host) and **SafeLine** (WAF)
-- **You see the script fingerprint first**: after download it shows the source and SHA256, prints the script URL, and requires you to type `YES`. Because such scripts create privileged containers or change the system, this only works in an interactive terminal (refused in scripts/CI)
-- **These apps stay under upstream's management**: FusionBox does not manage their upgrade, uninstall or backup - follow the upstream documentation after install
-- **More reliable downloads**: previously a 404 from an upstream URL was silently saved as if it were the file (running it produced no error at all); HTTP errors are now treated as a failure with a clear message
+- **Managed apps can now carry install-time credentials**: services that require a random key (such as LiteLLM) get their master key and database password generated during install, written to a **0600 file** and referenced by Compose - the key never enters the compose document, the command line, or a system backup
+- **New LiteLLM entry** (model gateway + PostgreSQL): pinned image digests, dependency-ordered startup, localhost-only `127.0.0.1:8097`
+- **Credentials are never regenerated**: uninstall keeps them and reinstall reuses them, so secrets already stored in the application database stay valid (verified on a real host: the fingerprint is unchanged after a reinstall)
+- **One port collision fixed**: `ntfy` and `rocketchat` both used 8091 (installing one blocked the other); `ntfy` moved to 8095, and catalog validation now rejects two entries sharing a published port
 
 ---
 

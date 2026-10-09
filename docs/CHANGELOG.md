@@ -2,6 +2,52 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.47.0 A7 收口：受管应用「安装时机密」+ LiteLLM 条目 + 端口冲突修复
+
+- **背景**：A7（harness 管理器）实现前核实发现——设计稿没定「管哪个上游」（全文只有 `hermes`
+  这个例子与占位符式 env 名），搜索得到的全是 AI 生成劣质博客；真实对应物是 **LiteLLM**
+  （模型网关，60k★、活跃）。但它**强制要求安装时生成的随机密钥**，而框架的 `environment`
+  只接受静态字符串、**没有任何生成机制** → 先补框架能力，而不是硬塞应用。
+- **新增框架能力：安装时机密**
+  - 应用级 `secrets[]`（`name` / `bytes` 16..64 / `prefix?` / `template?`）+ 服务级 `secret_env`
+    （`true` 或**名单**）；
+  - 安装时生成 → **按服务各一个 0600 文件**（`atomic()` 用 `mkstemp`+`chmod`+`rename`，
+    **无窗口期**）→ compose 用 **`env_file`** 引用；
+  - **`env_file` 是整文件生效**，所以「隔离」只能靠**拆文件**（共用一个文件时每个服务都
+    拿到全部变量——PR #70 曾错称已隔离，本版修正）；
+  - `template` 只允许引用**生成的**值（如 `postgresql://u:{MASTER_KEY}@db:5432/x`），
+    拒绝引用另一个 template（避免环与顺序歧义）；
+  - **幂等**：已存在不重新生成（轮换会静默作废已入库凭据）；卸载**保留 + 打印位置**；
+  - `manifest_shape` 纳入 `secret_env`：目录给应用**新增机密**属结构变更，拒绝原地更新。
+  - 明文边界（真机验证）：compose 文档 / 命令行与历史 / 系统备份**均不含**（`archive.py` 的
+    `SCOPES` 本就无受管目录）；宿主机保密集**含且 0600**；容器进程环境含（`env_file` 固有）。
+  - 选 `env_file` 而非 `_FILE` 约定：LiteLLM **不支持**从文件读密钥（代码搜索
+    `LITELLM_MASTER_KEY_FILE` 0 命中）；postgres 虽支持 `POSTGRES_PASSWORD_FILE`，但要求
+    文件对容器 uid 可读，与 root 0600 保证冲突。
+- **新增 LiteLLM 目录条目**：`app`(litellm，digest 固定) + `db`(postgres:16)，`depends_on`，
+  仅 `127.0.0.1:8097`；`LITELLM_MASTER_KEY`(prefix `sk-`) 与 `POSTGRES_PASSWORD`（模板派生自
+  主密钥，天然一致）；db 走名单只拿 `POSTGRES_PASSWORD`。
+  **真机 L1 全通**：install→healthy、`/health/liveliness` **200**、uninstall 保留数据并打印机密
+  位置、`reinstall --reuse-data` 后**机密指纹逐字节不变**。
+- **真机抓出 3 个静态测试抓不到的问题（都修了）**：
+  1. **机密名必须等于应用实际读的环境变量名**：db 的机密叫 `DB_PASSWORD`，而 postgres 读
+     `POSTGRES_PASSWORD` → 视为未设 → 容器反复重启。既有 `umami` 从未暴露，因为它是把字面值
+     直接写进 `environment`，没有「机密名 → 变量名」这层转换。**不引入 rename 映射**，直接
+     让机密名 = 变量名。
+  2. **数据库必须显式 `user`，且 uid 随镜像变体不同**：`postgres:16`（Debian）是 **999**，
+     alpine 版是 **70**。照抄 umami 的 `70:70` 会
+     `initdb: could not change permissions … Operation not permitted`。
+  3. **`env_file` 整文件生效**（见上）。
+- **修复跨条目端口冲突（既存问题）**：`ntfy-v1` 与 `rocketchat` **都声明 8091**——端口按条目
+  固定，装了其一就装不了另一个（第二个在安装时被 `preflight` 拦下）。`ntfy-v1` 让位到 **8095**，
+  并**新增框架级校验**：`market_catalog.parse()` 现在拒绝两个条目共用同一 `published`
+  端口/协议，把这类问题从「安装时才发现」提前到「目录校验时」。
+- **验证**：i18n 审计 3322 键；Pages facts 10 项由源码派生；`tests/test_market_secrets.py`
+  **37 项**（21 条非法矩阵 + 生成/渲染/0600/幂等/按服务隔离/compose 无明文）；
+  `tests/test_market_catalog.py` 新增跨条目端口唯一性断言；真机 L1 全通。
+- **未声称**：**L3（真实模型对话 / 流式输出 / 用量统计）未验证**（需真实 API key），
+  按设计稿 §5 不出现「已支持」这类表述。
+
 ## v1.45.0 官方脚本安装入口（不受管）+ _download 校验 HTTP 状态
 
 - **背景**：`roadmap.md` A6 第三档候选（JumpServer / ONLYOFFICE Community Server /
