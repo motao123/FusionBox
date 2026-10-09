@@ -245,6 +245,27 @@
 > - 设计稿 §3 想要的是相反方向：凭据**只存 0600 文件、不走 env**（`HERMES_API_KEY_FILE`）。
 >
 > 因此 A7 不是「加个目录条目」，第一步是要么扩展框架（**新增「安装时生成、0600 落盘、compose 引用文件」的凭据机制**，属新能力且要过完整加固验收），要么让 LiteLLM 用「无主密钥」模式（需核实其是否安全可用）。**这一步需要在动手前明确。**
+>
+> **已执行（2026-10-09，PR #70）**：选了前者，框架级能力**已落地并真机验证**：
+> - 应用级 `secrets[]`（`name` / `bytes` 16..64 / `prefix?` / `template?`）+ 服务级 `secret_env`；
+>   `env_file` 名**派生**自 id，不接受作者填写。
+> - 选 **`env_file`（0600 文件 + compose 引用）**而非 `_FILE` 约定 —— 实测 LiteLLM
+>   **不支持**从文件读密钥（代码搜索 `LITELLM_MASTER_KEY_FILE` 0 命中；官方文档明确
+>   must be an **environment variable**），`env_file` 才是唯一通用解。
+> - 明文边界（已验证）：compose 文档**不含**、命令行/历史**不含**、系统备份**不含**
+>   （`archive.py` 的 `SCOPES` 无受管目录）、宿主机保密集**含且 0600**
+>   （`mkstemp`+`chmod`+`rename`，无窗口期）、容器进程环境含（`env_file` 固有）。
+> - **按服务隔离**：只有标 `secret_env` 的服务拿到，主密钥不扩散到 DB 容器。
+> - **幂等**：已存在不重生成（轮换会静默作废已入库凭据）；**卸载保留 + 打印位置**。
+> - `manifest_shape` 纳入 `secret_env`：目录新增机密属结构变更，**拒绝原地更新**。
+> - 验证：`tests/test_market_secrets.py` **32 项**（21 条非法矩阵 + 生成/渲染/0600/幂等/隔离）；
+>   真机端到端（真实容器读 `env_file`、权限 `600 root`、compose 无明文）；现有 15 条目零回归。
+>
+> **A7 剩余**：**首个使用者条目仍未加**——需要固定 LiteLLM 镜像 digest（`docker.litellm.ai`
+> 是自建 registry，须实测取 digest；catalog 的 `IMAGE` 正则要求 `@sha256:`）、按官方
+> `docker-compose.quickstart.yml` 建 litellm+postgres 两服务条目，并实测在加固模型
+> （`cap_drop ALL` / `init` / `no-new-privileges`）下能否跑起来。届时按设计稿 §5 的
+> L1/L2/L4 验收，**L3（真实对话）需真实模型 key，未验证前不得声称「已支持」**。
 
 ---
 
