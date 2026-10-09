@@ -114,6 +114,7 @@ market_main() {
     install|i)        market_install "$@" ;;
     remove|rm)        market_remove "$@" ;;
     category|cat)     market_category "$@" ;;
+    official|off)     market_official "$@" ;;
     menu|main)        market_menu ;;
     help|h)           market_help ;;
     *)                _module_unknown_cmd "market" "$cmd" ;;
@@ -555,6 +556,9 @@ market_help() {
   msg "$(L MSG_MARKET_0377)"
   msg "$(L MSG_MARKET_0378)"
   msg ""
+  msg "  fusionbox market official list                       $(L MSG_MARKET_0451)"
+  msg "  fusionbox market official install <id>               $(L MSG_MARKET_0452)"
+  msg ""
   msg "$(L MSG_MARKET_0379)"
   msg ""
 }
@@ -678,6 +682,7 @@ market_menu() {
     msg "$(L MSG_MARKET_0424 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_MARKET_0425 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_MARKET_0426 "${F_GREEN}" "${F_RESET}" "$(_market_managed_count)")"
+    msg "$(L MSG_MARKET_0430 "${F_GREEN}" "${F_RESET}")"
     msg "$(L MSG_MARKET_0427 "${F_GREEN}" "${F_RESET}")"
     msg ""
     read -p "$(L MSG_MARKET_0428)" choice || { msg ""; break; }   # stdin 关闭时退出，防死循环
@@ -688,7 +693,166 @@ market_menu() {
       4) market_install; pause ;;
       5) market_remove; pause ;;
       6) market_managed_menu; pause ;;
+      7) market_official_menu; pause ;;
       0) break ;;
     esac
   done
+}
+
+# ---- 官方脚本安装（不受管）----
+# 有些应用装不进受管模型：需要 privileged 容器（JumpServer 的 koko）、需要
+# Elasticsearch 的 vm.max_map_count、或需要公网裸 TCP/UDP 端口（RustDesk/WireGuard）。
+# 本模块刻意不放开这些能力，所以对这类应用**不做受管接入**，只提供「执行上游官方
+# 安装脚本」的入口：装完即回到上游文档的用法，本工具不接管其生命周期
+# （升级、卸载、备份一律按上游方式）。
+#
+# 沿用 system_reinstall（src/modules/system.sh）的既有约束，不新造机制：
+#   实时下载（不锁定版本——上游是滚动发布）→ 执行前展示 SHA256 指纹 →
+#   打印将执行的内容 → 要求显式输入 YES → 非交互终端直接拒绝。
+# 上游 URL 已登记进 scripts/upstream_url_audit.py 的存活巡检。
+#
+# 条目格式：id|显示名|上游脚本 URL|CNB 镜像 URL（镜像留空=单源）
+# 注意用 `|` 分列：URL 含 `://`，用 `:` 会把字段切坏。
+MARKET_OFFICIAL=(
+  "jumpserver|JumpServer|https://raw.githubusercontent.com/jumpserver/installer/main/quick_start.sh|"
+)
+
+# 输出 `id|显示名` 行；空条目跳过（允许表里留空行做分组）
+_market_official_rows() {
+  local e n
+  for e in ${MARKET_OFFICIAL[@]+"${MARKET_OFFICIAL[@]}"}; do
+    [[ -n "$e" ]] || continue
+    n="${e#*|}"; n="${n%%|*}"
+    printf '%s|%s\n' "${e%%|*}" "$n"
+  done
+}
+
+market_official() {
+  local action="${1:-menu}"; shift || true
+  case "$action" in
+    menu|main|"") market_official_menu ;;
+    install|i)    market_official_install "${1:-}" ;;
+    list|l)       market_official_list ;;
+    help|h)       market_official_help ;;
+    *)            _module_unknown_cmd "market official" "$action" ;;
+  esac
+}
+
+market_official_help() {
+  msg_title "$(L MSG_MARKET_0431)"
+  msg ""
+  msg_warn "$(L MSG_MARKET_0432)"
+  msg ""
+  msg "  fusionbox market official list                       $(L MSG_MARKET_0451)"
+  msg "  fusionbox market official install <id>               $(L MSG_MARKET_0452)"
+  msg ""
+}
+
+market_official_list() {
+  msg_title "$(L MSG_MARKET_0431)"
+  msg ""
+  msg_warn "$(L MSG_MARKET_0432)"
+  msg ""
+  local id name
+  while IFS='|' read -r id name; do
+    [[ -n "$id" ]] || continue
+    msg "  ${F_GREEN}${id}${F_RESET}  ${name}"
+  done < <(_market_official_rows)
+  msg ""
+}
+
+market_official_menu() {
+  _require_root || return $?
+  while true; do
+    clear
+    _print_banner
+    msg_title "$(L MSG_MARKET_0431)"
+    msg ""
+    msg_warn "$(L MSG_MARKET_0432)"
+    msg ""
+    local -a ids=()
+    local id name i=1
+    while IFS='|' read -r id name; do
+      [[ -n "$id" ]] || continue
+      ids+=("$id")
+      msg "  ${F_GREEN}${i}${F_RESET}) ${name}"
+      i=$((i + 1))
+    done < <(_market_official_rows)
+    msg ""
+    msg "  ${F_GREEN}0${F_RESET}) $(L MSG_MARKET_0427)"
+    msg ""
+    local choice
+    read -p "$(L MSG_MARKET_0433)" choice || { msg ""; break; }
+    case "$choice" in
+      0 | "") break ;;
+      *)
+        if [[ "$choice" =~ ^[0-9]+$ ]] && ((choice >= 1 && choice <= ${#ids[@]})); then
+          market_official_install "${ids[$((choice - 1))]}"
+          pause
+        fi
+        ;;
+    esac
+  done
+}
+
+market_official_install() {
+  _require_root || return $?
+  local want="${1:-}"
+  [[ -n "$want" ]] || { market_official_list; return 2; }
+
+  local entry="" e
+  for e in ${MARKET_OFFICIAL[@]+"${MARKET_OFFICIAL[@]}"}; do
+    [[ "${e%%|*}" == "$want" ]] && { entry="$e"; break; }
+  done
+  [[ -n "$entry" ]] || { msg_err "$(L MSG_MARKET_0434 "$want")"; return 1; }
+
+  local rest="${entry#*|}"
+  local name="${rest%%|*}"; rest="${rest#*|}"
+  local url="${rest%%|*}"; local mirror="${rest#*|}"
+
+  # 整机级变更且本工具不接管后续：非交互终端一律拒绝
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    msg_err "$(L MSG_MARKET_0435)"
+    return 2
+  fi
+
+  msg_title "$(L MSG_MARKET_0436 "$name")"
+  msg ""
+  msg_warn "$(L MSG_MARKET_0437)"
+  msg "$(L MSG_MARKET_0438)"
+  msg ""
+
+  local script="/tmp/fb-official.$$.sh" src=""
+  msg_info "$(L MSG_MARKET_0439)"
+  if _download "$url" "$script"; then
+    src="$(L MSG_MARKET_0441)"
+  elif [[ -n "$mirror" ]] && _download "$mirror" "$script"; then
+    src="$(L MSG_MARKET_0442)"
+  else
+    msg_err "$(L MSG_MARKET_0440)"
+    rm -f "$script"
+    return 1
+  fi
+  msg "$(L MSG_MARKET_0443 "$src" "$(sha256sum "$script" | awk '{print $1}')")"
+  msg ""
+  msg "$(L MSG_MARKET_0444 "$url")"
+  msg ""
+  local yes
+  read -r -p "$(L MSG_MARKET_0445)" yes || { msg ""; rm -f "$script"; return 1; }
+  if [[ "$yes" != "YES" ]]; then
+    msg_info "$(L MSG_MARKET_0446)"
+    rm -f "$script"
+    return 1
+  fi
+
+  msg_info "$(L MSG_MARKET_0447)"
+  if ! bash "$script"; then
+    msg_err "$(L MSG_MARKET_0448 "$name")"
+    rm -f "$script"
+    return 1
+  fi
+  rm -f "$script"
+  msg_ok "$(L MSG_MARKET_0449 "$name")"
+  msg "$(L MSG_MARKET_0450)"
+  _log_write "$(L MSG_MARKET_0449 "$name")"
 }
