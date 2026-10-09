@@ -6,6 +6,14 @@
 > 每个版本一节，节标题必须是 `## vX.Y.Z`（升级提示按版本号截取当前版本那一节）；
 > 版本号与 `version.txt` 的一致性由 CI 的"Release version consistency"检查强制。
 
+## v1.44.3
+
+- **代理后端只剩 Xray / v2ray / sing-box**：Clash.Meta 已从安装菜单移除。它此前虽然能装上，
+  但无法在本工具里添加节点，服务也起不来——它的配置格式与 FusionBox 生成的不同。
+- **如果你之前装过 Clash.Meta，不用担心**：`fusionbox proxy uninstall` 仍会把它和它的服务
+  一并清理干净。
+- 不需要你做任何操作。Xray / v2ray / sing-box 的安装、节点管理、状态查询方式完全不变。
+
 ## v1.44.2
 
 - **代理配置校验失败时真正回滚了**：上一版的"回滚"实际是把刚写入的坏配置原样写回，

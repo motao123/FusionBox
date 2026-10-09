@@ -6,7 +6,7 @@
 
 9 modules · 75-application software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.44.2-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.44.3-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -185,15 +185,14 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.44.2** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.44.3** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
 
-- **Fixed three real defects in the proxy config validation guard** (introduced in v1.44.1): the rollback was a no-op, because the backup was taken *after* the write, so a bad config was restored verbatim while the previous good config was already lost; validation used the first kernel binary found on disk instead of the active backend; three i18n key names were misspelled, so users saw `MSG_PROXY_xxxx` instead of the actual message
-- **No service restart on validation failure**: `proxy add` / `proxy del` now abort, so a bad config can never be loaded into a running proxy
-- **unzip dependency install now retries after refreshing the package index**: no longer gives up on the first failure on minimal systems with a stale apt/yum/apk index
-- **New gate**: the i18n audit now verifies that every key referenced by the source exists in both language packs, so a misspelled key name turns CI red instead of silently printing garbled output
+- **Removed the unusable Clash.Meta backend**: its config format (YAML, `proxies`/`rules`) is incompatible with the Xray JSON FusionBox generates (`inbounds`/`outbounds`), so it installed but could not accept nodes and its service would not start. The install menu now offers Xray / v2ray / sing-box only
+- **Existing Clash.Meta installs can still be cleaned up**: `fusionbox proxy uninstall` keeps detecting and removing legacy installs, so an upgrade leaves no orphaned service or symlink behind
+- **Xray / v2ray / sing-box usage is completely unchanged** - this change affects no existing config or node
 
 ---
 
