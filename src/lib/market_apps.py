@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -187,6 +188,7 @@ def manifest_document(record):
     spec = record_spec(record)
     labels = {'io.fusionbox.market': record['market']['token']}
     project = record['project']
+    secrets_file = secrets_path(record) if spec.get('secrets') else None
     result = {'services': {}, 'volumes': {}}
     for item in spec['services']:
         service = {
@@ -233,6 +235,11 @@ def manifest_document(record):
             service['tmpfs'] = list(item['tmpfs'])
         if item.get('read_only'):
             service['read_only'] = True
+        # Only services flagged `secret_env` receive the generated secrets. The
+        # file lands on the host (0600), never inside the compose document, so a
+        # key cannot leak through `docker inspect`, the rendered YAML or backups.
+        if secrets_file and item.get('secret_env'):
+            service['env_file'] = [secrets_file]
         if not spec['high_privilege']:
             service.update(init=True, cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
         result['services'][item['id']] = service
@@ -285,6 +292,53 @@ def _memory_bytes(value):
     if not re.fullmatch(r'[1-9][0-9]*m', value or ''):
         raise ValueError('Invalid catalog size: ' + str(value))
     return int(value[:-1]) * 1024 * 1024
+
+
+def _secret_values(spec, generate=None):
+    """Resolve an application's secrets: generate each, then render templates.
+
+    `generate(size)` must return a non-empty string (production uses
+    `secrets.token_urlsafe`). Templates may only reference generated values, so a
+    single pass in declaration order is sufficient (enforced by the catalog).
+    """
+    generator = generate or (lambda size: secrets.token_urlsafe(size))
+    values = {}
+    for entry in spec.get('secrets', []):
+        raw = generator(entry['bytes'])
+        if not isinstance(raw, str) or not raw:
+            raise ValueError('Secret generator returned an empty value')
+        values[entry['name']] = (entry.get('prefix', '') or '') + raw
+    for entry in spec.get('secrets', []):
+        if 'template' not in entry:
+            continue
+        rendered = market_catalog.SECRET_TEMPLATE_REF.sub(lambda m: values[m.group(1)], entry['template'])
+        values[entry['name']] = rendered
+    return values
+
+
+def secrets_path(record):
+    """Host path of the 0600 env file Compose reads for this application."""
+    return str(cb.BASE / (record['project'] + '.secrets.env'))
+
+
+def write_secrets(record, spec=None, generate=None):
+    """Generate secrets (once) and write them to a 0600 file, returning its path.
+
+    Idempotent: an existing file is never regenerated — rotating a secret would
+    silently invalidate credentials already stored in the application's own
+    database (LiteLLM warns about exactly this for its salt key).
+    """
+    spec = spec if spec is not None else record_spec(record)
+    if not spec.get('secrets'):
+        return None
+    path = secrets_path(record)
+    if Path(path).is_file():
+        return path
+    values = _secret_values(spec, generate=generate)
+    # atomic() writes via mkstemp + chmod(0600) before rename, so the file is
+    # never world-readable, not even briefly.
+    atomic(Path(path), ''.join('%s=%s\n' % (name, value) for name, value in values.items()))
+    return path
 
 
 def write_compose(record, image=None):
@@ -595,10 +649,12 @@ def manifest_shape(spec):
 
     Deliberately excludes image/health/command/environment/memory: those are what
     an update is allowed to change. Anything else (service set, storage, published
-    ports, network mode, binds, devices, socket) is a migration, not an update.
+    ports, network mode, binds, devices, socket, secret wiring) is a migration,
+    not an update — adding a secret to a running app must not happen silently.
     """
     return {service['id']: {key: service.get(key) for key in
-                            ('volumes', 'ports', 'network_mode', 'binds', 'devices', 'docker_socket', 'user')}
+                            ('volumes', 'ports', 'network_mode', 'binds', 'devices', 'docker_socket', 'user',
+                             'secret_env')}
             for service in spec['services']}
 
 
@@ -759,6 +815,9 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 if nas_path is not None:
                     market['nas_path'] = nas_path
                 record = {'owner': cb.OWNER, 'project': project, 'compose': str(compose.absolute()), 'market': market}
+                # Generate secrets before the compose document is rendered: the
+                # document only references the env_file by path.
+                write_secrets(record, spec)
             else:
                 port = select_port(spec['port'] if port is None else port, automatic, app=app)
                 if (cb.docker('ps', '-aq', '--filter', 'name=^/' + project + '-app$').strip() or
@@ -845,6 +904,13 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 record['market']['state'] = 'uninstalled'
                 save(registry, record)
                 print('Uninstalled; named data volume, registry and configuration retained')
+                # Secrets are retained too: the application's own database stores
+                # data encrypted with them, so deleting them would make a
+                # `--reuse-data` reinstall unreadable. Surface the location instead
+                # of silently keeping a credential file around.
+                if spec.get('secrets') and Path(secrets_path(record)).is_file():
+                    print('Generated secrets retained at ' + secrets_path(record) +
+                          ' (0600). Remove that file only if you will not reinstall with --reuse-data.')
                 return
             if record['market']['state'] != 'healthy' or health(record) != 'healthy':
                 raise ValueError('Update requires healthy managed app; manual recovery required')
