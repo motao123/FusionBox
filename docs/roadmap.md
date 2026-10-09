@@ -266,6 +266,27 @@
 > `docker-compose.quickstart.yml` 建 litellm+postgres 两服务条目，并实测在加固模型
 > （`cap_drop ALL` / `init` / `no-new-privileges`）下能否跑起来。届时按设计稿 §5 的
 > L1/L2/L4 验收，**L3（真实对话）需真实模型 key，未验证前不得声称「已支持」**。
+>
+> **已收口（2026-10-09，PR #72/#73/#74，merge `6fed2957`）**：litellm 条目已落地并**真机
+> L1 全通**（install→healthy；`/health/liveliness` 200；uninstall 保留数据并打印机密位置；
+> `reinstall --reuse-data` 后**机密指纹逐字节不变**）。条目形态：`app`(litellm，digest 固定)
+> + `db`(postgres:16)，`depends_on`，仅 `127.0.0.1:8097`。
+>
+> **真机抓出 3 个只有真机能发现的问题**（静态测试全绿，值得作为后续多容器条目的检查项）：
+> 1. **机密名必须等于应用实际读的变量名**：db 的机密叫 `DB_PASSWORD`，而 postgres 镜像读
+>    `POSTGRES_PASSWORD` → 视为未设 → 容器反复重启。既有 `umami` 从未暴露，因为它是把字面
+>    值直接写进 `environment`，没有「机密名 → 变量名」这层转换。**不引入 rename 映射**，
+>    直接让机密名 = 变量名。
+> 2. **数据库必须显式 `user`，且 uid 随镜像变体不同**：`postgres:16`（Debian）是 **999**，
+>    alpine 版是 **70**。照抄 umami 的 `70:70` 会 `initdb: could not change permissions …
+>    Operation not permitted`。
+> 3. **`env_file` 是整文件生效**（PR #70 曾错称「主密钥不会扩散到数据库容器」）：已改为
+>    **按服务拆文件**，并支持 `secret_env` 为**名单**（db 只拿 `POSTGRES_PASSWORD`）。
+>    真机验证 db 的 `LITELLM_MASTER_KEY` 为空、app 为 `sk-`。
+>
+> `POSTGRES_PASSWORD_FILE` 虽被官方 entrypoint 支持，但要求文件对 postgres 用户可读，
+> 与本工具 **root 0600** 的机密保证冲突 → **不采用**。
+> **L3（真实对话/流式/用量统计）仍未验证**（需真实模型 API key），发布说明不声称。
 
 ---
 
