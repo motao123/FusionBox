@@ -306,7 +306,7 @@
      "prefix": "sk-"
     },
     {
-     "name": "DB_PASSWORD",
+     "name": "POSTGRES_PASSWORD",
      "bytes": 32,
      "template": "postgresql://litellm:{LITELLM_MASTER_KEY}@db:5432/litellm"
     }
@@ -320,7 +320,7 @@
       "POSTGRES_DB": "litellm"
      },
      "secret_env": [
-      "DB_PASSWORD"
+      "POSTGRES_PASSWORD"
      ],
      "user": "70:70",
      "ports": [],
