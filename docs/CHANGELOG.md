@@ -2,6 +2,27 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.44.3 移除不可用的 Clash.Meta 后端
+
+- **问题**：`proxy install` 的菜单把 Clash.Meta 列为可安装后端，但装完是死路——
+  本模块生成 **Xray JSON**（`inbounds`/`outbounds`），mihomo 用完全不同的 schema
+  （`proxies`/`proxy-groups`/`rules`）；启动参数也不同（mihomo 是 `-f`，不是 `run -c`）；
+  `_proxy_proto_supported` 又对 clash-meta 拒绝**所有**协议。三者叠加即
+  「装得上、加不了节点、systemd 单元语法还不符 → 服务起不来」。
+- **处置**：`P_BACKENDS` 移除 clash-meta（安装菜单 **4→3**：Xray / v2ray / sing-box）；
+  删除已无引用的 `_proxy_download_clash` 与下载分发 case；**保留** `proxy_uninstall`
+  清理列表与 `_proxy_rebuild_config` 探针的 clash-meta 分支，兼容历史安装
+  （避免升级后清不掉遗留服务/软链）。
+- **文档联动**：`scripts/site_facts.py` 从 `P_BACKENDS` 派生主页 `proxy_backends`，
+  用 `--write` 回写 `docs/index.html`（4→3）后手改句中的 Clash.Meta；README 中英各 3 处
+  同步（模块表、能力表、支持后端清单、`install` 注释的「4选1」→「3选1」）。**易漏点**：
+  主页里 Clash.Meta 有**两处**（功能模块段 + 使用场景卡命令注释），第一遍只改了前者，
+  是靠核验**线上 Pages** 的 `grep -c` 才发现的。
+- **验证**：真机（Ubuntu 24.04）菜单只剩 3 项、越界输入判无效、**xray 安装 + 加节点
+  E2E 通过**（端口监听、服务 active）；本地 harness 10/10；门禁全绿（i18n 审计 /
+  Pages facts / README 中英同步 / 语法 / py_compile）；线上 Pages 核验
+  `proxy_backends=3`、Clash 出现 0 次。
+
 ## v1.44.2 代理配置校验守卫的三个实际缺陷修复 + i18n 悬空键门禁
 
 > 本轮由代码评审（open-code-review delegate 模式取规则 + 逐项实证核验）发现，
