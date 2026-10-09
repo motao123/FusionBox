@@ -6,7 +6,7 @@
 
 9 大模块 · 75 款软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.45.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.47.0-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -184,15 +184,15 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.45.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.47.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **新增「官方脚本安装」入口**：有些应用装不进受管模型（需要特权容器、Elasticsearch，或必须占用公网裸端口），对它们不再强行接入，而是提供一条直通上游官方安装脚本的路——`fusionbox market official install <id>`。首批收录 **JumpServer**（堡垒机）与 **SafeLine 雷池**（WAF）
-- **执行前你会看到脚本指纹**：下载后先展示来源与 SHA256，并打印脚本地址，需输入 `YES` 才执行；脚本会创建特权容器或改动系统，所以只在交互终端可用（脚本/CI 中直接拒绝）
-- **这些应用装完归上游管**：本工具不接管其升级、卸载与备份，装完请按上游官方文档操作
-- **下载更可靠了**：以往上游地址返回 404 时，错误页会被当成文件悄悄存下来（拿它当脚本执行不会有任何报错）；现在 HTTP 错误会直接判为失败并明确提示
+- **受管应用可以带「安装时生成的凭据」了**：像 LiteLLM 这类要求随机密钥的服务，现在安装时自动生成主密钥与数据库口令，写进 **0600 文件**后由 Compose 引用——密钥不进 compose 文件、不进命令行、不进系统备份
+- **新增 LiteLLM 条目**（模型网关 + PostgreSQL）：镜像摘要固定、依赖顺序启动、仅本机 `127.0.0.1:8097`
+- **凭据不重复生成**：卸载保留、重装复用，避免作废已存进应用数据库的凭据（真机验证过重装后指纹不变）
+- **修复一个端口冲突**：`ntfy` 与 `rocketchat` 曾都用 8091（装了其中一个就装不了另一个），`ntfy` 让位到 8095；目录校验现在会直接拒绝两个条目共用同一端口
 
 ---
 

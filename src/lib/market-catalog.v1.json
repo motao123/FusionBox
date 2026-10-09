@@ -28,7 +28,7 @@
      "user": "65534:65534",
      "ports": [
       {
-       "published": 8091,
+       "published": 8095,
        "target": 8080,
        "protocol": "tcp"
       }
