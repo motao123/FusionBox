@@ -9,11 +9,17 @@ P_LOG_DIR="/var/log/fusionbox-proxy"
 P_SERVICE_DIR="/etc/systemd/system"
 
 # ---- 支持的后端 ----
+# 仅列「本模块能生成并校验其配置」的服务端内核：xray / v2ray 由本模块直接生成
+# Xray JSON；sing-box 安装后交给 233boy 脚本接管。
+# Clash.Meta（mihomo）有意不在列：它的配置 schema（proxies/proxy-groups/rules）
+# 与本模块生成的 Xray JSON（inbounds/outbounds）不兼容，启动参数也不同
+# （mihomo 是 `-f`，不是 `run -c`）。此前列入会导致「装得上、加不了节点、
+# 服务也起不来」。如需历史安装的清理，见 proxy_uninstall 与 _proxy_rebuild_config
+# 的 clash-meta 分支（保留兼容）。
 P_BACKENDS=(
   "xray:Xray:https://github.com/XTLS/Xray-core"
   "v2ray:v2ray:https://github.com/v2fly/v2ray-core"
   "sing-box:sing-box:https://github.com/SagerNet/sing-box"
-  "clash-meta:Clash.Meta:https://github.com/MetaCubeX/mihomo"
 )
 
 # ---- 支持的协议 ----
@@ -240,7 +246,6 @@ proxy_install() {
     xray)      _proxy_download_xray "$tmpdir" "$arch" ;;
     v2ray)     _proxy_download_v2ray "$tmpdir" "$arch" ;;
     sing-box)  _proxy_download_singbox "$tmpdir" "$arch" ;;
-    clash-meta) _proxy_download_clash "$tmpdir" "$arch" ;;
   esac
 
   if [[ ! -f "$tmpdir/$be_name" ]]; then
@@ -324,25 +329,6 @@ _proxy_download_singbox() {
     local extracted_dir=$(find "$tmpdir" -maxdepth 1 -type d -name "sing-box-*" | head -1)
     [[ -f "$extracted_dir/sing-box" ]] && cp "$extracted_dir/sing-box" "$tmpdir/"
   fi
-}
-
-_proxy_download_clash() {
-  local tmpdir="$1"; local arch="$2"
-  local api_url="https://api.github.com/repos/MetaCubeX/mihomo/releases/latest"
-  local info=$(curl -s "$api_url" 2>/dev/null)
-  local tag=$(echo "$info" | grep '"tag_name"' | cut -d'"' -f4)
-  [[ -z "$tag" ]] && return 1
-  # Try compatible version first
-  local filename="mihomo-linux-${arch}-compatible-${tag}.gz"
-  local dl_url="https://github.com/MetaCubeX/mihomo/releases/download/$tag/$filename"
-  if ! _download "$dl_url" "$tmpdir/clash.gz" 2>/dev/null; then
-    filename="mihomo-linux-${arch}-${tag}.gz"
-    dl_url="https://github.com/MetaCubeX/mihomo/releases/download/$tag/$filename"
-    _download "$dl_url" "$tmpdir/clash.gz" || return 1
-  fi
-  gunzip -f "$tmpdir/clash.gz" 2>/dev/null
-  mv "$tmpdir/clash" "$tmpdir/clash-meta" 2>/dev/null || \
-  mv "$tmpdir/mihomo" "$tmpdir/clash-meta" 2>/dev/null
 }
 
 # ---- 重建主配置文件（合并所有子配置） ----
@@ -509,8 +495,9 @@ proxy_uninstall() {
 }
 
 # ---- 后端-协议支持矩阵 ----
-# xray/v2ray 不支持 hysteria2/tuic 入站；sing-box/clash-meta 使用完全不同的
-# 配置格式（本模块生成的是 Xray JSON），当前一律拒绝，避免配置写入后服务起不来
+# xray/v2ray 不支持 hysteria2/tuic 入站；sing-box 走 233boy 脚本自管；clash-meta
+# 已从可安装后端中移除（配置 schema 不兼容），此处 case 的兜底分支仅为兼容历史
+# 安装的 current_backend=clash-meta —— 一律拒绝，避免配置写入后服务起不来。
 _proxy_proto_supported() {
   local backend="$1" ptype="$2"
   case "$backend" in

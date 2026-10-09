@@ -100,7 +100,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 
 | Module | Command | In one line |
 |------|------|------|
-| Proxy management | `fusionbox proxy` | Multi-backend proxy (Xray / v2ray / 233boy sing-box / Clash.Meta) |
+| Proxy management | `fusionbox proxy` | Multi-backend proxy (Xray / v2ray / 233boy sing-box) |
 | System management | `fusionbox system` | BBR, benchmarks, backups, SSH, firewall, cron, disk, timezone, trash, rescue guidance |
 | Network tools | `fusionbox network` | IP lookup, streaming detection, speed tests, DNS, traceroute, port checks |
 | Web deployment | `fusionbox web` | LNMP, SSL, 17 application deployments, reverse proxy, L4 forwarding, site backups |
@@ -115,7 +115,7 @@ fusionbox panels docker help          # Sub-dispatch also answers help
 
 | Module | Detailed capabilities |
 |---|---|
-| `proxy` | Xray-core / v2ray-core / **233boy sing-box (recommended)** / Clash.Meta; protocols VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5; transports TCP / WebSocket / gRPC / HTTPUpgrade; automatic merge of multiple configs, share-link generation, per-backend validation of protocol combinations |
+| `proxy` | Xray-core / v2ray-core / **233boy sing-box (recommended)**; protocols VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5; transports TCP / WebSocket / gRPC / HTTPUpgrade; automatic merge of multiple configs, share-link generation, per-backend validation of protocol combinations |
 | `system` | System info, BBR (incl. BBR2 / BBRplus / modded / Lotserver / xanmod), CPU and disk benchmarks, network speed test, real-time monitoring, backup and restore, system cleanup; the toolbox adds SSH keys, firewall (UFW/iptables/Fail2Ban), cron, disk partitioning and mounting, one-click switching across 29 cities + custom IANA + NTP, trash, file manager, rsync sync jobs |
 | `network` | IPv4/IPv6 and ISP info, Netflix/YouTube/ChatGPT/TikTok/Disney+/Bilibili unlock detection, upload/download speed tests, resolution comparison across multiple DNS servers, Traceroute, port probing, network interface management |
 | `web` | One-click LNMP / LAMP install, site creation and Nginx virtual hosts, automatic certbot issuance (both validation routes supported: local Pebble and LE staging), databases and user privileges, 17 built-in application deployments, reverse proxy and load balancing, Stream L4 forwarding, site cloning, site data backups, tuning presets and brotli |
@@ -232,14 +232,14 @@ fusionbox update --cron on|off      # Automatic update switch (weekly)
 
 Multi-backend generic proxy management with one-click install and configuration:
 
-- **Supported backends**: Xray-core, v2ray-core, **233boy/sing-box (recommended)**, Clash.Meta
+- **Supported backends**: Xray-core, v2ray-core, **233boy/sing-box (recommended)** (Clash.Meta uses a config schema incompatible with the Xray JSON this module generates, so it is neither installed nor managed here)
 - **Supported protocols**: VLESS (incl. Reality), VMess, Trojan, Hysteria2, TUIC, Shadowsocks, SOCKS5
 - **Transports**: TCP, WebSocket, gRPC, HTTPUpgrade
 - **Config management**: automatic merge of multiple configs, share-link generation
 - **Protocol fit**: FusionBox's own config generation targets the Xray/v2ray cores; the sing-box backend is handed to the community best-practice [233boy/sing-box](https://github.com/233boy/sing-box) script (it creates a REALITY config during install and supports all protocols such as TUIC/Hysteria2); when you add a config, protocol combinations unsupported by the backend are validated and rejected
 
 ```bash
-fusionbox proxy install          # Install a proxy core (pick 1 of 4, sing-box goes through the 233boy script)
+fusionbox proxy install          # Install a proxy core (pick 1 of 3, sing-box goes through the 233boy script)
 fusionbox proxy add              # Add a proxy config (protocol validated against the backend)
 fusionbox proxy sb               # Enter the 233boy sing-box interactive main menu
 fusionbox proxy sb add           # Pass-through: add a sing-box config (same as sing-box add)
