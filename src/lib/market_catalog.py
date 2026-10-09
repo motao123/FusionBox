@@ -17,6 +17,17 @@ IMAGE = re.compile(r'[a-z0-9./:_-]+@sha256:[a-f0-9]{64}')
 ENV = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 REVISION = re.compile(r'[A-Fa-f0-9]{7,64}')
 ABS_PATH = re.compile(r'/[A-Za-z0-9_. /{}-]+')
+# Secrets are generated at install time and written to a 0600 file that Compose
+# reads via `env_file`. Values never enter the compose document, the command line
+# or container `inspect` output. A name is a plain env var name; a prefix is a
+# short non-secret tag (e.g. the `sk-` LiteLLM expects); a template may only
+# reference *generated* secrets (never another template, which would allow a
+# reference cycle and makes resolution order ill-defined).
+SECRET_PREFIX = re.compile(r'[A-Za-z0-9_-]{0,16}')
+SECRET_TEMPLATE_REF = re.compile(r'\{([A-Za-z_][A-Za-z0-9_]*)\}')
+SECRET_MIN_BYTES = 16
+SECRET_MAX_BYTES = 64
+MAX_SECRETS = 16
 # Namespaced sysctls only, and only ones this Docker actually accepts without
 # --privileged. Probed on Docker 29.8.1: net.core.somaxconn /
 # net.ipv4.ip_local_port_range / net.ipv4.tcp_syncookies are accepted;
@@ -79,7 +90,8 @@ def _device(value, where):
 def _service(value, where):
     keys = ('id', 'image', 'command', 'entrypoint', 'environment', 'user', 'ports', 'volumes', 'binds',
             'devices', 'network_mode', 'docker_socket', 'memory', 'cpus', 'pids_limit',
-            'health', 'health_retries', 'depends_on', 'shm_size', 'sysctls', 'tmpfs', 'read_only')
+            'health', 'health_retries', 'depends_on', 'shm_size', 'sysctls', 'tmpfs', 'read_only',
+            'secret_env')
     required = ('id', 'image', 'ports', 'volumes', 'binds', 'devices', 'network_mode',
                 'docker_socket', 'memory', 'cpus', 'pids_limit', 'health', 'health_retries')
     _exact(value, keys, required, where)
@@ -154,7 +166,62 @@ def _service(value, where):
             raise ValueError('Invalid tmpfs path at ' + where)
     if 'read_only' in value and type(value['read_only']) is not bool:
         raise ValueError('Invalid read_only at ' + where)
+    # `secret_env` (optional bool) marks a service that should receive the
+    # application's generated secrets. Scoped per service so a master key is
+    # never handed to sibling containers (e.g. the database) that do not need it.
+    # The name list is validated app-level, once `secrets` is known.
+    if 'secret_env' in value and type(value['secret_env']) is not bool:
+        raise ValueError('Invalid secret_env at ' + where)
     return result
+
+
+def _secrets(value, where):
+    """Validate the app-level `secrets` list (install-time generated credentials).
+
+    Each entry: {"name": ENV, "prefix": optional short tag, "bytes": 16..64,
+                 "template": optional string with {NAME} refs}.
+    Only *generated* secrets may be referenced (no self/other templates), so
+    resolution is always "generate all, then render templates".
+    """
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_SECRETS:
+        raise ValueError('Invalid secrets list at ' + where)
+    names = []
+    for index, entry in enumerate(value):
+        sub = where + '.secrets[%s]' % index
+        if not isinstance(entry, dict):
+            raise ValueError('Invalid secret entry at ' + sub)
+        _exact(entry, ('name', 'prefix', 'bytes', 'template'), ('name', 'bytes'), sub)
+        name = entry['name']
+        if not isinstance(name, str) or not ENV.fullmatch(name):
+            raise ValueError('Invalid secret name at ' + sub)
+        size = entry['bytes']
+        if type(size) is not int or not SECRET_MIN_BYTES <= size <= SECRET_MAX_BYTES:
+            raise ValueError('Invalid secret size at ' + sub)
+        if 'prefix' in entry and (not isinstance(entry['prefix'], str) or
+                                  not SECRET_PREFIX.fullmatch(entry['prefix'])):
+            raise ValueError('Invalid secret prefix at ' + sub)
+        names.append(name)
+    if len(set(names)) != len(names):
+        raise ValueError('Duplicate secret name at ' + where)
+    # Templates may only reference generated values, and a referenced name must
+    # exist. Referencing another template is refused (cycle/order ambiguity).
+    templated = {entry['name'] for entry in value if 'template' in entry}
+    known = set(names)
+    for entry in value:
+        if 'template' not in entry:
+            continue
+        template = entry['template']
+        if not isinstance(template, str) or not template or len(template) > 512 or '\x00' in template:
+            raise ValueError('Invalid secret template at ' + where)
+        refs = SECRET_TEMPLATE_REF.findall(template)
+        if not refs:
+            raise ValueError('Secret template must reference at least one generated secret at ' + where)
+        for ref in refs:
+            if ref not in known:
+                raise ValueError('Secret template references unknown name at ' + where + ': ' + ref)
+            if ref in templated:
+                raise ValueError('Secret template cannot reference another templated secret at ' + where + ': ' + ref)
+    return [dict(entry) for entry in value]
 
 
 def _reject_cycles(graph, where):
@@ -202,7 +269,7 @@ def parse(raw):
     for index, app in enumerate(value['apps']):
         where = 'apps[%s]' % index
         _exact(app, ('id', 'name', 'description', 'revoked', 'high_privilege', 'risk_acknowledgement',
-                     'domain', 'bytes', 'nas_path', 'services'),
+                     'domain', 'bytes', 'nas_path', 'services', 'secrets'),
                ('id', 'name', 'description', 'revoked', 'high_privilege', 'domain', 'bytes',
                 'nas_path', 'services'), where)
         if (not ID.fullmatch(app.get('id', '')) or app['id'] in apps or
@@ -248,7 +315,15 @@ def parse(raw):
             raise ValueError('Host bind mounts must use the explicit {nas_path} template at ' + where)
         if uses_nas != app['nas_path']:
             raise ValueError('nas_path must exactly match bind templates at ' + where)
-        apps[app['id']] = dict(app, services=services)
+        secrets = _secrets(app['secrets'], where) if 'secrets' in app else None
+        if secrets:
+            # The env_file name is derived, never authored: one deterministic file
+            # per application, so a catalog can never scatter secret files around.
+            app = dict(app, env_file=app['id'] + '.env')
+        flagged = [s['id'] for s in services if s.get('secret_env')]
+        if bool(secrets) != bool(flagged):
+            raise ValueError('secret_env services and app secrets must be declared together at ' + where)
+        apps[app['id']] = dict(app, services=services, **({'secrets': secrets} if secrets else {}))
     return {'schema_version': SCHEMA_VERSION, 'catalog_id': value['catalog_id'],
             'revision': value['revision'], 'apps': apps}
 
