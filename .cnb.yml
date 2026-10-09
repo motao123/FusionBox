@@ -103,3 +103,14 @@ main:
           image: cnbcool/cnb-cli:latest
           script:
             cnb pulls comment --body "@npc/code-security(安全审计员) 安全审计"
+    # 第二个 NPC：代码审查（npc/hok 角色库，132 个角色共用同一引擎）。
+    # 与安全审计拆成独立任务，便于单独启停——不想要就删掉这一段。
+    # 前提：在 CNB Star「npc/hok」仓库；同样只发评论、git.enable=false。
+    - name: code-review
+      git:
+        enable: false
+      stages:
+        - name: 代码审查
+          image: cnbcool/cnb-cli:latest
+          script:
+            cnb pulls comment --body "@npc/hok(妲己) 请审查这个 PR 的代码改动，指出逻辑缺陷、边界问题与可维护性隐患，尽量标注文件与行号"
