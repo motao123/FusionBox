@@ -714,7 +714,8 @@ market_menu() {
 # 条目格式：id|显示名|上游脚本 URL|CNB 镜像 URL（镜像留空=单源）
 # 注意用 `|` 分列：URL 含 `://`，用 `:` 会把字段切坏。
 MARKET_OFFICIAL=(
-  "jumpserver|JumpServer|https://raw.githubusercontent.com/jumpserver/installer/main/quick_start.sh|"
+  "jumpserver|JumpServer|https://raw.githubusercontent.com/jumpserver/installer/dev/quick_start.sh|"
+  "safeline|SafeLine|https://waf-ce.chaitin.cn/release/latest/setup.sh|"
 )
 
 # 输出 `id|显示名` 行；空条目跳过（允许表里留空行做分组）
