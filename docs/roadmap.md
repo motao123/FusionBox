@@ -193,6 +193,26 @@
 
 **步骤**：先做第一、二档（纯目录条目 + 真机起停验证），第三档等 A1 落地后按同样的验收口径补。
 
+> **第三档核实结论（2026-10-09，逐项查官方源）**：A1 框架落地后，第三档四个候选**逐个核实，全部与受管模型冲突**，不是工作量问题：
+>
+> | 候选 | 官方依据 | 冲突点 |
+> |---|---|---|
+> | JumpServer | `jumpserver/installer` 的 `compose/koko.yml` 第 9 行 `privileged: ${KOKO_PRIVILEGED:-true}`；另有 `cap_addon.yml` 的 `cap_add` | 需 `privileged`，白名单无此字段 |
+> | ONLYOFFICE Community Server | 依赖 Elasticsearch | 需 `vm.max_map_count`，`SYSCTLS` 白名单仅 3 键、不含它 |
+> | RustDesk 服务端 | 客户端走裸 TCP/UDP（含 21116/udp） | 与「localhost 绑定 + 反代」冲突，无法反代 UDP |
+> | 雷池 SafeLine | 需拦截流量 | 需 host 网络/额外能力（同 A6 表注记自相矛盾：一处写单容器） |
+>
+> 对照：能装的多容器应用（umami、RocketChat、VoceChat）都是**纯 HTTP + 无特权 + 不依赖 ES**。
+> 因此第三档若继续推进，应改为**在模型内选型**（多容器 + 纯 HTTP + 无特权），而非沿用原列表。
+> 另记：`ONLYOFFICE Docs`（单容器）、`Nexterm`、`2FAuth` 属第一/二档，不受上述冲突影响（后两者上游镜像地址仍待确认）。
+>
+> **第三条路：官方脚本安装（不受管）— 2026-10-09 定**。既然第三档在受管模型里装不进，就**别硬塞**：为这类应用提供「执行上游官方安装脚本」的入口，装完即回到官方文档的用法，本工具**不接管**其生命周期。这与仓库既有先例同源、可直接复用：
+> - `system_reinstall`（`src/modules/system.sh:4561`）：上游 `bin456789/reinstall`，`_REINSTALL_SCRIPT_GH` + `_REINSTALL_SCRIPT_CNB` 双源，`_download` 失败自动换 CNB 镜像，执行前 `sha256sum` 展示指纹（滚动发布故不锁定），显示将执行的完整命令，要求输入 `YES` 二次确认，非交互终端直接拒绝。
+> - sing-box 后端：`proxy install` 交给 233boy 脚本，并用 `proxy sb` 做透传。
+> - 面板类：宝塔 / 1Panel 走各自官方安装命令。
+>
+> 落地要点（沿用既有约束，不新造）：① 上游 URL **不**进 `scripts/upstream_url_audit.py`——该脚本的提取口径是 `src/i18n/*.sh` + `install.sh`，**明确排除 `src/modules/`**（模块级域名按地域可达性波动大，纳入会产生假红）；改为在 `tests/run_checks.sh` 加**不联网的结构断言**（条目 4 段、URL 为 https、渲染函数与菜单/路由接线齐全），真实可达性由真机验证覆盖；② 双源（GitHub + CNB 镜像）——镜像可选，上游未被镜像时单源并明确报错；③ 执行前 `sha256sum` 展示指纹；④ 明确告知「本项不受管、后续按上游文档操作、升级/卸载用上游方式」；⑤ 会创建特权容器或改系统的一次性操作须交互确认 + 非交互拒绝；⑥ 文案进 zh/en 双语包并过 `i18n_audit`。**不适用**于能进受管模型的应用——那些仍走声明式目录。
+
 ---
 
 ### A7 hermes / deepseek harness 管理器 — G69 · **设计稿已出（v1.40.0）**
