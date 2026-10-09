@@ -322,7 +322,7 @@
      "secret_env": [
       "POSTGRES_PASSWORD"
      ],
-     "user": "70:70",
+     "user": "999:999",
      "ports": [],
      "volumes": [
       {
