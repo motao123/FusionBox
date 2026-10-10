@@ -347,7 +347,8 @@
 
 1. `docker run -d --name fb-node2 -p 2222:22`（Ubuntu + openssh-server，含 python3）
 2. 生成**专用**临时密钥对，只授权给该容器；不复用生产密钥
-3. `cluster add` 指向 `127.0.0.1:2222`，验证 `trust/connect` 与严格 known_hosts 行为
+3. `cluster add` 指向 `127.0.0.1:2222`，验证 `cluster trust` 与严格 known_hosts 行为
+   （**不含 `cluster sshout connect`**——那是 G15，本夹具没跑，见下）
 4. 依次跑通：`cluster archive push/pull --kind docker-v1`、`cluster task` 批量、`cluster exec`
 5. 容器销毁即回收，无持久副作用
 
