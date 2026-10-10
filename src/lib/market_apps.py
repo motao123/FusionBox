@@ -1,5 +1,6 @@
 """Small opt-in managed catalog. Never imports or executes legacy installer metadata."""
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -299,14 +300,25 @@ def _memory_bytes(value):
 def _secret_values(spec, generate=None):
     """Resolve an application's secrets: generate each, then render templates.
 
-    `generate(size)` must return a non-empty string (production uses
-    `secrets.token_urlsafe`). Templates may only reference generated values, so a
-    single pass in declaration order is sufficient (enforced by the catalog).
+    `generate(size)` must return a non-empty string; production picks the
+    generator from the entry's `encoding` (default `urlsafe`). Templates may only
+    reference generated values, so a single pass in declaration order is
+    sufficient (enforced by the catalog).
     """
-    generator = generate or (lambda size: secrets.token_urlsafe(size))
     values = {}
     for entry in spec.get('secrets', []):
-        raw = generator(entry['bytes'])
+        encoding = entry.get('encoding', 'urlsafe')
+        if generate is not None:
+            raw = generate(entry['bytes'])
+        elif encoding == 'base64':
+            # Standard (not URL-safe) alphabet with padding. PHP's base64_decode
+            # drops `-`/`_` silently, so a urlsafe key decodes short and Laravel
+            # rejects it — verified: urlsafe boots to HTTP 500, base64 to 200.
+            raw = base64.b64encode(secrets.token_bytes(entry['bytes'])).decode('ascii')
+        elif encoding == 'hex':
+            raw = secrets.token_hex(entry['bytes'])
+        else:
+            raw = secrets.token_urlsafe(entry['bytes'])
         if not isinstance(raw, str) or not raw:
             raise ValueError('Secret generator returned an empty value')
         values[entry['name']] = (entry.get('prefix', '') or '') + raw
@@ -943,7 +955,11 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 # data encrypted with them, so deleting them would make a
                 # `--reuse-data` reinstall unreadable. Surface the locations instead
                 # of silently keeping credential files around.
-                kept = [secrets_path(record, s['id']) for s in spec['services']
+                # A legacy (non-declarative) spec is flat — it has no `services`
+                # and can never carry install-time secrets, so probing it would
+                # raise KeyError and abort the uninstall *after* the containers
+                # were already removed. Found by tests/test_market_apps.py.
+                kept = [secrets_path(record, s['id']) for s in spec.get('services', [])
                         if s.get('secret_env') and Path(secrets_path(record, s['id'])).is_file()]
                 if kept:
                     print('Generated secrets retained (0600): ' + ', '.join(kept))

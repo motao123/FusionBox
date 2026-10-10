@@ -23,10 +23,17 @@ ABS_PATH = re.compile(r'/[A-Za-z0-9_. /{}-]+')
 # short non-secret tag (e.g. the `sk-` LiteLLM expects); a template may only
 # reference *generated* secrets (never another template, which would allow a
 # reference cycle and makes resolution order ill-defined).
-SECRET_PREFIX = re.compile(r'[A-Za-z0-9_-]{0,16}')
+# `:` is allowed because some applications tag the *format* rather than name a
+# scheme — 2FAuth reads `APP_KEY` as `base64:` + 32 standard base64 bytes.
+SECRET_PREFIX = re.compile(r'[A-Za-z0-9_:-]{0,16}')
 SECRET_TEMPLATE_REF = re.compile(r'\{([A-Za-z_][A-Za-z0-9_]*)\}')
 SECRET_MIN_BYTES = 16
 SECRET_MAX_BYTES = 64
+# How the random bytes are rendered. Not cosmetic: a URL-safe alphabet is *not*
+# interchangeable with a standard one. 2FAuth (Laravel) base64-decodes APP_KEY
+# and PHP's decoder silently drops `-`/`_`, leaving fewer than 32 bytes, so the
+# app boots into HTTP 500. Verified on a real host: urlsafe 500, base64 200.
+SECRET_ENCODINGS = ('urlsafe', 'base64', 'hex')
 MAX_SECRETS = 16
 # Namespaced sysctls only, and only ones this Docker actually accepts without
 # --privileged. Probed on Docker 29.8.1: net.core.somaxconn /
@@ -188,6 +195,7 @@ def _secrets(value, where):
     """Validate the app-level `secrets` list (install-time generated credentials).
 
     Each entry: {"name": ENV, "prefix": optional short tag, "bytes": 16..64,
+                 "encoding": optional urlsafe|base64|hex (default urlsafe),
                  "template": optional string with {NAME} refs}.
     Only *generated* secrets may be referenced (no self/other templates), so
     resolution is always "generate all, then render templates".
@@ -199,7 +207,7 @@ def _secrets(value, where):
         sub = where + '.secrets[%s]' % index
         if not isinstance(entry, dict):
             raise ValueError('Invalid secret entry at ' + sub)
-        _exact(entry, ('name', 'prefix', 'bytes', 'template'), ('name', 'bytes'), sub)
+        _exact(entry, ('name', 'prefix', 'bytes', 'encoding', 'template'), ('name', 'bytes'), sub)
         name = entry['name']
         if not isinstance(name, str) or not ENV.fullmatch(name):
             raise ValueError('Invalid secret name at ' + sub)
@@ -209,6 +217,9 @@ def _secrets(value, where):
         if 'prefix' in entry and (not isinstance(entry['prefix'], str) or
                                   not SECRET_PREFIX.fullmatch(entry['prefix'])):
             raise ValueError('Invalid secret prefix at ' + sub)
+        if 'encoding' in entry and entry['encoding'] not in SECRET_ENCODINGS:
+            raise ValueError('Invalid secret encoding at ' + sub + ' (allowed: ' +
+                             ', '.join(SECRET_ENCODINGS) + ')')
         names.append(name)
     if len(set(names)) != len(names):
         raise ValueError('Duplicate secret name at ' + where)

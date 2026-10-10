@@ -6,7 +6,7 @@
 
 9 大模块 · 75 款软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.47.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.48.0-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -184,15 +184,16 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.47.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.48.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
 
-- **受管应用可以带「安装时生成的凭据」了**：像 LiteLLM 这类要求随机密钥的服务，现在安装时自动生成主密钥与数据库口令，写进 **0600 文件**后由 Compose 引用——密钥不进 compose 文件、不进命令行、不进系统备份
-- **新增 LiteLLM 条目**（模型网关 + PostgreSQL）：镜像摘要固定、依赖顺序启动、仅本机 `127.0.0.1:8097`
-- **凭据不重复生成**：卸载保留、重装复用，避免作废已存进应用数据库的凭据（真机验证过重装后指纹不变）
-- **修复一个端口冲突**：`ntfy` 与 `rocketchat` 曾都用 8091（装了其中一个就装不了另一个），`ntfy` 让位到 8095；目录校验现在会直接拒绝两个条目共用同一端口
+- **新增 2FAuth 条目**（自托管双因素验证码管理）：单容器 + SQLite，以普通用户运行，仅本机 `127.0.0.1:8098`
+- **新增 Nexterm 条目**（SSH / VNC / RDP / SFTP 远程管理面板）：仅本机 `127.0.0.1:8099`；以容器内 root 运行（镜像未声明数据卷，普通用户起不来），host 网络专属能力与内置 Docker 管理不可用
+- **凭据生成支持三种编码**：上一版只有 URL 安全 base64，而 2FAuth 要求标准 base64，用错会直接启动失败（实机：urlsafe 500 / base64 200）
+- 两个条目都真机跑通完整生命周期：安装 → 健康 → 卸载保留 → 复用数据重装后凭据指纹逐字节不变
+- **修一个会让卸载中断的报错**：上一版新增的「卸载后打印凭据保留位置」对一部分早期形态的应用会报错，导致容器已删除、状态却没写完整；现已修复（由完整回归发现）
 
 ---
 
