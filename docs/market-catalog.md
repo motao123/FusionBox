@@ -37,6 +37,21 @@ An application is classified `high_privilege` exactly when it requests Docker so
 
 NAS templates use only `{nas_path}/...` sources and installation requires a safe absolute `--nas-path`. FusionBox does not create, chmod, or otherwise manage the supplied host path.
 
+## Install-time secrets
+
+Some applications cannot start without a random credential (LiteLLM's master key, 2FAuth's `APP_KEY`, Nexterm's `ENCRYPTION_KEY`). A catalog entry declares them at the application level and marks which services receive them:
+
+| Field | Contract |
+|---|---|
+| `secrets[]` | 1..16 entries. `name` must equal the environment variable the application actually reads — there is **no rename mapping** (a secret called `DB_PASSWORD` is invisible to PostgreSQL, which reads `POSTGRES_PASSWORD`). `bytes` 16..64; optional `prefix` (`[A-Za-z0-9_:-]{0,16}`); optional `encoding`; optional `template` (≤512 chars, `{NAME}` references). |
+| `encoding` | `urlsafe` (default), `base64` or `hex`. **Not cosmetic**: 2FAuth base64-decodes `APP_KEY`, and PHP's decoder silently drops `-`/`_`, so a URL-safe value decodes short and the application boots into HTTP 500. Verified on a real host: urlsafe → 500, standard base64 → 200. |
+| `template` | May only reference *generated* secrets, never another template — no cycles, deterministic resolution order. |
+| `secret_env` (service) | `true` for every secret, or a list of names. |
+
+At install time each value is generated once and written to **one 0600 file per service** under the private Compose registry directory; Compose references it with `env_file`. Values never reach the Compose document, the command line, or a system backup (the archive scopes exclude the managed registry). `env_file` is all-or-nothing per file, so isolation is achieved by splitting files — one shared file would hand every variable to every service.
+
+Generation is idempotent: an existing file is never regenerated, because rotating a credential silently invalidates copies already stored in the application's own database. Uninstall retains the files and prints their paths; `reinstall --reuse-data` reuses them, so the credential fingerprint stays byte-identical. Adding a secret to an entry is a structural change, so in-place `update` refuses it.
+
 ## Multi-container lifecycle
 
 Declarative applications support `install`, `status`, `update`, `reinstall --reuse-data` and `uninstall`.
@@ -50,6 +65,6 @@ Declarative applications support `install`, `status`, `update`, `reinstall --reu
 
 ## Catalog contents
 
-The built-in declarative catalog holds reviewed, digest-pinned entries: an ordinary single-service example (`ntfy-v1`), a revoked high-privilege fixture (`docker-admin-example`), and `umami` — a real two-service application (application + PostgreSQL) whose full lifecycle is exercised by `tests/acceptance/market_multicontainer.sh` on a real Docker host. Expansion should add reviewed, digest-pinned entries and targeted lifecycle fixtures rather than weakening the parser.
+The built-in declarative catalog holds reviewed, digest-pinned entries: an ordinary single-service example (`ntfy-v1`), a revoked high-privilege fixture (`docker-admin-example`), `umami` — a real two-service application (application + PostgreSQL) whose full lifecycle is exercised by `tests/acceptance/market_multicontainer.sh` on a real Docker host — plus `vocechat`, `rocketchat`, `litellm`, `twofauth` and `nexterm`. The last three are the consumers of install-time secrets, and they use three different encodings (`prefix` + urlsafe, standard base64, hex), which is what drove that field into the contract. Expansion should add reviewed, digest-pinned entries and targeted lifecycle fixtures rather than weakening the parser.
 
 `vm.max_map_count` is deliberately absent from the sysctl allowlist, which is why Elasticsearch-based stacks (for example RAGFlow) cannot be hosted under this model without `high_privilege`; that limitation is recorded in `docs/roadmap.md`.

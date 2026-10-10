@@ -208,10 +208,26 @@
 >
 > **第三条路：官方脚本安装（不受管）— 2026-10-09 定**。既然第三档在受管模型里装不进，就**别硬塞**：为这类应用提供「执行上游官方安装脚本」的入口，装完即回到官方文档的用法，本工具**不接管**其生命周期。这与仓库既有先例同源、可直接复用：
 > - `system_reinstall`（`src/modules/system.sh:4561`）：上游 `bin456789/reinstall`，`_REINSTALL_SCRIPT_GH` + `_REINSTALL_SCRIPT_CNB` 双源，`_download` 失败自动换 CNB 镜像，执行前 `sha256sum` 展示指纹（滚动发布故不锁定），显示将执行的完整命令，要求输入 `YES` 二次确认，非交互终端直接拒绝。
-> - sing-box 后端：`proxy install` 交给 233boy 脚本，并用 `proxy sb` 做透传。
+> - sing-box 后端：`proxy install` 交给上游社区脚本（见 `src/modules/proxy.sh`），并用 `proxy sb` 做透传。
 > - 面板类：宝塔 / 1Panel 走各自官方安装命令。
 >
 > 落地要点（沿用既有约束，不新造）：① 上游 URL **不**进 `scripts/upstream_url_audit.py`——该脚本的提取口径是 `src/i18n/*.sh` + `install.sh`，**明确排除 `src/modules/`**（模块级域名按地域可达性波动大，纳入会产生假红）；改为在 `tests/run_checks.sh` 加**不联网的结构断言**（条目 4 段、URL 为 https、渲染函数与菜单/路由接线齐全），真实可达性由真机验证覆盖；② 双源（GitHub + CNB 镜像）——镜像可选，上游未被镜像时单源并明确报错；③ 执行前 `sha256sum` 展示指纹；④ 明确告知「本项不受管、后续按上游文档操作、升级/卸载用上游方式」；⑤ 会创建特权容器或改系统的一次性操作须交互确认 + 非交互拒绝；⑥ 文案进 zh/en 双语包并过 `i18n_audit`。**不适用**于能进受管模型的应用——那些仍走声明式目录。
+
+> **第一/二档收尾核实（2026-10-10，v1.48.0）**：`Nexterm` 与 `2FAuth` 已入受管目录并真机
+> 验收（细节见 `docs/CHANGELOG.md` 的 v1.48.0）。三点值得作为**后续任何新条目的检查项**：
+>
+> 1. **上游镜像名必须先核实**：Nexterm 的搜索结果里出现 `ghcr.io/nexterm/nextterm:latest`
+>    （拼写错误的 AI 生成内容），真实上游是 Docker Hub 的 `nexterm/aio` / `nexterm/server` /
+>    `nexterm/engine`。照抄搜索结果会把契约建立在不存在的镜像上。
+> 2. **凭据编码不是可选项**：2FAuth 要求 `base64:` + **标准** base64，而当时的机密机制只产出
+>    urlsafe —— 实机结果是**启动即 HTTP 500**（PHP 的 `base64_decode` 静默丢弃 `-`/`_`）。
+>    为此给 `secrets[]` 加了 `encoding`（`urlsafe` / `base64` / `hex`）。
+> 3. **有些镜像只能以容器内 root 跑**：`nexterm/aio` 未声明 `VOLUME`，具名卷初始为空且属
+>    root，任何非 root uid 都会在启动阶段创建数据目录失败。这类条目应**显式**写
+>    `user: "0:0"` 并在描述里说明原因，而不是默默跑 root。
+>
+> 仍受外部条件限制：**WireGuard 需 `NET_ADMIN`（走 `high_privilege` 路径，未做）**；
+> A5（需真实 OCI 实例）；TG bot token。
 
 ---
 

@@ -374,6 +374,116 @@
      "health_retries": 60
     }
    ]
+  },
+  {
+   "id": "twofauth",
+   "name": "2FAuth 双因素验证码管理",
+   "description": "自托管 2FA（TOTP/HOTP/Steam Guard）管理器；Laravel + SQLite 单容器，以 1000:1000 运行；APP_KEY 安装时生成为「base64: + 32 字节标准 base64」并写入 0600 文件，compose 内不含明文（该格式是实测结论：urlsafe base64 会被 Laravel 判为非法而返回 500）；数据存具名卷 data（挂 /2fauth；/srv/database/database.sqlite 是指向它的符号链接）；仅 localhost（8098→容器 8000），无域名/TLS；首次访问在网页注册账号",
+   "revoked": false,
+   "high_privilege": false,
+   "domain": false,
+   "bytes": 1073741824,
+   "nas_path": false,
+   "secrets": [
+    {
+     "name": "APP_KEY",
+     "bytes": 32,
+     "encoding": "base64",
+     "prefix": "base64:"
+    }
+   ],
+   "services": [
+    {
+     "id": "app",
+     "image": "2fauth/2fauth@sha256:50421b873c7e5060e2560290bee39e0ff32ffed76949cdb8c12cd76a2d85fde7",
+     "environment": {
+      "APP_NAME": "2FAuth",
+      "APP_ENV": "production",
+      "APP_DEBUG": "false",
+      "APP_URL": "http://localhost:8098",
+      "DB_CONNECTION": "sqlite"
+     },
+     "secret_env": true,
+     "user": "1000:1000",
+     "ports": [
+      {
+       "published": 8098,
+       "target": 8000,
+       "protocol": "tcp"
+      }
+     ],
+     "volumes": [
+      {
+       "name": "data",
+       "target": "/2fauth",
+       "read_only": false
+      }
+     ],
+     "binds": [],
+     "devices": [],
+     "network_mode": "bridge",
+     "docker_socket": false,
+     "memory": "256m",
+     "cpus": "0.50",
+     "pids_limit": 128,
+     "health": [
+      "CMD-SHELL",
+      "wget -q -O - http://127.0.0.1:8000/ | grep -qi '2fauth'"
+     ],
+     "health_retries": 60
+    }
+   ]
+  },
+  {
+   "id": "nexterm",
+   "name": "Nexterm 远程服务器管理",
+   "description": "自托管 SSH / VNC / RDP / SFTP 远程管理面板（单容器 aio）；ENCRYPTION_KEY 安装时生成并写入 0600 文件，compose 内不含明文；容器以 0:0 运行——镜像未声明 VOLUME，具名卷初始为空且属 root，非 root uid 会在启动阶段 mkdir /app/data/logs 失败（已实机验证）；桥接网络，故上游推荐的 host 网络能力（Wake-on-LAN、连接宿主机 localhost 上的服务）不可用；不挂载 Docker socket，其内置 Docker 管理功能不可用；仅 localhost（8099→容器 6989），无域名/TLS",
+   "revoked": false,
+   "high_privilege": false,
+   "domain": false,
+   "bytes": 2147483648,
+   "nas_path": false,
+   "secrets": [
+    {
+     "name": "ENCRYPTION_KEY",
+     "bytes": 32,
+     "encoding": "hex"
+    }
+   ],
+   "services": [
+    {
+     "id": "app",
+     "image": "nexterm/aio@sha256:def6f6a50b48c842d3fbe796ff8e7ce6b8fa54e2d92116a62742859c64f47d7e",
+     "secret_env": true,
+     "user": "0:0",
+     "ports": [
+      {
+       "published": 8099,
+       "target": 6989,
+       "protocol": "tcp"
+      }
+     ],
+     "volumes": [
+      {
+       "name": "data",
+       "target": "/app/data",
+       "read_only": false
+      }
+     ],
+     "binds": [],
+     "devices": [],
+     "network_mode": "bridge",
+     "docker_socket": false,
+     "memory": "512m",
+     "cpus": "1.00",
+     "pids_limit": 256,
+     "health": [
+      "CMD-SHELL",
+      "wget -q -O - http://127.0.0.1:6989/ | grep -qi nexterm"
+     ],
+     "health_retries": 60
+    }
+   ]
   }
  ]
 }

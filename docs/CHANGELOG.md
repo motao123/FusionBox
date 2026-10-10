@@ -2,6 +2,71 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.48.0 A6 收尾：2FAuth / Nexterm 条目 + 凭据编码能力
+
+- **背景**：roadmap A6 第一/二档只剩两个「上游镜像地址待确认」的应用（Nexterm、2FAuth）。
+  本轮沿用既有纪律——**先核实上游，再写条目**：
+  - Nexterm 官方镜像是 **Docker Hub `nexterm/aio`**（官方文档列了 `aio`/`server`/`engine`
+    三个镜像）；搜索结果里出现的 `ghcr.io/nexterm/nextterm:latest` 是**拼写错误的 AI 生成
+    内容**，不是真实上游，不采用。实测：`nexterm/aio:latest` 端口 6989、`User=None`、
+    `Cmd=[/bin/sh, docker-start.sh]`、`Volumes=None`、434MB。
+  - 2FAuth 是 **`2fauth/2fauth`**（实测 VERSION=8.0.2，容器 `User=1000:1000`，
+    `/health` 是 SPA 兜底路由）。
+- **新增框架能力：凭据编码 `encoding`**（`urlsafe` 默认 / `base64` / `hex`）
+  - 起因：上一版只产出 `secrets.token_urlsafe()`。2FAuth（Laravel）对 `APP_KEY` 做
+    `base64_decode`，而 PHP 的解码器在**非严格模式下静默丢弃 `-`/`_`** → urlsafe 值一旦含
+    这两个字符就解不出 32 字节 → 应用启动即 **HTTP 500**。
+    **实机对照**：urlsafe → 500，标准 base64 → 200。
+  - 同时放开 `prefix` 允许 `:`（`base64:` 是**格式标记**而非命名前缀，故 `SECRET_PREFIX`
+    由 `[A-Za-z0-9_-]{0,16}` 放宽为 `[A-Za-z0-9_:-]{0,16}`）。
+  - 兼容性：默认仍是 urlsafe，既有 litellm 条目零改动。
+- **新增 `twofauth` 条目**（id 不能用 `2fauth`：目录 `ID` 正则是 `[a-z][a-z0-9-]{0,31}`，
+  **必须以小写字母开头**，这是校验当场拦下的）
+  - `APP_KEY` = `base64:` + 32 字节标准 base64（`encoding: base64` + `prefix: "base64:"`）；
+  - **数据落点澄清**：`/srv/database/database.sqlite` 是**指向 `/2fauth/database.sqlite` 的
+    符号链接**（实机 `ls -li` 确认），具名卷挂 `/2fauth` 即覆盖全部数据——卷内出现
+    `database.sqlite` / `installed` / `storage`；
+  - **健康探针用 `wget … | grep -qi '2fauth'` 而非裸状态码**：该应用 `/`、`/health`、
+    `/api/health` 全部返回 SPA 首页（任意路径都 200），只有**内容匹配**才能把「应用真的
+    起来了」与「SPA 壳子还在但后端已崩」区分开（500 时才状态码不同）。
+- **新增 `nexterm` 条目**
+  - `ENCRYPTION_KEY` = `encoding: hex`（等同上游文档的 `openssl rand -hex 32`，64 位 hex）；
+  - **容器以 `0:0` 运行**：镜像未声明 `VOLUME`，具名卷初始为空且属 root，任何非 root uid
+    都会在启动阶段 `mkdir: can't create directory '/app/data/logs/': Permission denied`
+    （实机：`--user 65534:65534` 直接 exited；默认 root 正常 200）；
+  - 边界已写进条目描述：桥接网络 → 上游「强烈推荐 host 网络」带来的 Wake-on-LAN、连宿主机
+    localhost 目标不可用；不挂 Docker socket → 内置 Docker 管理功能不可用。
+- **验证**：`tests/test_market_secrets.py` **50/50**（新增 13 项：encoding 合法/非法矩阵、
+  三种编码产物形态、内置目录两个真实使用者的编码接线）；验证服务器 `run_checks.sh`
+  **212/212**；`test_market_catalog` 11 项 / `test_market_apps` / `test_market_domain` /
+  `test_i18n` 21 项 / `test_config_keys` 全 OK；`site_facts.py` 派生 `managed_declared`
+  **6 → 8** 已回写。
+  **真机端到端**：两个应用 install → healthy（8098/8099 均 HTTP 200）、机密文件 `600`、
+  compose 文档无明文、容器内取到的 `APP_KEY` 前缀 `base64:` 且为标准 base64 字符集、
+  `ENCRYPTION_KEY` 长度 64 且全 hex、uninstall 保留机密并打印位置且数据卷保留、
+  `reinstall --reuse-data` 后**指纹逐字节不变**（`twofauth 35a8f616…`、`nexterm 3760b4d8…`）。
+- **修复：卸载 legacy 形态受管应用会崩溃（v1.47.0 引入）**
+  - 现象：`market_apps.operate('uninstall')` 在 `src/lib/market_apps.py:958` 用
+    `spec['services']` 列举要保留的凭据文件，而 **legacy（非声明式）条目是扁平结构**，
+    没有 `services` 键 → `KeyError: 'services'`。
+  - 危害比报错本身大：崩溃发生在**容器已经 stop/rm 之后、状态写盘之前**（第 948-952 行
+    已经执行），所以应用会停在「容器没了、registry 还是 installed」的半成品状态。
+  - 修法：改用 `spec.get('services', [])`；legacy 条目本就不可能带安装时机密，无需列举。
+    其余 12 处 `spec['services']` 都在 `is_manifest(spec)` 分支内，唯独这一处漏了守卫。
+  - **由 `tests/test_market_apps.py::test_uninstall_preserves_data_and_metadata` 抓到**；
+    该测试在 HEAD（未含本轮改动）上同样失败，确认是既有缺陷而非本轮引入。修复后
+    `test_market_apps.py` **40 项全 OK**。
+- **顺带修两处「只有本地完整回归看得见」的债**（再次验证那条老结论）
+  - `docs/roadmap.md` 第 211 行（**v1.45.0 引入**）提到了 sing-box 上游脚本名，而该文件不在
+    `tests/reference_policy.sh` 的白名单内 → 引用策略红。改为不点名的中立表述，
+    **没有放宽白名单**（放宽闸门来消红是本仓库明确禁止的做法）。
+  - `tests/test_market_secrets.py`（v1.47.0 新增）未登记到 `tests/comprehensive_test.sh` 的
+    `PY_TESTS`，被套件的「未登记测试文件」自检拦下 → 已登记。
+  - 二者都印证同一条：`tests/` 不入库，CI 永远跑不到本地套件，**改完必须在本机或真机跑一遍
+    完整回归**，不能拿 CI 绿代替。本轮三个缺陷（卸载崩溃 + 上面两处）全是这么抓到的。
+- **仍未做（外部条件）**：A5 Oracle 三件套需真实 OCI 实例；TG bot token 未到位；A7 的
+  L3（真实模型对话/流式/用量）需真实模型 API key，未验证前不声称支持。
+
 ## v1.47.0 A7 收口：受管应用「安装时机密」+ LiteLLM 条目 + 端口冲突修复
 
 - **背景**：A7（harness 管理器）实现前核实发现——设计稿没定「管哪个上游」（全文只有 `hermes`
