@@ -6,7 +6,7 @@
 
 9 modules · 75-application software market · managed application lifecycle · every step can be rolled back
 
-[![version](https://img.shields.io/badge/version-1.48.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.48.1-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#appendix)
@@ -185,7 +185,7 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 
 ## Recent Changes
 
-> Current version **v1.48.0** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> Current version **v1.48.1** | full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- Release slot: when the next version ships, replace this section with a 3-5 line summary of the new version; move the replaced full version paragraphs verbatim to the top of docs/CHANGELOG.md (keeping reverse chronological order). -->
@@ -194,7 +194,7 @@ CI only does static checks (see below), and both repos (GitHub / CNB) use the sa
 - **New Nexterm entry** (SSH / VNC / RDP / SFTP remote management panel): localhost-only `127.0.0.1:8099`; runs as container root (the image declares no volume, so an unprivileged uid cannot start it), and host-network-only features plus the built-in Docker management are unavailable
 - **Credential generation now supports three encodings**: the previous release only produced URL-safe base64, while 2FAuth requires standard base64 and fails to boot otherwise (measured on a real host: urlsafe 500 / base64 200)
 - Both entries passed the full lifecycle on real hardware: install -> healthy -> uninstall retains -> reinstall with reused data leaves the credential fingerprint byte-identical
-- **Fixed an uninstall crash**: the previous release added "print retained credential locations after uninstall", which raised an error for some legacy-shape applications and aborted the uninstall after the containers were already removed but before the state was written; now fixed (found by full regression, not user report)
+- **Fixed an uninstall error**: the previous release added "print retained credential locations after uninstall", which raised an error for some legacy-shape applications - the uninstall itself completed, but the command exited non-zero and skipped that line; now fixed (found by full regression, not user report)
 
 ---
 

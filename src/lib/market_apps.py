@@ -955,10 +955,13 @@ def operate(action, app='nginx', port=None, accepted=False, project=None, automa
                 # data encrypted with them, so deleting them would make a
                 # `--reuse-data` reinstall unreadable. Surface the locations instead
                 # of silently keeping credential files around.
-                # A legacy (non-declarative) spec is flat — it has no `services`
-                # and can never carry install-time secrets, so probing it would
-                # raise KeyError and abort the uninstall *after* the containers
-                # were already removed. Found by tests/test_market_apps.py.
+                # A legacy (non-declarative) spec is flat: it has no `services`
+                # and can never carry install-time secrets. Probing it raised
+                # KeyError *after* the containers were removed and the
+                # `uninstalled` state was saved, so there was never a half-finished
+                # record — but the command exited non-zero (scripts/CI read that as
+                # failure) and skipped the "secrets kept here" line below.
+                # Found by tests/test_market_apps.py.
                 kept = [secrets_path(record, s['id']) for s in spec.get('services', [])
                         if s.get('secret_env') and Path(secrets_path(record, s['id'])).is_file()]
                 if kept:

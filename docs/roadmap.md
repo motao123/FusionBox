@@ -347,11 +347,22 @@
 
 1. `docker run -d --name fb-node2 -p 2222:22`（Ubuntu + openssh-server，含 python3）
 2. 生成**专用**临时密钥对，只授权给该容器；不复用生产密钥
-3. `cluster add` 指向 `127.0.0.1:2222`，验证 `trust/connect` 与严格 known_hosts 行为
+3. `cluster add` 指向 `127.0.0.1:2222`，验证 `cluster trust` 与严格 known_hosts 行为
+   （**不含 `cluster sshout connect`**——那是 G15，本夹具没跑，见下）
 4. 依次跑通：`cluster archive push/pull --kind docker-v1`、`cluster task` 批量、`cluster exec`
 5. 容器销毁即回收，无持久副作用
 
-**一次夹具覆盖 5 项**：G15（SSH 出站真实目标）、G16（rsync 远端）、G29（A4 的编排验证）、G61（灾备传输）、G63（批量任务真实执行）。
+**夹具实际覆盖 3 项**（`tests/acceptance/two_host.sh` 29/29，v1.38.0）：G29（跨主机迁移编排）、G61（灾备传输）、G63（批量任务真实执行），外加 `cluster add/trust/node-exec/exec` 与严格 known_hosts 行为。
+
+> **订正（v1.48.1）**：本节原写「一次夹具覆盖 5 项」，含 G15（SSH 出站真实目标）与 G16（rsync 远端）。
+> 但按脚本的实际断言核对，`two_host.sh` **既没有 `cluster sshout connect`，也没有 `system rsync` 远端执行**
+> ——这两项至今只有 mock 覆盖（`tests/test_misc_batch.py`）。也就是说 **G15/G16 属于「条件可造、夹具已有，
+> 但脚本没跑」**，不是「已验证」；`docs/implementation-status.md` 里「G15/G16 未验证」的标注是准确的。
+> 文档高估自身覆盖面和低估同样有害，故按实际断言收敛为 3 项，并把步骤 3 的 `trust/connect`
+> 明确为 `cluster trust`（`sshout connect` 需另行补断言，见下）。
+
+**仍未覆盖、但用同一夹具就能补**（不需新机器、不需新凭据）：对 `127.0.0.1:2222` 这个容器目标跑
+`cluster sshout add/connect`（G15）与 `system rsync` 任务真实执行（G16）。
 
 ### B4 TG / Cloudflare 真实凭据 — Cloudflare 半边已完成（v1.41.0）
 
