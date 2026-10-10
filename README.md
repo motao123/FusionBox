@@ -6,7 +6,7 @@
 
 9 大模块 · 75 款软件市场 · 受管应用生命周期 · 每一步都可回滚
 
-[![version](https://img.shields.io/badge/version-1.48.0-blue)](https://github.com/motao123/FusionBox/releases)
+[![version](https://img.shields.io/badge/version-1.48.1-blue)](https://github.com/motao123/FusionBox/releases)
 [![CI](https://github.com/motao123/FusionBox/actions/workflows/release.yml/badge.svg)](https://github.com/motao123/FusionBox/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![platform](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20CentOS%20%7C%20Alpine-orange)](#附录)
@@ -184,7 +184,7 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 
 ## 最近更新
 
-> 当前版本 **v1.48.0** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+> 当前版本 **v1.48.1** ｜ 完整历史见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 
 <!-- 发布槽位：下一版本发布时，将本节替换为新版本 3-5 行摘要；被替换的完整版本段落原文写入 docs/CHANGELOG.md 顶部（保持时间倒序）。 -->
@@ -193,7 +193,7 @@ CI 只做静态检查（见下），两个仓库（GitHub / CNB）同一口径�
 - **新增 Nexterm 条目**（SSH / VNC / RDP / SFTP 远程管理面板）：仅本机 `127.0.0.1:8099`；以容器内 root 运行（镜像未声明数据卷，普通用户起不来），host 网络专属能力与内置 Docker 管理不可用
 - **凭据生成支持三种编码**：上一版只有 URL 安全 base64，而 2FAuth 要求标准 base64，用错会直接启动失败（实机：urlsafe 500 / base64 200）
 - 两个条目都真机跑通完整生命周期：安装 → 健康 → 卸载保留 → 复用数据重装后凭据指纹逐字节不变
-- **修一个会让卸载中断的报错**：上一版新增的「卸载后打印凭据保留位置」对一部分早期形态的应用会报错，导致容器已删除、状态却没写完整；现已修复（由完整回归发现）
+- **修一个卸载报错**：上一版新增的「卸载后打印凭据保留位置」对一部分早期形态的应用会报错——卸载本身已完成，但命令以非零退出结束，且少了那行提示；现已修复（由完整回归发现）
 
 ---
 

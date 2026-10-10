@@ -2,6 +2,27 @@
 
 > 本文件由 README 迁移而来，内容为各版本发布说明原文（时间倒序）。最新摘要见 [README](../README.md#最近更新)；逐项实施对账见 [implementation-status.md](implementation-status.md)。
 
+## v1.48.1 文档订正（无功能变化）
+
+- **订正 v1.48.0 里对「卸载报错」后果的描述**。MonkeyScan 在 PR #77 的评审中指出：初稿写
+  「崩溃发生在容器已 stop/rm 之后、状态写盘之前，会留下『容器没了但 registry 仍为 installed』
+  的半成品」，而 `src/lib/market_apps.py` 的 `operate('uninstall')` 实际顺序是
+  `stop/rm`（948-950）→ `state = 'uninstalled'` + `save()`（951-952）→ 崩溃点（958/962），
+  **状态在崩溃前已完整落盘**。核对后确认**评审是对的、我们的初稿是错的**。
+  - 真实后果：卸载本身完整（无半成品），问题是命令**非零退出 + traceback**（脚本/CI 误判失败）
+    且**少打印一行「凭据保留位置」**。修法不变（`spec.get('services', [])`）。
+  - 同步改了 6 处：`src/lib/market_apps.py` 注释、`docs/CHANGELOG.md`、
+    `docs/release-notes.md`、双语 README 的「最近更新 / Recent Changes」、
+    `docs/implementation-status.md` 的 v1.48.0 条目。
+- **订正 `docs/roadmap.md` B3 节的一处高估**：该节称两主机夹具「一次覆盖 5 项：G15（SSH 出站
+  真实目标）、G16（rsync 远端）、G29、G61、G63」，但 `tests/acceptance/two_host.sh` 的实际
+  断言只覆盖 `cluster add/trust/node-exec/exec`、docker-v1 `archive push/pull` 往返与跨主机
+  迁移编排（含中断回滚）——**既没有 `cluster sshout connect`，也没有 `system rsync` 远端执行**。
+  因此 G15/G16 仍是「条件可造但未做」（夹具已有，脚本没跑这两项），
+  `docs/implementation-status.md` 里「G15/G16 未验证」的标注**是准确的**，不该被当成过期陈述。
+  脚本头部注释同样写成「覆盖 G15/G16」，一并按实际断言收敛。
+- 本次**代码只改注释**，无行为变化；门禁（7 道静态检查）全绿。
+
 ## v1.48.0 A6 收尾：2FAuth / Nexterm 条目 + 凭据编码能力
 
 - **背景**：roadmap A6 第一/二档只剩两个「上游镜像地址待确认」的应用（Nexterm、2FAuth）。
@@ -49,8 +70,12 @@
   - 现象：`market_apps.operate('uninstall')` 在 `src/lib/market_apps.py:958` 用
     `spec['services']` 列举要保留的凭据文件，而 **legacy（非声明式）条目是扁平结构**，
     没有 `services` 键 → `KeyError: 'services'`。
-  - 危害比报错本身大：崩溃发生在**容器已经 stop/rm 之后、状态写盘之前**（第 948-952 行
-    已经执行），所以应用会停在「容器没了、registry 还是 installed」的半成品状态。
+  - **实际后果（已订正）**：崩溃发生在 `stop/rm` 容器（第 948-950 行）与
+    `state = 'uninstalled'` + `save()` 落盘（第 951-952 行）**之后**，所以**卸载本身是完整的，
+    没有半成品**。真正的问题是命令以**非零退出 + traceback** 结束（脚本与 CI 会误判为失败），
+    并且**少打印一行「凭据保留位置」**。
+    > 初稿把它写成「状态未落盘 / registry 仍为 installed」是**错的**，由 MonkeyScan 在 PR #77
+    > 的评审中指出（代码顺序确实是先落盘后崩溃）。本条已按代码实际顺序改写。
   - 修法：改用 `spec.get('services', [])`；legacy 条目本就不可能带安装时机密，无需列举。
     其余 12 处 `spec['services']` 都在 `is_manifest(spec)` 分支内，唯独这一处漏了守卫。
   - **由 `tests/test_market_apps.py::test_uninstall_preserves_data_and_metadata` 抓到**；
